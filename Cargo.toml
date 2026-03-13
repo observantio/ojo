@@ -1,0 +1,20 @@
+[package]
+name = "proc-otel-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+ctrlc = "3"
+procfs = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+
+opentelemetry = { version = "0.31", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.31", features = ["metrics", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["metrics", "grpc-tonic", "http-proto", "reqwest-blocking-client", "gzip-http"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

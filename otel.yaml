@@ -1,0 +1,42 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4355
+      grpc:
+        endpoint: 0.0.0.0:4356
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  batch:
+    send_batch_size: 1000
+    send_batch_max_size: 2000
+    timeout: 10s
+
+exporters:
+  prometheusremotewrite/mimir:
+    endpoint: "http://localhost:4320/mimir/api/v1/push"
+    headers:
+      x-otlp-token: "bo_T3_zE4pR_TH9pLIY_cClhJZkXr4LKWn82c3_Hwmpp_w"
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite/mimir]
+
+  telemetry:
+    logs:
+      level: debug
