@@ -503,7 +503,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_io_cancelled_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_io_cancelled_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -699,7 +699,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_linux_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -895,7 +895,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_linux_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1287,7 +1287,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_memory_rss{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1483,7 +1483,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_memory_vm_rss{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_memory_vm_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1581,7 +1581,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_memory_vm_size{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_memory_vm_size_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1679,7 +1679,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_memory_vsize{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_memory_vsize_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1777,7 +1777,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_nice{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_nice{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -2169,7 +2169,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_linux_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -2267,7 +2267,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_start_time{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_start_time_seconds{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -2365,7 +2365,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_threads{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_thread_count{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -2463,7 +2463,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_boot_time{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_boot_time_seconds{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -3345,7 +3345,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_avg_read_size{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_avg_read_size_bytes{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -3443,7 +3443,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_avg_write_size{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_avg_write_size_bytes{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -3835,7 +3835,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_logical_block_size{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_logical_block_size_bytes{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -4325,7 +4325,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_physical_block_size{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_physical_block_size_bytes{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -4521,7 +4521,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_read_await{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_read_await_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -4913,7 +4913,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_in_progress{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -5011,7 +5011,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_reading{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_time_reading_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -5109,7 +5109,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_writing{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_time_writing_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -5403,7 +5403,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_weighted_time_in_progress{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_weighted_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -5501,7 +5501,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_write_await{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_disk_write_await_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -6187,7 +6187,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_15m{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_cpu_load_average_15m{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6285,7 +6285,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_1m{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_cpu_load_average_1m{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6383,7 +6383,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_5m{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_cpu_load_average_5m{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6481,7 +6481,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_entities{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_load_entities{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6579,7 +6579,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_latest_pid{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_load_latest_pid{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6677,7 +6677,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_load_runnable{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_load_runnable{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6775,7 +6775,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_active{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_active_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6873,7 +6873,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_anon{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_anon_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -6971,7 +6971,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_anon_hugepages{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_anon_hugepages_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7069,7 +7069,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_available{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_available_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7167,7 +7167,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_buffers{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_buffers_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7265,7 +7265,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_cached{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_cached_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7363,7 +7363,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_commit_limit{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_commit_limit_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7461,7 +7461,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_committed_as{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_committed_as_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7559,7 +7559,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_dirty{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_dirty_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7755,7 +7755,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_free{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_free_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -7853,7 +7853,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_hugepage_size{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_hugepage_size_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8147,7 +8147,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_inactive{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_inactive_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8245,7 +8245,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_kernel_stack{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_kernel_stack_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8343,7 +8343,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_mapped{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_mapped_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8441,7 +8441,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_page_tables{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_page_tables_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8539,7 +8539,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_shmem{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_shmem_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8637,7 +8637,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_slab{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_slab_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8735,7 +8735,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_sreclaimable{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_sreclaimable_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8833,7 +8833,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_sunreclaim{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_sunreclaim_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -8931,7 +8931,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_total{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_total_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9127,7 +9127,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_memory_writeback{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_memory_writeback_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9225,7 +9225,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_carrier_up{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_carrier_up{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -9323,7 +9323,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_kernel_ip_in_discards_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_ip_in_discards_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9421,7 +9421,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_kernel_ip_out_discards_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_ip_out_discards_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9519,7 +9519,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_kernel_tcp_retrans_segs_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_tcp_retrans_segs_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9617,7 +9617,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_kernel_udp_in_errors_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_udp_in_errors_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9715,7 +9715,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_kernel_udp_rcvbuf_errors_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_udp_rcvbuf_errors_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -9813,7 +9813,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_mtu{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_mtu{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -9911,7 +9911,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10009,7 +10009,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10107,7 +10107,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10205,7 +10205,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10303,7 +10303,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10401,7 +10401,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10499,7 +10499,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10597,7 +10597,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_frame{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_frame{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10695,7 +10695,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10793,7 +10793,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_multicast{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_multicast{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10891,7 +10891,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -10989,7 +10989,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_rx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -11087,7 +11087,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_snmp{job=~\"$job\",instance=~\"$instance\",key=~\"$snmp_key\"}",
+            "expr": "system_linux_net_snmp{job=~\"$job\",instance=~\"$instance\",key=~\"$snmp_key\"}",
             "instant": false,
             "legendFormat": "{{key}}",
             "range": true,
@@ -11185,7 +11185,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_cpu_dropped{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
+            "expr": "system_linux_net_softnet_cpu_dropped{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
             "instant": false,
             "legendFormat": "cpu={{cpu}}",
             "range": true,
@@ -11283,7 +11283,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_cpu_processed{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
+            "expr": "system_linux_net_softnet_cpu_processed{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
             "instant": false,
             "legendFormat": "cpu={{cpu}}",
             "range": true,
@@ -11381,7 +11381,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_cpu_time_squeezed{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
+            "expr": "system_linux_net_softnet_cpu_time_squeezed{job=~\"$job\",instance=~\"$instance\",cpu=~\"$cpu\"}",
             "instant": false,
             "legendFormat": "cpu={{cpu}}",
             "range": true,
@@ -11479,7 +11479,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_drop_ratio{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_softnet_drop_ratio{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -11577,7 +11577,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_dropped_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_softnet_dropped_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -11675,7 +11675,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_processed_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_softnet_processed_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -11773,7 +11773,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_softnet_time_squeezed_per_sec{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_net_softnet_time_squeezed_per_sec{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -11871,7 +11871,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_speed_mbps{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_speed_mbps{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -11969,7 +11969,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_total_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_total_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12067,7 +12067,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12165,7 +12165,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_carrier{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_carrier{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12263,7 +12263,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_collisions{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_collisions{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12361,7 +12361,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12459,7 +12459,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12557,7 +12557,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12655,7 +12655,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12753,7 +12753,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12851,7 +12851,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -12949,7 +12949,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -13047,7 +13047,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -13145,7 +13145,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -13243,7 +13243,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_queue_len{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_tx_queue_len{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -14811,7 +14811,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_swap_cached{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_swap_cached_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -14909,7 +14909,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_swap_free{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_swap_free_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -15301,7 +15301,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_swap_total{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_swap_total_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{instance}}",
             "range": true,
@@ -15595,7 +15595,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_vmstat{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_vmstat{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "key={{key}}",
             "range": true,
@@ -15889,7 +15889,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_linux_swap_device_used{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_linux_swap_device_used_bytes{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "{{device}}",
             "range": true,
@@ -15987,7 +15987,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_linux_swap_device_used{job=~\"$job\",instance=~\"$instance\"} / clamp_min(system_linux_swap_device_size{job=~\"$job\",instance=~\"$instance\"}, 1)",
+            "expr": "system_linux_swap_device_used_bytes{job=~\"$job\",instance=~\"$instance\"} / clamp_min(system_linux_swap_device_size_bytes{job=~\"$job\",instance=~\"$instance\"}, 1)",
             "instant": false,
             "legendFormat": "{{device}}",
             "range": true,
@@ -16085,7 +16085,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_cpu_frequency{job=~\"$job\",instance=~\"$instance\"}",
+            "expr": "system_cpu_frequency_hertz{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "cpu={{cpu}}",
             "range": true,
@@ -16534,10 +16534,10 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "definition": "label_values(system_net_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
+          "definition": "label_values(system_network_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
           "query": {
             "qryType": 1,
-            "query": "label_values(system_net_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
+            "query": "label_values(system_network_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
             "refId": "Grafana-net-device"
           },
           "refresh": 2,
@@ -16618,10 +16618,10 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "definition": "label_values(system_vmstat{job=~\"$job\",instance=~\"$instance\"}, key)",
+          "definition": "label_values(system_linux_vmstat{job=~\"$job\",instance=~\"$instance\"}, key)",
           "query": {
             "qryType": 1,
-            "query": "label_values(system_vmstat{job=~\"$job\",instance=~\"$instance\"}, key)",
+            "query": "label_values(system_linux_vmstat{job=~\"$job\",instance=~\"$instance\"}, key)",
             "refId": "Grafana-key"
           },
           "refresh": 2,
@@ -16646,10 +16646,10 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "definition": "label_values(system_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
+          "definition": "label_values(system_linux_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
           "query": {
             "qryType": 1,
-            "query": "label_values(system_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
+            "query": "label_values(system_linux_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
             "refId": "Grafana-snmp-key"
           },
           "refresh": 2,

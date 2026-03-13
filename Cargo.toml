@@ -1,6 +1,6 @@
 [package]
-name = "proc-otel-agent"
-version = "0.1.0"
+name = "ojo"
+version = "0.0.1"
 edition = "2021"
 
 [dependencies]

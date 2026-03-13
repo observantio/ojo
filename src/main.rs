@@ -63,17 +63,17 @@ fn main() -> Result<()> {
         match provider.force_flush() {
             Ok(()) => {
                 match export_state {
-                    ExportState::Pending => info!("Ojo has successfully connected ......."),
-                    ExportState::Reconnecting => info!("Ojo has reconnected ........"),
+                    ExportState::Pending => info!("Connected to OTLP exporter"),
+                    ExportState::Reconnecting => info!("Reconnected to OTLP exporter"),
                     ExportState::Connected => {}
                 }
                 export_state = ExportState::Connected;
             }
             Err(err) => {
                 match export_state {
-                    ExportState::Connected => warn!(error = %err, "Trying to reconnect ..."),
+                    ExportState::Connected => warn!(error = %err, "Exporter flush failed; reconnecting"),
                     ExportState::Pending | ExportState::Reconnecting => {
-                        warn!(error = %err, "We could not reconnect yet ...")
+                        warn!(error = %err, "Exporter still unavailable")
                     }
                 }
                 export_state = ExportState::Reconnecting;
