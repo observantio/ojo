@@ -7,10 +7,16 @@ pub struct Snapshot {
     pub load: LoadSnapshot,
     pub pressure: BTreeMap<String, f64>,
     pub pressure_totals_us: BTreeMap<String, u64>,
-    pub meminfo_raw: BTreeMap<String, u64>,
     pub vmstat: BTreeMap<String, i64>,
+    pub interrupts: BTreeMap<String, u64>,
+    pub softirqs: BTreeMap<String, u64>,
     pub net_snmp: BTreeMap<String, u64>,
     pub softnet: Vec<SoftnetCpuSnapshot>,
+    pub swaps: Vec<SwapDeviceSnapshot>,
+    pub mounts: Vec<MountSnapshot>,
+    pub cpuinfo: Vec<CpuInfoSnapshot>,
+    pub zoneinfo: BTreeMap<String, u64>,
+    pub buddyinfo: BTreeMap<String, u64>,
     pub disks: Vec<DiskSnapshot>,
     pub net: Vec<NetDevSnapshot>,
     pub processes: Vec<ProcessSnapshot>,
@@ -114,6 +120,32 @@ pub struct LoadSnapshot {
     pub runnable: u32,
     pub entities: u32,
     pub latest_pid: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SwapDeviceSnapshot {
+    pub device: String,
+    pub swap_type: String,
+    pub size_bytes: u64,
+    pub used_bytes: u64,
+    pub priority: i64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MountSnapshot {
+    pub device: String,
+    pub mountpoint: String,
+    pub fs_type: String,
+    pub read_only: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CpuInfoSnapshot {
+    pub cpu: usize,
+    pub vendor_id: Option<String>,
+    pub model_name: Option<String>,
+    pub mhz: Option<f64>,
+    pub cache_size_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default)]

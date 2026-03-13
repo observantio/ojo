@@ -11,8 +11,6 @@ pub struct Config {
     pub instance_id: String,
     pub poll_interval: Duration,
     pub include_process_metrics: bool,
-    pub metric_query: Option<String>,
-    pub list_metrics: bool,
     pub otlp_endpoint: String,
     pub otlp_protocol: String,
     pub otlp_headers: BTreeMap<String, String>,
@@ -76,12 +74,6 @@ struct MetricSection {
 impl Config {
     pub fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
-        let metric_query = args
-            .windows(2)
-            .find(|pair| pair[0] == "--metric")
-            .map(|pair| pair[1].clone())
-            .or_else(|| env::var("PROC_METRIC").ok());
-        let list_metrics = args.iter().any(|arg| arg == "--metrics");
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -135,7 +127,11 @@ impl Config {
             poll_interval: Duration::from_secs(
                 collection
                     .poll_interval_secs
-                    .or_else(|| env::var("PROC_POLL_INTERVAL_SECS").ok().and_then(|v| v.parse().ok()))
+                    .or_else(|| {
+                        env::var("PROC_POLL_INTERVAL_SECS")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                    })
                     .unwrap_or(5),
             ),
             include_process_metrics: collection
@@ -146,26 +142,30 @@ impl Config {
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 })
                 .unwrap_or(false),
-            metric_query,
-            list_metrics,
             otlp_endpoint,
             otlp_protocol,
             otlp_headers,
             otlp_compression: otlp
                 .compression
                 .or_else(|| env::var("OTEL_EXPORTER_OTLP_COMPRESSION").ok()),
-            otlp_timeout: otlp
-                .timeout_secs
-                .map(Duration::from_secs)
-                .or_else(|| env::var("OTEL_EXPORTER_OTLP_TIMEOUT").ok().and_then(|v| v.parse().ok()).map(Duration::from_secs)),
-            export_interval: batch
-                .interval_secs
-                .map(Duration::from_secs)
-                .or_else(|| env::var("OTEL_METRIC_EXPORT_INTERVAL").ok().and_then(|v| v.parse().ok()).map(Duration::from_millis)),
-            export_timeout: batch
-                .timeout_secs
-                .map(Duration::from_secs)
-                .or_else(|| env::var("OTEL_METRIC_EXPORT_TIMEOUT").ok().and_then(|v| v.parse().ok()).map(Duration::from_millis)),
+            otlp_timeout: otlp.timeout_secs.map(Duration::from_secs).or_else(|| {
+                env::var("OTEL_EXPORTER_OTLP_TIMEOUT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .map(Duration::from_secs)
+            }),
+            export_interval: batch.interval_secs.map(Duration::from_secs).or_else(|| {
+                env::var("OTEL_METRIC_EXPORT_INTERVAL")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .map(Duration::from_millis)
+            }),
+            export_timeout: batch.timeout_secs.map(Duration::from_secs).or_else(|| {
+                env::var("OTEL_METRIC_EXPORT_TIMEOUT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .map(Duration::from_millis)
+            }),
             metrics_include: metrics.include.unwrap_or_default(),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
         })
@@ -192,10 +192,16 @@ impl Config {
             env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", timeout.as_secs().to_string());
         }
         if let Some(interval) = self.export_interval {
-            env::set_var("OTEL_METRIC_EXPORT_INTERVAL", interval.as_millis().to_string());
+            env::set_var(
+                "OTEL_METRIC_EXPORT_INTERVAL",
+                interval.as_millis().to_string(),
+            );
         }
         if let Some(timeout) = self.export_timeout {
-            env::set_var("OTEL_METRIC_EXPORT_TIMEOUT", timeout.as_millis().to_string());
+            env::set_var(
+                "OTEL_METRIC_EXPORT_TIMEOUT",
+                timeout.as_millis().to_string(),
+            );
         }
     }
 }

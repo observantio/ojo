@@ -22,6 +22,8 @@ pub struct DerivedMetrics {
     pub swap_used_ratio: f64,
     pub dirty_writeback_ratio: f64,
     pub pressure_total_delta_secs: HashMap<String, f64>,
+    pub linux_interrupts_delta: HashMap<String, u64>,
+    pub linux_softirqs_delta: HashMap<String, u64>,
     pub page_faults_per_sec: f64,
     pub major_page_faults_per_sec: f64,
     pub page_ins_per_sec: f64,
@@ -240,6 +242,21 @@ impl PrevState {
             .forks_since_boot
             .saturating_sub(prev.system.forks_since_boot);
 
+        for (key, value) in &current.interrupts {
+            let prev_value = prev.interrupts.get(key).copied().unwrap_or_default();
+            let delta = value.saturating_sub(prev_value);
+            if delta > 0 {
+                out.linux_interrupts_delta.insert(key.clone(), delta);
+            }
+        }
+        for (key, value) in &current.softirqs {
+            let prev_value = prev.softirqs.get(key).copied().unwrap_or_default();
+            let delta = value.saturating_sub(prev_value);
+            if delta > 0 {
+                out.linux_softirqs_delta.insert(key.clone(), delta);
+            }
+        }
+
         if current.memory.mem_total_bytes > 0 {
             let used = current
                 .memory
@@ -264,46 +281,56 @@ impl PrevState {
             .get("pgfault")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pgfault").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pgfault").copied().unwrap_or_default())
+            as u64;
         out.page_faults_per_sec = out.page_faults_delta as f64 / secs;
         out.major_page_faults_delta = current
             .vmstat
             .get("pgmajfault")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pgmajfault").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pgmajfault").copied().unwrap_or_default())
+            as u64;
         out.major_page_faults_per_sec = out.major_page_faults_delta as f64 / secs;
         out.page_ins_delta = current
             .vmstat
             .get("pgpgin")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pgpgin").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pgpgin").copied().unwrap_or_default())
+            as u64;
         out.page_ins_per_sec = out.page_ins_delta as f64 / secs;
         out.page_outs_delta = current
             .vmstat
             .get("pgpgout")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pgpgout").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pgpgout").copied().unwrap_or_default())
+            as u64;
         out.page_outs_per_sec = out.page_outs_delta as f64 / secs;
         out.swap_ins_delta = current
             .vmstat
             .get("pswpin")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pswpin").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pswpin").copied().unwrap_or_default())
+            as u64;
         out.swap_ins_per_sec = out.swap_ins_delta as f64 / secs;
         out.swap_outs_delta = current
             .vmstat
             .get("pswpout")
             .copied()
             .unwrap_or_default()
-            .saturating_sub(prev.vmstat.get("pswpout").copied().unwrap_or_default()) as u64;
+            .saturating_sub(prev.vmstat.get("pswpout").copied().unwrap_or_default())
+            as u64;
         out.swap_outs_per_sec = out.swap_outs_delta as f64 / secs;
 
         for (key, value) in &current.pressure_totals_us {
-            let prev_value = prev.pressure_totals_us.get(key).copied().unwrap_or_default();
+            let prev_value = prev
+                .pressure_totals_us
+                .get(key)
+                .copied()
+                .unwrap_or_default();
             out.pressure_total_delta_secs.insert(
                 key.clone(),
                 value.saturating_sub(prev_value) as f64 / 1_000_000.0,
@@ -352,10 +379,22 @@ impl PrevState {
             out.per_cpu_utilization_ratio.push((idx, ratio));
             let iowait = cur.iowait.saturating_sub(prv.iowait);
             let system = cur.system.saturating_sub(prv.system);
-            out.per_cpu_iowait_ratio
-                .push((idx, if td > 0 { iowait as f64 / td as f64 } else { 0.0 }));
-            out.per_cpu_system_ratio
-                .push((idx, if td > 0 { system as f64 / td as f64 } else { 0.0 }));
+            out.per_cpu_iowait_ratio.push((
+                idx,
+                if td > 0 {
+                    iowait as f64 / td as f64
+                } else {
+                    0.0
+                },
+            ));
+            out.per_cpu_system_ratio.push((
+                idx,
+                if td > 0 {
+                    system as f64 / td as f64
+                } else {
+                    0.0
+                },
+            ));
         }
 
         for cur in &current.disks {
@@ -379,14 +418,10 @@ impl PrevState {
                     .insert(cur.name.clone(), read_bytes as u64);
                 out.disk_write_bytes_delta
                     .insert(cur.name.clone(), write_bytes as u64);
-                out.disk_read_bytes_per_sec.insert(
-                    cur.name.clone(),
-                    read_bytes / secs,
-                );
-                out.disk_write_bytes_per_sec.insert(
-                    cur.name.clone(),
-                    write_bytes / secs,
-                );
+                out.disk_read_bytes_per_sec
+                    .insert(cur.name.clone(), read_bytes / secs);
+                out.disk_write_bytes_per_sec
+                    .insert(cur.name.clone(), write_bytes / secs);
                 out.disk_total_bytes_per_sec
                     .insert(cur.name.clone(), (read_bytes + write_bytes) / secs);
                 out.disk_reads_per_sec
@@ -407,10 +442,22 @@ impl PrevState {
                     .insert(cur.name.clone(), write_time_ms as f64 / 1000.0);
                 out.disk_io_time_delta_secs
                     .insert(cur.name.clone(), busy_time_ms as f64 / 1000.0);
-                out.disk_avg_read_size_bytes
-                    .insert(cur.name.clone(), if reads > 0 { read_bytes / reads as f64 } else { 0.0 });
-                out.disk_avg_write_size_bytes
-                    .insert(cur.name.clone(), if writes > 0 { write_bytes / writes as f64 } else { 0.0 });
+                out.disk_avg_read_size_bytes.insert(
+                    cur.name.clone(),
+                    if reads > 0 {
+                        read_bytes / reads as f64
+                    } else {
+                        0.0
+                    },
+                );
+                out.disk_avg_write_size_bytes.insert(
+                    cur.name.clone(),
+                    if writes > 0 {
+                        write_bytes / writes as f64
+                    } else {
+                        0.0
+                    },
+                );
                 out.disk_utilization_ratio.insert(
                     cur.name.clone(),
                     (busy_time_ms as f64 / (secs * 1000.0)).clamp(0.0, 1.0),
@@ -433,18 +480,14 @@ impl PrevState {
                     cur.name.clone(),
                     per_sec(cur.rx_bytes.saturating_sub(prv.rx_bytes), secs),
                 );
-                out.net_rx_bytes_delta.insert(
-                    cur.name.clone(),
-                    cur.rx_bytes.saturating_sub(prv.rx_bytes),
-                );
+                out.net_rx_bytes_delta
+                    .insert(cur.name.clone(), cur.rx_bytes.saturating_sub(prv.rx_bytes));
                 out.net_tx_bytes_per_sec.insert(
                     cur.name.clone(),
                     per_sec(cur.tx_bytes.saturating_sub(prv.tx_bytes), secs),
                 );
-                out.net_tx_bytes_delta.insert(
-                    cur.name.clone(),
-                    cur.tx_bytes.saturating_sub(prv.tx_bytes),
-                );
+                out.net_tx_bytes_delta
+                    .insert(cur.name.clone(), cur.tx_bytes.saturating_sub(prv.tx_bytes));
                 out.net_total_bytes_per_sec.insert(
                     cur.name.clone(),
                     per_sec(
@@ -455,10 +498,12 @@ impl PrevState {
                 );
                 out.net_rx_packets_per_sec
                     .insert(cur.name.clone(), per_sec(rx_packets, secs));
-                out.net_rx_packets_delta.insert(cur.name.clone(), rx_packets);
+                out.net_rx_packets_delta
+                    .insert(cur.name.clone(), rx_packets);
                 out.net_tx_packets_per_sec
                     .insert(cur.name.clone(), per_sec(tx_packets, secs));
-                out.net_tx_packets_delta.insert(cur.name.clone(), tx_packets);
+                out.net_tx_packets_delta
+                    .insert(cur.name.clone(), tx_packets);
                 out.net_rx_errs_per_sec
                     .insert(cur.name.clone(), per_sec(rx_errs, secs));
                 out.net_rx_errs_delta.insert(cur.name.clone(), rx_errs);
@@ -471,10 +516,14 @@ impl PrevState {
                 out.net_tx_drop_per_sec
                     .insert(cur.name.clone(), per_sec(tx_drop, secs));
                 out.net_tx_drop_delta.insert(cur.name.clone(), tx_drop);
-                out.net_rx_loss_ratio
-                    .insert(cur.name.clone(), ratio(rx_errs + rx_drop, rx_packets + rx_errs + rx_drop));
-                out.net_tx_loss_ratio
-                    .insert(cur.name.clone(), ratio(tx_errs + tx_drop, tx_packets + tx_errs + tx_drop));
+                out.net_rx_loss_ratio.insert(
+                    cur.name.clone(),
+                    ratio(rx_errs + rx_drop, rx_packets + rx_errs + rx_drop),
+                );
+                out.net_tx_loss_ratio.insert(
+                    cur.name.clone(),
+                    ratio(tx_errs + tx_drop, tx_packets + tx_errs + tx_drop),
+                );
             }
         }
 
@@ -495,14 +544,10 @@ impl PrevState {
                     cur.pid,
                     cur.stime_ticks.saturating_sub(prv.stime_ticks) as f64 / hz,
                 );
-                out.process_minor_faults_delta.insert(
-                    cur.pid,
-                    cur.minflt.saturating_sub(prv.minflt),
-                );
-                out.process_major_faults_delta.insert(
-                    cur.pid,
-                    cur.majflt.saturating_sub(prv.majflt),
-                );
+                out.process_minor_faults_delta
+                    .insert(cur.pid, cur.minflt.saturating_sub(prv.minflt));
+                out.process_major_faults_delta
+                    .insert(cur.pid, cur.majflt.saturating_sub(prv.majflt));
 
                 if let (Some(cur_value), Some(prev_value)) = (cur.read_bytes, prv.read_bytes) {
                     out.process_read_bytes_delta
@@ -528,10 +573,9 @@ impl PrevState {
                     out.process_syscw_delta
                         .insert(cur.pid, cur_value.saturating_sub(prev_value));
                 }
-                if let (Some(cur_value), Some(prev_value)) = (
-                    cur.voluntary_ctxt_switches,
-                    prv.voluntary_ctxt_switches,
-                ) {
+                if let (Some(cur_value), Some(prev_value)) =
+                    (cur.voluntary_ctxt_switches, prv.voluntary_ctxt_switches)
+                {
                     out.process_voluntary_ctxt_delta
                         .insert(cur.pid, cur_value.saturating_sub(prev_value));
                 }

@@ -118,7 +118,7 @@
             "refId": "A"
           }
         ],
-        "title": "process context_switches",
+        "title": "Process Context Switches",
         "type": "timeseries"
       },
       {
@@ -216,7 +216,7 @@
             "refId": "A"
           }
         ],
-        "title": "process cpu time",
+        "title": "Process Cpu Time",
         "type": "timeseries"
       },
       {
@@ -314,7 +314,7 @@
             "refId": "A"
           }
         ],
-        "title": "process cpu utilization",
+        "title": "Process Cpu Utilization",
         "type": "timeseries"
       },
       {
@@ -412,7 +412,7 @@
             "refId": "A"
           }
         ],
-        "title": "process disk io",
+        "title": "Process Disk Io",
         "type": "timeseries"
       },
       {
@@ -510,7 +510,7 @@
             "refId": "A"
           }
         ],
-        "title": "process io cancelled_write_bytes",
+        "title": "Process Io Cancelled Write Bytes",
         "type": "timeseries"
       },
       {
@@ -608,7 +608,7 @@
             "refId": "A"
           }
         ],
-        "title": "process io chars",
+        "title": "Process Io Chars",
         "type": "timeseries"
       },
       {
@@ -706,7 +706,7 @@
             "refId": "A"
           }
         ],
-        "title": "process io read_bytes",
+        "title": "Process Io Read Bytes",
         "type": "timeseries"
       },
       {
@@ -804,7 +804,7 @@
             "refId": "A"
           }
         ],
-        "title": "process io syscalls",
+        "title": "Process Io Syscalls",
         "type": "timeseries"
       },
       {
@@ -902,7 +902,7 @@
             "refId": "A"
           }
         ],
-        "title": "process io write_bytes",
+        "title": "Process Io Write Bytes",
         "type": "timeseries"
       },
       {
@@ -1000,7 +1000,7 @@
             "refId": "A"
           }
         ],
-        "title": "process linux oom_score",
+        "title": "Process Linux Oom Score",
         "type": "timeseries"
       },
       {
@@ -1098,7 +1098,7 @@
             "refId": "A"
           }
         ],
-        "title": "process linux processor",
+        "title": "Process Linux Processor",
         "type": "timeseries"
       },
       {
@@ -1196,7 +1196,7 @@
             "refId": "A"
           }
         ],
-        "title": "process linux scheduler",
+        "title": "Process Linux Scheduler",
         "type": "timeseries"
       },
       {
@@ -1294,7 +1294,7 @@
             "refId": "A"
           }
         ],
-        "title": "process memory rss",
+        "title": "Process Memory Rss",
         "type": "timeseries"
       },
       {
@@ -1392,7 +1392,7 @@
             "refId": "A"
           }
         ],
-        "title": "process memory usage",
+        "title": "Process Memory Usage",
         "type": "timeseries"
       },
       {
@@ -1490,7 +1490,7 @@
             "refId": "A"
           }
         ],
-        "title": "process memory vm_rss",
+        "title": "Process Memory Vm Rss",
         "type": "timeseries"
       },
       {
@@ -1588,7 +1588,7 @@
             "refId": "A"
           }
         ],
-        "title": "process memory vm_size",
+        "title": "Process Memory Vm Size",
         "type": "timeseries"
       },
       {
@@ -1686,7 +1686,7 @@
             "refId": "A"
           }
         ],
-        "title": "process memory vsize",
+        "title": "Process Memory Vsize",
         "type": "timeseries"
       },
       {
@@ -1784,7 +1784,7 @@
             "refId": "A"
           }
         ],
-        "title": "process nice",
+        "title": "Process Nice",
         "type": "timeseries"
       },
       {
@@ -1882,7 +1882,7 @@
             "refId": "A"
           }
         ],
-        "title": "process open_file_descriptors",
+        "title": "Process Open File Descriptors",
         "type": "timeseries"
       },
       {
@@ -1980,7 +1980,7 @@
             "refId": "A"
           }
         ],
-        "title": "process paging faults",
+        "title": "Process Paging Faults",
         "type": "timeseries"
       },
       {
@@ -2078,7 +2078,7 @@
             "refId": "A"
           }
         ],
-        "title": "process parent_pid",
+        "title": "Process Parent Pid",
         "type": "timeseries"
       },
       {
@@ -2176,7 +2176,7 @@
             "refId": "A"
           }
         ],
-        "title": "process priority",
+        "title": "Process Priority",
         "type": "timeseries"
       },
       {
@@ -2274,7 +2274,7 @@
             "refId": "A"
           }
         ],
-        "title": "process start_time",
+        "title": "Process Start Time",
         "type": "timeseries"
       },
       {
@@ -2372,7 +2372,7 @@
             "refId": "A"
           }
         ],
-        "title": "process threads",
+        "title": "Process Threads",
         "type": "timeseries"
       },
       {
@@ -2470,7 +2470,7 @@
             "refId": "A"
           }
         ],
-        "title": "system boot time",
+        "title": "System Boot Time",
         "type": "timeseries"
       },
       {
@@ -2568,7 +2568,7 @@
             "refId": "A"
           }
         ],
-        "title": "system context_switches",
+        "title": "System Context Switches",
         "type": "timeseries"
       },
       {
@@ -2666,7 +2666,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu core iowait_ratio",
+        "title": "System Cpu Core Iowait Ratio",
         "type": "timeseries"
       },
       {
@@ -2764,7 +2764,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu core system_ratio",
+        "title": "System Cpu Core System Ratio",
         "type": "timeseries"
       },
       {
@@ -2862,7 +2862,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu core utilization",
+        "title": "System Cpu Core Utilization",
         "type": "timeseries"
       },
       {
@@ -2960,7 +2960,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu interrupts",
+        "title": "System Cpu Interrupts",
         "type": "timeseries"
       },
       {
@@ -3058,7 +3058,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu softirqs",
+        "title": "System Cpu Softirqs",
         "type": "timeseries"
       },
       {
@@ -3156,7 +3156,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu time",
+        "title": "System Cpu Time",
         "type": "timeseries"
       },
       {
@@ -3254,7 +3254,7 @@
             "refId": "A"
           }
         ],
-        "title": "system cpu utilization",
+        "title": "System Cpu Utilization",
         "type": "timeseries"
       },
       {
@@ -3352,7 +3352,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk avg_read_size",
+        "title": "System Disk Avg Read Size",
         "type": "timeseries"
       },
       {
@@ -3450,7 +3450,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk avg_write_size",
+        "title": "System Disk Avg Write Size",
         "type": "timeseries"
       },
       {
@@ -3548,7 +3548,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk io",
+        "title": "System Disk Io",
         "type": "timeseries"
       },
       {
@@ -3646,7 +3646,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk io_in_progress",
+        "title": "System Disk Io In Progress",
         "type": "timeseries"
       },
       {
@@ -3744,7 +3744,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk io_time",
+        "title": "System Disk Io Time",
         "type": "timeseries"
       },
       {
@@ -3842,7 +3842,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk logical_block_size",
+        "title": "System Disk Logical Block Size",
         "type": "timeseries"
       },
       {
@@ -3940,7 +3940,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk operation_time",
+        "title": "System Disk Operation Time",
         "type": "timeseries"
       },
       {
@@ -4038,7 +4038,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk operations",
+        "title": "System Disk Operations",
         "type": "timeseries"
       },
       {
@@ -4136,7 +4136,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk ops_per_sec",
+        "title": "System Disk Ops Per Sec",
         "type": "timeseries"
       },
       {
@@ -4234,7 +4234,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk pending_operations",
+        "title": "System Disk Pending Operations",
         "type": "timeseries"
       },
       {
@@ -4332,7 +4332,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk physical_block_size",
+        "title": "System Disk Physical Block Size",
         "type": "timeseries"
       },
       {
@@ -4430,7 +4430,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk queue_depth",
+        "title": "System Disk Queue Depth",
         "type": "timeseries"
       },
       {
@@ -4528,7 +4528,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk read_await",
+        "title": "System Disk Read Await",
         "type": "timeseries"
       },
       {
@@ -4626,7 +4626,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk read_bytes_per_sec",
+        "title": "System Disk Read Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -4724,7 +4724,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk read_ops_per_sec",
+        "title": "System Disk Read Ops Per Sec",
         "type": "timeseries"
       },
       {
@@ -4822,7 +4822,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk rotational",
+        "title": "System Disk Rotational",
         "type": "timeseries"
       },
       {
@@ -4920,7 +4920,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk time_in_progress",
+        "title": "System Disk Time In Progress",
         "type": "timeseries"
       },
       {
@@ -5018,7 +5018,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk time_reading",
+        "title": "System Disk Time Reading",
         "type": "timeseries"
       },
       {
@@ -5116,7 +5116,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk time_writing",
+        "title": "System Disk Time Writing",
         "type": "timeseries"
       },
       {
@@ -5214,7 +5214,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk total_bytes_per_sec",
+        "title": "System Disk Total Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -5312,7 +5312,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk utilization",
+        "title": "System Disk Utilization",
         "type": "timeseries"
       },
       {
@@ -5410,7 +5410,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk weighted_time_in_progress",
+        "title": "System Disk Weighted Time In Progress",
         "type": "timeseries"
       },
       {
@@ -5508,7 +5508,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk write_await",
+        "title": "System Disk Write Await",
         "type": "timeseries"
       },
       {
@@ -5606,7 +5606,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk write_bytes_per_sec",
+        "title": "System Disk Write Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -5704,7 +5704,7 @@
             "refId": "A"
           }
         ],
-        "title": "system disk write_ops_per_sec",
+        "title": "System Disk Write Ops Per Sec",
         "type": "timeseries"
       },
       {
@@ -5797,12 +5797,12 @@
             "editorMode": "code",
             "expr": "system_linux_entropy_bits{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
-            "legendFormat": "{{instance}}",
+            "legendFormat": "{{instance}} {{state}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system linux entropy",
+        "title": "System Linux Entropy",
         "type": "timeseries"
       },
       {
@@ -5900,7 +5900,7 @@
             "refId": "A"
           }
         ],
-        "title": "system linux pid max",
+        "title": "System Linux Pid Max",
         "type": "timeseries"
       },
       {
@@ -5998,7 +5998,7 @@
             "refId": "A"
           }
         ],
-        "title": "system linux pressure",
+        "title": "System Linux Pressure",
         "type": "timeseries"
       },
       {
@@ -6096,7 +6096,7 @@
             "refId": "A"
           }
         ],
-        "title": "system linux pressure stall_time",
+        "title": "System Linux Pressure Stall Time",
         "type": "timeseries"
       },
       {
@@ -6194,7 +6194,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load 15m",
+        "title": "System Load 15m",
         "type": "timeseries"
       },
       {
@@ -6292,7 +6292,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load 1m",
+        "title": "System Load 1m",
         "type": "timeseries"
       },
       {
@@ -6390,7 +6390,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load 5m",
+        "title": "System Load 5m",
         "type": "timeseries"
       },
       {
@@ -6488,7 +6488,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load entities",
+        "title": "System Load Entities",
         "type": "timeseries"
       },
       {
@@ -6586,7 +6586,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load latest_pid",
+        "title": "System Load Latest Pid",
         "type": "timeseries"
       },
       {
@@ -6684,7 +6684,7 @@
             "refId": "A"
           }
         ],
-        "title": "system load runnable",
+        "title": "System Load Runnable",
         "type": "timeseries"
       },
       {
@@ -6782,7 +6782,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory active",
+        "title": "System Memory Active",
         "type": "timeseries"
       },
       {
@@ -6880,7 +6880,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory anon",
+        "title": "System Memory Anon",
         "type": "timeseries"
       },
       {
@@ -6978,7 +6978,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory anon_hugepages",
+        "title": "System Memory Anon Hugepages",
         "type": "timeseries"
       },
       {
@@ -7076,7 +7076,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory available",
+        "title": "System Memory Available",
         "type": "timeseries"
       },
       {
@@ -7174,7 +7174,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory buffers",
+        "title": "System Memory Buffers",
         "type": "timeseries"
       },
       {
@@ -7272,7 +7272,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory cached",
+        "title": "System Memory Cached",
         "type": "timeseries"
       },
       {
@@ -7370,7 +7370,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory commit_limit",
+        "title": "System Memory Commit Limit",
         "type": "timeseries"
       },
       {
@@ -7468,7 +7468,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory committed_as",
+        "title": "System Memory Committed As",
         "type": "timeseries"
       },
       {
@@ -7566,7 +7566,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory dirty",
+        "title": "System Memory Dirty",
         "type": "timeseries"
       },
       {
@@ -7664,7 +7664,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory dirty_writeback_ratio",
+        "title": "System Memory Dirty Writeback Ratio",
         "type": "timeseries"
       },
       {
@@ -7762,7 +7762,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory free",
+        "title": "System Memory Free",
         "type": "timeseries"
       },
       {
@@ -7860,7 +7860,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory hugepage_size",
+        "title": "System Memory Hugepage Size",
         "type": "timeseries"
       },
       {
@@ -7958,7 +7958,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory hugepages_free",
+        "title": "System Memory Hugepages Free",
         "type": "timeseries"
       },
       {
@@ -8056,7 +8056,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory hugepages_total",
+        "title": "System Memory Hugepages Total",
         "type": "timeseries"
       },
       {
@@ -8154,7 +8154,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory inactive",
+        "title": "System Memory Inactive",
         "type": "timeseries"
       },
       {
@@ -8252,7 +8252,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory kernel_stack",
+        "title": "System Memory Kernel Stack",
         "type": "timeseries"
       },
       {
@@ -8350,7 +8350,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory mapped",
+        "title": "System Memory Mapped",
         "type": "timeseries"
       },
       {
@@ -8448,7 +8448,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory page_tables",
+        "title": "System Memory Page Tables",
         "type": "timeseries"
       },
       {
@@ -8546,7 +8546,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory shmem",
+        "title": "System Memory Shmem",
         "type": "timeseries"
       },
       {
@@ -8644,7 +8644,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory slab",
+        "title": "System Memory Slab",
         "type": "timeseries"
       },
       {
@@ -8742,7 +8742,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory sreclaimable",
+        "title": "System Memory Sreclaimable",
         "type": "timeseries"
       },
       {
@@ -8840,7 +8840,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory sunreclaim",
+        "title": "System Memory Sunreclaim",
         "type": "timeseries"
       },
       {
@@ -8938,7 +8938,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory total",
+        "title": "System Memory Total",
         "type": "timeseries"
       },
       {
@@ -9036,7 +9036,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory used_ratio",
+        "title": "System Memory Used Ratio",
         "type": "timeseries"
       },
       {
@@ -9134,7 +9134,7 @@
             "refId": "A"
           }
         ],
-        "title": "system memory writeback",
+        "title": "System Memory Writeback",
         "type": "timeseries"
       },
       {
@@ -9225,14 +9225,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_carrier_up{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_carrier_up{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net carrier_up",
+        "title": "System Net Carrier Up",
         "type": "timeseries"
       },
       {
@@ -9330,7 +9330,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net kernel ip_in_discards_per_sec",
+        "title": "System Net Kernel Ip In Discards Per Sec",
         "type": "timeseries"
       },
       {
@@ -9428,7 +9428,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net kernel ip_out_discards_per_sec",
+        "title": "System Net Kernel Ip Out Discards Per Sec",
         "type": "timeseries"
       },
       {
@@ -9526,7 +9526,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net kernel tcp_retrans_segs_per_sec",
+        "title": "System Net Kernel Tcp Retrans Segs Per Sec",
         "type": "timeseries"
       },
       {
@@ -9624,7 +9624,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net kernel udp_in_errors_per_sec",
+        "title": "System Net Kernel Udp In Errors Per Sec",
         "type": "timeseries"
       },
       {
@@ -9722,7 +9722,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net kernel udp_rcvbuf_errors_per_sec",
+        "title": "System Net Kernel Udp Rcvbuf Errors Per Sec",
         "type": "timeseries"
       },
       {
@@ -9813,14 +9813,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_mtu{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_mtu{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net mtu",
+        "title": "System Net Mtu",
         "type": "timeseries"
       },
       {
@@ -9911,14 +9911,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_bytes_per_sec",
+        "title": "System Net Rx Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -10009,14 +10009,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_compressed",
+        "title": "System Net Rx Compressed",
         "type": "timeseries"
       },
       {
@@ -10107,14 +10107,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_dropped",
+        "title": "System Net Rx Dropped",
         "type": "timeseries"
       },
       {
@@ -10205,14 +10205,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_drops_per_sec",
+        "title": "System Net Rx Drops Per Sec",
         "type": "timeseries"
       },
       {
@@ -10303,14 +10303,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_errors",
+        "title": "System Net Rx Errors",
         "type": "timeseries"
       },
       {
@@ -10401,14 +10401,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_errors_per_sec",
+        "title": "System Net Rx Errors Per Sec",
         "type": "timeseries"
       },
       {
@@ -10499,14 +10499,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_fifo",
+        "title": "System Net Rx Fifo",
         "type": "timeseries"
       },
       {
@@ -10597,14 +10597,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_frame{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_frame{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_frame",
+        "title": "System Net Rx Frame",
         "type": "timeseries"
       },
       {
@@ -10695,14 +10695,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_loss_ratio",
+        "title": "System Net Rx Loss Ratio",
         "type": "timeseries"
       },
       {
@@ -10793,14 +10793,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_multicast{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_multicast{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_multicast",
+        "title": "System Net Rx Multicast",
         "type": "timeseries"
       },
       {
@@ -10891,14 +10891,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_packets",
+        "title": "System Net Rx Packets",
         "type": "timeseries"
       },
       {
@@ -10989,14 +10989,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_rx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_rx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net rx_packets_per_sec",
+        "title": "System Net Rx Packets Per Sec",
         "type": "timeseries"
       },
       {
@@ -11087,14 +11087,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_snmp{job=~\"$job\",instance=~\"$instance\",key=~\"$key\"}",
+            "expr": "system_net_snmp{job=~\"$job\",instance=~\"$instance\",key=~\"$snmp_key\"}",
             "instant": false,
             "legendFormat": "{{key}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net snmp",
+        "title": "System Net Snmp",
         "type": "timeseries"
       },
       {
@@ -11192,7 +11192,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet cpu dropped",
+        "title": "System Net Softnet Cpu Dropped",
         "type": "timeseries"
       },
       {
@@ -11290,7 +11290,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet cpu processed",
+        "title": "System Net Softnet Cpu Processed",
         "type": "timeseries"
       },
       {
@@ -11388,7 +11388,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet cpu time_squeezed",
+        "title": "System Net Softnet Cpu Time Squeezed",
         "type": "timeseries"
       },
       {
@@ -11486,7 +11486,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet drop_ratio",
+        "title": "System Net Softnet Drop Ratio",
         "type": "timeseries"
       },
       {
@@ -11584,7 +11584,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet dropped_per_sec",
+        "title": "System Net Softnet Dropped Per Sec",
         "type": "timeseries"
       },
       {
@@ -11682,7 +11682,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet processed_per_sec",
+        "title": "System Net Softnet Processed Per Sec",
         "type": "timeseries"
       },
       {
@@ -11780,7 +11780,7 @@
             "refId": "A"
           }
         ],
-        "title": "system net softnet time_squeezed_per_sec",
+        "title": "System Net Softnet Time Squeezed Per Sec",
         "type": "timeseries"
       },
       {
@@ -11871,14 +11871,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_speed_mbps{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_speed_mbps{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net speed_mbps",
+        "title": "System Net Speed Mbps",
         "type": "timeseries"
       },
       {
@@ -11969,14 +11969,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_total_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_total_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net total_bytes_per_sec",
+        "title": "System Net Total Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -12067,14 +12067,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_bytes_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_bytes_per_sec",
+        "title": "System Net Tx Bytes Per Sec",
         "type": "timeseries"
       },
       {
@@ -12165,14 +12165,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_carrier{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_carrier{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_carrier",
+        "title": "System Net Tx Carrier",
         "type": "timeseries"
       },
       {
@@ -12263,14 +12263,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_collisions{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_collisions{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_collisions",
+        "title": "System Net Tx Collisions",
         "type": "timeseries"
       },
       {
@@ -12361,14 +12361,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_compressed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_compressed",
+        "title": "System Net Tx Compressed",
         "type": "timeseries"
       },
       {
@@ -12459,14 +12459,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_dropped{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_dropped",
+        "title": "System Net Tx Dropped",
         "type": "timeseries"
       },
       {
@@ -12557,14 +12557,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_drops_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_drops_per_sec",
+        "title": "System Net Tx Drops Per Sec",
         "type": "timeseries"
       },
       {
@@ -12655,14 +12655,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_errors{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_errors",
+        "title": "System Net Tx Errors",
         "type": "timeseries"
       },
       {
@@ -12753,14 +12753,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_errors_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_errors_per_sec",
+        "title": "System Net Tx Errors Per Sec",
         "type": "timeseries"
       },
       {
@@ -12851,14 +12851,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_fifo{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_fifo",
+        "title": "System Net Tx Fifo",
         "type": "timeseries"
       },
       {
@@ -12949,14 +12949,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_loss_ratio{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_loss_ratio",
+        "title": "System Net Tx Loss Ratio",
         "type": "timeseries"
       },
       {
@@ -13047,14 +13047,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_packets{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_packets",
+        "title": "System Net Tx Packets",
         "type": "timeseries"
       },
       {
@@ -13145,14 +13145,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_packets_per_sec{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_packets_per_sec",
+        "title": "System Net Tx Packets Per Sec",
         "type": "timeseries"
       },
       {
@@ -13243,14 +13243,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_net_tx_queue_len{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "system_net_tx_queue_len{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system net tx_queue_len",
+        "title": "System Net Tx Queue Len",
         "type": "timeseries"
       },
       {
@@ -13341,14 +13341,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_network_dropped_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[5m]), 0)",
+            "expr": "clamp_min(rate(system_network_dropped_total{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system network dropped",
+        "title": "System Network Dropped",
         "type": "timeseries"
       },
       {
@@ -13439,14 +13439,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_network_errors_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[5m]), 0)",
+            "expr": "clamp_min(rate(system_network_errors_total{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system network errors",
+        "title": "System Network Errors",
         "type": "timeseries"
       },
       {
@@ -13537,14 +13537,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_network_io_bytes_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[5m]), 0)",
+            "expr": "clamp_min(rate(system_network_io_bytes_total{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system network io",
+        "title": "System Network Io",
         "type": "timeseries"
       },
       {
@@ -13635,14 +13635,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_network_packets_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[5m]), 0)",
+            "expr": "clamp_min(rate(system_network_packets_total{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system network packets",
+        "title": "System Network Packets",
         "type": "timeseries"
       },
       {
@@ -13740,7 +13740,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging faults",
+        "title": "System Paging Faults",
         "type": "timeseries"
       },
       {
@@ -13838,7 +13838,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging faults_per_sec",
+        "title": "System Paging Faults Per Sec",
         "type": "timeseries"
       },
       {
@@ -13936,7 +13936,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging major_faults_per_sec",
+        "title": "System Paging Major Faults Per Sec",
         "type": "timeseries"
       },
       {
@@ -14034,7 +14034,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging operations",
+        "title": "System Paging Operations",
         "type": "timeseries"
       },
       {
@@ -14132,7 +14132,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging page_ins_per_sec",
+        "title": "System Paging Page Ins Per Sec",
         "type": "timeseries"
       },
       {
@@ -14230,7 +14230,7 @@
             "refId": "A"
           }
         ],
-        "title": "system paging page_outs_per_sec",
+        "title": "System Paging Page Outs Per Sec",
         "type": "timeseries"
       },
       {
@@ -14328,7 +14328,7 @@
             "refId": "A"
           }
         ],
-        "title": "system processes blocked",
+        "title": "System Processes Blocked",
         "type": "timeseries"
       },
       {
@@ -14426,7 +14426,7 @@
             "refId": "A"
           }
         ],
-        "title": "system processes count",
+        "title": "System Processes Count",
         "type": "timeseries"
       },
       {
@@ -14524,7 +14524,7 @@
             "refId": "A"
           }
         ],
-        "title": "system processes created",
+        "title": "System Processes Created",
         "type": "timeseries"
       },
       {
@@ -14622,7 +14622,7 @@
             "refId": "A"
           }
         ],
-        "title": "system processes forks",
+        "title": "System Processes Forks",
         "type": "timeseries"
       },
       {
@@ -14720,7 +14720,7 @@
             "refId": "A"
           }
         ],
-        "title": "system processes running",
+        "title": "System Processes Running",
         "type": "timeseries"
       },
       {
@@ -14818,7 +14818,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap cached",
+        "title": "System Swap Cached",
         "type": "timeseries"
       },
       {
@@ -14916,7 +14916,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap free",
+        "title": "System Swap Free",
         "type": "timeseries"
       },
       {
@@ -15014,7 +15014,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap ins_per_sec",
+        "title": "System Swap Ins Per Sec",
         "type": "timeseries"
       },
       {
@@ -15112,7 +15112,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap operations",
+        "title": "System Swap Operations",
         "type": "timeseries"
       },
       {
@@ -15210,7 +15210,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap outs_per_sec",
+        "title": "System Swap Outs Per Sec",
         "type": "timeseries"
       },
       {
@@ -15308,7 +15308,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap total",
+        "title": "System Swap Total",
         "type": "timeseries"
       },
       {
@@ -15406,7 +15406,7 @@
             "refId": "A"
           }
         ],
-        "title": "system swap used_ratio",
+        "title": "System Swap Used Ratio",
         "type": "timeseries"
       },
       {
@@ -15504,7 +15504,7 @@
             "refId": "A"
           }
         ],
-        "title": "system uptime",
+        "title": "System Uptime",
         "type": "timeseries"
       },
       {
@@ -15595,14 +15595,798 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_vmstat{job=~\"$job\",instance=~\"$instance\",key=~\"$key\"}",
+            "expr": "system_vmstat{job=~\"$job\",instance=~\"$instance\"}",
             "instant": false,
             "legendFormat": "key={{key}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "system vmstat",
+        "title": "System Vmstat",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "ops"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 424
+        },
+        "id": 160,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "sum by (irq) (clamp_min(rate(system_linux_interrupts_total{job=~\"$job\",instance=~\"$instance\"}[5m]), 0))",
+            "instant": false,
+            "legendFormat": "irq={{irq}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Interrupts",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "ops"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 424
+        },
+        "id": 161,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "sum by (type) (clamp_min(rate(system_linux_softirqs_total{job=~\"$job\",instance=~\"$instance\"}[5m]), 0))",
+            "instant": false,
+            "legendFormat": "type={{type}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Softirqs",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "bytes"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 424
+        },
+        "id": 162,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "system_linux_swap_device_used{job=~\"$job\",instance=~\"$instance\"}",
+            "instant": false,
+            "legendFormat": "{{device}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Swap Used",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "percentunit"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 432
+        },
+        "id": 163,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "system_linux_swap_device_used{job=~\"$job\",instance=~\"$instance\"} / clamp_min(system_linux_swap_device_size{job=~\"$job\",instance=~\"$instance\"}, 1)",
+            "instant": false,
+            "legendFormat": "{{device}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Swap Usage Ratio",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "hertz"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 432
+        },
+        "id": 164,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "system_cpu_frequency{job=~\"$job\",instance=~\"$instance\"}",
+            "instant": false,
+            "legendFormat": "cpu={{cpu}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Cpu Frequency",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 432
+        },
+        "id": 165,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "system_linux_zoneinfo{job=~\"$job\",instance=~\"$instance\",key=~\"nr_free_pages|managed|present\"}",
+            "instant": false,
+            "legendFormat": "node={{node}} zone={{zone}} {{key}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Zoneinfo",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 440
+        },
+        "id": 166,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "sum by (zone, order) (system_linux_buddy_blocks{job=~\"$job\",instance=~\"$instance\"})",
+            "instant": false,
+            "legendFormat": "zone={{zone}} order={{order}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Linux Buddy Blocks",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 440
+        },
+        "id": 167,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "editorMode": "code",
+            "expr": "system_filesystem_mount_state{job=~\"$job\",instance=~\"$instance\"}",
+            "instant": false,
+            "legendFormat": "{{mountpoint}} {{fs_type}} ro={{read_only}}",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "System Filesystem Mounts",
         "type": "timeseries"
       }
     ],
@@ -15743,6 +16527,34 @@
           }
         },
         {
+          "name": "net_device",
+          "type": "query",
+          "label": "net device",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "definition": "label_values(system_net_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
+          "query": {
+            "qryType": 1,
+            "query": "label_values(system_net_rx_packets{job=~\"$job\",instance=~\"$instance\"}, device)",
+            "refId": "Grafana-net-device"
+          },
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true,
+          "allValue": ".*",
+          "current": {
+            "selected": true,
+            "text": [
+              "All"
+            ],
+            "value": [
+              "$__all"
+            ]
+          }
+        },
+        {
           "name": "pid",
           "type": "query",
           "label": "pid",
@@ -15825,6 +16637,34 @@
               "$__all"
             ]
           }
+        },
+        {
+          "name": "snmp_key",
+          "type": "query",
+          "label": "snmp key",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "definition": "label_values(system_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
+          "query": {
+            "qryType": 1,
+            "query": "label_values(system_net_snmp{job=~\"$job\",instance=~\"$instance\"}, key)",
+            "refId": "Grafana-snmp-key"
+          },
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true,
+          "allValue": ".*",
+          "current": {
+            "selected": true,
+            "text": [
+              "All"
+            ],
+            "value": [
+              "$__all"
+            ]
+          }
         }
       ]
     },
@@ -15834,7 +16674,7 @@
     },
     "timepicker": {},
     "timezone": "browser",
-    "title": "OJO Metrics",
+    "title": "Ojo Metrics",
     "uid": "ojo-agent-metrics",
     "version": 1,
     "weekStart": ""

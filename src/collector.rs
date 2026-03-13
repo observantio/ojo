@@ -1,6 +1,7 @@
 use crate::model::{
-    CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, NetDevSnapshot, ProcessSnapshot,
-    Snapshot, SoftnetCpuSnapshot, SystemSnapshot,
+    CpuInfoSnapshot, CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
+    NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot, SwapDeviceSnapshot,
+    SystemSnapshot,
 };
 use anyhow::Result;
 use procfs::process::all_processes;
@@ -36,6 +37,14 @@ fn read_sysfs_bool_num(path: impl AsRef<Path>) -> Option<bool> {
     }
 }
 
+fn read_cpu_frequency_mhz(cpu: usize) -> Option<f64> {
+    let base = Path::new("/sys/devices/system/cpu").join(format!("cpu{cpu}/cpufreq"));
+    let khz = read_sysfs_u64(base.join("scaling_cur_freq"))
+        .or_else(|| read_sysfs_u64(base.join("cpuinfo_cur_freq")))
+        .or_else(|| read_sysfs_u64(base.join("base_frequency")))?;
+    Some(khz as f64 / 1000.0)
+}
+
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     Ok(Snapshot {
         system: collect_system()?,
@@ -43,10 +52,16 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         load: collect_load()?,
         pressure: collect_pressure()?,
         pressure_totals_us: collect_pressure_totals()?,
-        meminfo_raw: collect_meminfo_raw()?,
         vmstat: procfs::vmstat().unwrap_or_default().into_iter().collect(),
+        interrupts: collect_interrupts()?,
+        softirqs: collect_softirqs()?,
         net_snmp: collect_net_snmp()?,
         softnet: collect_softnet()?,
+        swaps: collect_swaps()?,
+        mounts: collect_mounts()?,
+        cpuinfo: collect_cpuinfo()?,
+        zoneinfo: collect_zoneinfo()?,
+        buddyinfo: collect_buddyinfo()?,
         disks: collect_disks()?,
         net: collect_net()?,
         processes: if include_process_metrics {
@@ -93,7 +108,12 @@ fn parse_status_u64(path: &Path, key: &str) -> Option<u64> {
 
 fn count_fds(pid: i32) -> Option<u64> {
     let path = Path::new("/proc").join(pid.to_string()).join("fd");
-    Some(fs::read_dir(path).ok()?.filter_map(|entry| entry.ok()).count() as u64)
+    Some(
+        fs::read_dir(path)
+            .ok()?
+            .filter_map(|entry| entry.ok())
+            .count() as u64,
+    )
 }
 
 fn collect_pressure() -> Result<BTreeMap<String, f64>> {
@@ -184,25 +204,6 @@ fn collect_uptime_secs() -> Result<f64> {
         .unwrap_or(0.0))
 }
 
-fn collect_meminfo_raw() -> Result<BTreeMap<String, u64>> {
-    let contents = std::fs::read_to_string("/proc/meminfo")?;
-    let mut out = BTreeMap::new();
-
-    for line in contents.lines() {
-        let mut parts = line.split_whitespace();
-        let Some(raw_key) = parts.next() else { continue };
-        let key = raw_key.trim_end_matches(':').to_string();
-        let Some(value) = parts.next() else { continue };
-        let Ok(mut parsed) = value.parse::<u64>() else { continue };
-        if matches!(parts.next(), Some("kB")) {
-            parsed = parsed.saturating_mul(1024);
-        }
-        out.insert(key, parsed);
-    }
-
-    Ok(out)
-}
-
 fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
     let contents = std::fs::read_to_string("/proc/net/snmp")?;
     let mut out = BTreeMap::new();
@@ -210,7 +211,9 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
 
     for line in contents.lines() {
         let mut parts = line.split_whitespace();
-        let Some(raw_prefix) = parts.next() else { continue };
+        let Some(raw_prefix) = parts.next() else {
+            continue;
+        };
         let prefix = raw_prefix.trim_end_matches(':').to_string();
         let cols = parts.map(str::to_string).collect::<Vec<_>>();
 
@@ -226,6 +229,68 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
             }
         } else {
             pending = Some((prefix, cols));
+        }
+    }
+
+    Ok(out)
+}
+
+fn collect_interrupts() -> Result<BTreeMap<String, u64>> {
+    let contents = fs::read_to_string("/proc/interrupts")?;
+    let mut out = BTreeMap::new();
+    let mut cpus = 0usize;
+
+    for (idx, line) in contents.lines().enumerate() {
+        if idx == 0 {
+            cpus = line.split_whitespace().filter(|part| part.starts_with("CPU")).count();
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let Some((irq_raw, rest)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let irq = irq_raw.trim();
+        let cols = rest.split_whitespace().collect::<Vec<_>>();
+        for cpu in 0..cpus.min(cols.len()) {
+            if let Ok(value) = cols[cpu].parse::<u64>() {
+                out.insert(format!("{irq}|{cpu}"), value);
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+fn collect_softirqs() -> Result<BTreeMap<String, u64>> {
+    let contents = fs::read_to_string("/proc/softirqs")?;
+    let mut out = BTreeMap::new();
+    let mut cpus = 0usize;
+
+    for (idx, line) in contents.lines().enumerate() {
+        if idx == 0 {
+            cpus = line.split_whitespace().filter(|part| part.starts_with("CPU")).count();
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let Some((kind_raw, rest)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let kind = kind_raw.trim();
+        let cols = rest.split_whitespace().collect::<Vec<_>>();
+        for cpu in 0..cpus.min(cols.len()) {
+            if let Ok(value) = cols[cpu].parse::<u64>() {
+                out.insert(format!("{kind}|{cpu}"), value);
+            }
         }
     }
 
@@ -251,6 +316,165 @@ fn collect_softnet() -> Result<Vec<SoftnetCpuSnapshot>> {
             })
         })
         .collect())
+}
+
+fn collect_swaps() -> Result<Vec<SwapDeviceSnapshot>> {
+    let contents = fs::read_to_string("/proc/swaps")?;
+    let mut out = Vec::new();
+
+    for (idx, line) in contents.lines().enumerate() {
+        if idx == 0 {
+            continue;
+        }
+
+        let cols = line.split_whitespace().collect::<Vec<_>>();
+        if cols.len() < 5 {
+            continue;
+        }
+
+        let size_kib = cols[2].parse::<u64>().unwrap_or(0);
+        let used_kib = cols[3].parse::<u64>().unwrap_or(0);
+        let priority = cols[4].parse::<i64>().unwrap_or(0);
+
+        out.push(SwapDeviceSnapshot {
+            device: cols[0].to_string(),
+            swap_type: cols[1].to_string(),
+            size_bytes: size_kib.saturating_mul(1024),
+            used_bytes: used_kib.saturating_mul(1024),
+            priority,
+        });
+    }
+
+    Ok(out)
+}
+
+fn collect_mounts() -> Result<Vec<MountSnapshot>> {
+    let contents = fs::read_to_string("/proc/mounts")?;
+    let mut out = Vec::new();
+
+    for line in contents.lines() {
+        let cols = line.split_whitespace().collect::<Vec<_>>();
+        if cols.len() < 4 {
+            continue;
+        }
+
+        out.push(MountSnapshot {
+            device: cols[0].replace("\\040", " "),
+            mountpoint: cols[1].replace("\\040", " "),
+            fs_type: cols[2].to_string(),
+            read_only: cols[3].split(',').any(|option| option == "ro"),
+        });
+    }
+
+    Ok(out)
+}
+
+fn collect_cpuinfo() -> Result<Vec<CpuInfoSnapshot>> {
+    let contents = fs::read_to_string("/proc/cpuinfo")?;
+    let mut out = Vec::new();
+    let mut current = CpuInfoSnapshot::default();
+    let mut seen = false;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if seen {
+                out.push(current);
+                current = CpuInfoSnapshot::default();
+                seen = false;
+            }
+            continue;
+        }
+
+        let Some((key, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        seen = true;
+
+        match key {
+            "processor" => current.cpu = value.parse::<usize>().unwrap_or(0),
+            "vendor_id" => current.vendor_id = Some(value.to_string()),
+            "model name" => current.model_name = Some(value.to_string()),
+            "cpu MHz" => current.mhz = value.parse::<f64>().ok(),
+            "cache size" => {
+                let size_kib = value.split_whitespace().next().and_then(|v| v.parse::<u64>().ok());
+                current.cache_size_bytes = size_kib.map(|v| v.saturating_mul(1024));
+            }
+            _ => {}
+        }
+    }
+
+    if seen {
+        out.push(current);
+    }
+
+    for cpu in &mut out {
+        if cpu.mhz.is_none() {
+            cpu.mhz = read_cpu_frequency_mhz(cpu.cpu);
+        }
+    }
+
+    Ok(out)
+}
+
+fn collect_zoneinfo() -> Result<BTreeMap<String, u64>> {
+    let contents = fs::read_to_string("/proc/zoneinfo")?;
+    let mut out = BTreeMap::new();
+    let mut current_node = String::new();
+    let mut current_zone = String::new();
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("Node ") {
+            if let Some((node_part, zone_part)) = rest.split_once(", zone") {
+                current_node = node_part.trim().to_string();
+                current_zone = zone_part.trim().to_string();
+            }
+            continue;
+        }
+
+        if current_node.is_empty() || current_zone.is_empty() {
+            continue;
+        }
+
+        let cols = trimmed.split_whitespace().collect::<Vec<_>>();
+        if cols.len() != 2 {
+            continue;
+        }
+        if let Ok(value) = cols[1].parse::<u64>() {
+            out.insert(format!("{current_node}|{current_zone}|{}", cols[0]), value);
+        }
+    }
+
+    Ok(out)
+}
+
+fn collect_buddyinfo() -> Result<BTreeMap<String, u64>> {
+    let contents = fs::read_to_string("/proc/buddyinfo")?;
+    let mut out = BTreeMap::new();
+
+    for line in contents.lines() {
+        let cols = line.split_whitespace().collect::<Vec<_>>();
+        if cols.len() < 5 || cols[0] != "Node" {
+            continue;
+        }
+
+        let node = cols[1].trim_end_matches(',');
+        let zone = cols[3].trim_end_matches(',');
+        for (order, value) in cols[4..].iter().enumerate() {
+            if let Ok(parsed) = value.parse::<u64>() {
+                out.insert(format!("{node}|{zone}|{order}"), parsed);
+            }
+        }
+    }
+
+    Ok(out)
 }
 
 fn collect_system() -> Result<SystemSnapshot> {
@@ -459,9 +683,7 @@ fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
             syscw: io.as_ref().map(|v| v.syscw),
             read_bytes: io.as_ref().map(|v| v.read_bytes),
             write_bytes: io.as_ref().map(|v| v.write_bytes),
-            cancelled_write_bytes: io
-                .as_ref()
-                .map(|v| u64_to_i64(v.cancelled_write_bytes)),
+            cancelled_write_bytes: io.as_ref().map(|v| u64_to_i64(v.cancelled_write_bytes)),
             vm_size_kib: status.as_ref().and_then(|s| s.vmsize),
             vm_rss_kib: status.as_ref().and_then(|s| s.vmrss),
             vm_data_kib: parse_status_kib(&status_path, "VmData"),

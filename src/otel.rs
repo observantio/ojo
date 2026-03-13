@@ -3,7 +3,10 @@ use anyhow::Result;
 use opentelemetry::global;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::{metrics::{PeriodicReader, SdkMeterProvider}, Resource};
+use opentelemetry_sdk::{
+    metrics::{PeriodicReader, SdkMeterProvider},
+    Resource,
+};
 use reqwest::blocking::Client;
 use std::fs;
 
