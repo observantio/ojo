@@ -598,6 +598,7 @@ pub fn collect_system() -> Result<SystemSnapshot> {
     };
     debug!("wincollect: collect_system process_count done");
     Ok(SystemSnapshot {
+        is_windows: true,
         ticks_per_second: 10_000_000,
         boot_time_epoch_secs: filetime_100ns_to_unix_secs(boot_filetime),
         uptime_secs,
@@ -937,6 +938,7 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
             let perf = query_disk_performance(&drive);
             out.push(DiskSnapshot {
                 name: drive.trim_end_matches('\\').to_string(),
+                has_counters: perf.is_some(),
                 reads: perf.as_ref().map(|v| v.reads).unwrap_or(0),
                 writes: perf.as_ref().map(|v| v.writes).unwrap_or(0),
                 sectors_read: perf.as_ref().map(|v| v.sectors_read).unwrap_or(0),
