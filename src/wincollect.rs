@@ -449,14 +449,32 @@ fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
 
 /// Returns real per-CPU times from NtQuerySystemInformation class 8.
 /// Each entry's kernel_time includes idle_time; system = kernel - idle.
+///
+/// Uses a single call sized to exactly cpu_count() entries — never enters
+/// the generic retry loop, which can stall indefinitely if the kernel returns
+/// STATUS_INFO_LENGTH_MISMATCH with ret_len=0 on some configurations.
 fn per_cpu_times_from_nt() -> Option<Vec<CpuTimes>> {
-    let buf = query_system_information(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS).ok()?;
     let entry_size = size_of::<SystemProcessorPerformanceInformation>();
-    if buf.len() < entry_size {
+    let cpu_count = cpu_count().max(1);
+    let buf_size = (cpu_count * entry_size) as u32;
+
+    let mut buf = vec![0u8; buf_size as usize];
+    let mut ret_len = 0u32;
+
+    let status = unsafe {
+        NtQuerySystemInformation(
+            SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS,
+            buf.as_mut_ptr() as *mut c_void,
+            buf_size,
+            &mut ret_len,
+        )
+    };
+
+    if !nt_success(status) || ret_len < entry_size as u32 {
         return None;
     }
 
-    let count = buf.len() / entry_size;
+    let count = (ret_len as usize) / entry_size;
     let mut out = Vec::with_capacity(count);
 
     for i in 0..count {
