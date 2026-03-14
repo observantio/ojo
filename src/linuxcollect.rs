@@ -56,6 +56,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         interrupts: collect_interrupts()?,
         softirqs: collect_softirqs()?,
         net_snmp: collect_net_snmp()?,
+        sockets: collect_sockets()?,
         softnet: collect_softnet()?,
         swaps: collect_swaps()?,
         mounts: collect_mounts()?,
@@ -210,6 +211,36 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
         } else {
             pending = Some((prefix, cols));
         }
+    }
+    Ok(out)
+}
+
+fn collect_sockets() -> Result<BTreeMap<String, u64>> {
+    fn parse_sockstat(path: &str, family: &str, out: &mut BTreeMap<String, u64>) -> Result<()> {
+        let contents = fs::read_to_string(path)?;
+        for line in contents.lines() {
+            let mut parts = line.split_whitespace();
+            let Some(proto_raw) = parts.next() else {
+                continue;
+            };
+            let proto = proto_raw.trim_end_matches(':').to_ascii_lowercase();
+            let cols = parts.collect::<Vec<_>>();
+            let mut i = 0usize;
+            while i + 1 < cols.len() {
+                let key = cols[i].to_ascii_lowercase();
+                if let Ok(value) = cols[i + 1].parse::<u64>() {
+                    out.insert(format!("{family}.{proto}.{key}"), value);
+                }
+                i += 2;
+            }
+        }
+        Ok(())
+    }
+
+    let mut out = BTreeMap::new();
+    parse_sockstat("/proc/net/sockstat", "v4", &mut out)?;
+    if Path::new("/proc/net/sockstat6").exists() {
+        parse_sockstat("/proc/net/sockstat6", "v6", &mut out)?;
     }
     Ok(out)
 }

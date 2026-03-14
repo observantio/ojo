@@ -11,6 +11,7 @@ pub struct Snapshot {
     pub interrupts: BTreeMap<String, u64>,
     pub softirqs: BTreeMap<String, u64>,
     pub net_snmp: BTreeMap<String, u64>,
+    pub sockets: BTreeMap<String, u64>,
     pub softnet: Vec<SoftnetCpuSnapshot>,
     pub swaps: Vec<SwapDeviceSnapshot>,
     pub mounts: Vec<MountSnapshot>,

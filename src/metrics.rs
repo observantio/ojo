@@ -157,6 +157,7 @@ pub struct ProcMetrics {
     pub zoneinfo_value: Gauge<u64>,
     pub buddyinfo_blocks: Gauge<u64>,
     pub net_snmp_value: Gauge<u64>,
+    pub socket_count: Gauge<u64>,
     pub kernel_ip_in_discards_per_sec: Gauge<f64>,
     pub kernel_ip_out_discards_per_sec: Gauge<f64>,
     pub kernel_tcp_retrans_segs_per_sec: Gauge<f64>,
@@ -226,13 +227,18 @@ pub struct ProcMetrics {
     pub process_ppid: Gauge<i64>,
     pub process_num_threads: Gauge<i64>,
     pub process_priority: Gauge<i64>,
+    pub process_windows_priority: Gauge<i64>,
     pub process_nice: Gauge<i64>,
     pub process_vsize_bytes: Gauge<u64>,
     pub process_read_bytes: Gauge<u64>,
+    pub process_windows_read_bytes: Gauge<u64>,
     pub process_write_bytes: Gauge<u64>,
+    pub process_windows_write_bytes: Gauge<u64>,
     pub process_cancelled_write_bytes: Gauge<i64>,
     pub process_vm_size_bytes: Gauge<u64>,
+    pub process_windows_vm_size_bytes: Gauge<u64>,
     pub process_vm_rss_bytes: Gauge<u64>,
+    pub process_windows_vm_rss_bytes: Gauge<u64>,
 }
 
 impl ProcMetrics {
@@ -562,6 +568,7 @@ impl ProcMetrics {
             zoneinfo_value: meter.u64_gauge("system.linux.zoneinfo").build(),
             buddyinfo_blocks: meter.u64_gauge("system.linux.buddy.blocks").build(),
             net_snmp_value: meter.u64_gauge("system.linux.net.snmp").build(),
+            socket_count: meter.u64_gauge("system.socket.count").build(),
             kernel_ip_in_discards_per_sec: meter
                 .f64_gauge("system.linux.net.ip.in_discards_per_sec")
                 .build(),
@@ -687,13 +694,16 @@ impl ProcMetrics {
             process_ppid: meter.i64_gauge("process.parent_pid").build(),
             process_num_threads: meter.i64_gauge("process.thread.count").build(),
             process_priority: meter.i64_gauge("process.linux.priority").build(),
+            process_windows_priority: meter.i64_gauge("process.windows.priority").build(),
             process_nice: meter.i64_gauge("process.linux.nice").build(),
             process_vsize_bytes: meter
                 .u64_gauge("process.linux.memory.vsize")
                 .with_unit("By")
                 .build(),
             process_read_bytes: meter.u64_gauge("process.linux.io.read_bytes").build(),
+            process_windows_read_bytes: meter.u64_gauge("process.windows.io.read_bytes").build(),
             process_write_bytes: meter.u64_gauge("process.linux.io.write_bytes").build(),
+            process_windows_write_bytes: meter.u64_gauge("process.windows.io.write_bytes").build(),
             process_cancelled_write_bytes: meter
                 .i64_gauge("process.linux.io.cancelled_write_bytes")
                 .build(),
@@ -701,8 +711,16 @@ impl ProcMetrics {
                 .u64_gauge("process.linux.memory.vm_size")
                 .with_unit("By")
                 .build(),
+            process_windows_vm_size_bytes: meter
+                .u64_gauge("process.windows.memory.vm_size")
+                .with_unit("By")
+                .build(),
             process_vm_rss_bytes: meter
                 .u64_gauge("process.linux.memory.vm_rss")
+                .with_unit("By")
+                .build(),
+            process_windows_vm_rss_bytes: meter
+                .u64_gauge("process.windows.memory.vm_rss")
                 .with_unit("By")
                 .build(),
         }
@@ -1215,6 +1233,14 @@ impl ProcMetrics {
                 &self.net_snmp_value,
                 *value,
                 &net_snmp_attrs(key),
+            );
+        }
+        for (key, value) in &snap.sockets {
+            self.record_u64(
+                "system.socket.count",
+                &self.socket_count,
+                *value,
+                &[KeyValue::new("key", key.clone())],
             );
         }
     }
@@ -1856,7 +1882,46 @@ impl ProcMetrics {
                 proc.num_threads,
                 &base_attrs,
             );
-            if !is_windows {
+            if is_windows {
+                self.record_i64(
+                    "process.windows.priority",
+                    &self.process_windows_priority,
+                    proc.priority,
+                    &base_attrs,
+                );
+                if let Some(value) = proc.read_bytes {
+                    self.record_u64(
+                        "process.windows.io.read_bytes",
+                        &self.process_windows_read_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.write_bytes {
+                    self.record_u64(
+                        "process.windows.io.write_bytes",
+                        &self.process_windows_write_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_size_kib {
+                    self.record_u64(
+                        "process.windows.memory.vm_size",
+                        &self.process_windows_vm_size_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_rss_kib {
+                    self.record_u64(
+                        "process.windows.memory.vm_rss",
+                        &self.process_windows_vm_rss_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
+            } else {
                 self.record_i64(
                     "process.linux.priority",
                     &self.process_priority,
@@ -1870,9 +1935,7 @@ impl ProcMetrics {
                     proc.vsize_bytes,
                     &base_attrs,
                 );
-            }
 
-            if !is_windows {
                 if let Some(value) = proc.read_bytes {
                     self.record_u64(
                         "process.linux.io.read_bytes",

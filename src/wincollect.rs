@@ -207,8 +207,6 @@ struct SystemPerformanceInformation {
     system_calls: u32,
 }
 
-/// Per-CPU performance data from NtQuerySystemInformation class 8.
-/// `kernel_time` includes `idle_time`; system = kernel - idle - dpc - irq.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct SystemProcessorPerformanceInformation {
@@ -237,13 +235,6 @@ struct DiskPerformance {
     storage_manager_name: [u16; 8],
 }
 
-/// Disk I/O counters extracted from DISK_PERFORMANCE.
-/// `sectors_read` and `sectors_written` use the universal 512-byte sector
-/// convention matching Linux `/proc/diskstats`, regardless of physical sector size.
-/// `time_in_progress_ms` stores `(QueryTime - IdleTime) / 10_000`; the delta
-/// between two snapshots yields actual busy time in ms.
-/// `weighted_time_in_progress_ms` stores `ReadTime + WriteTime`, approximating
-/// the Linux weighted I/O time used for queue-depth estimation.
 struct DiskPerfData {
     reads: u64,
     writes: u64,
@@ -298,7 +289,6 @@ fn cpu_count() -> usize {
     }
 }
 
-/// Extracts the filename component from a Windows or Unix path, without extension stripping.
 fn process_basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
 }
@@ -803,11 +793,6 @@ fn query_storage_alignment(drive_root: &str) -> (Option<u64>, Option<u64>, Optio
     }
 }
 
-/// Queries disk I/O performance counters for `drive_root` (e.g. `"C:\"`).
-/// Falls back to the underlying PhysicalDrive if the volume IOCTL fails.
-/// Sectors are stored in 512-byte units to match the Linux /proc/diskstats convention.
-/// `time_in_progress_ms` = `(QueryTime - IdleTime) / 10_000`; its delta between two
-/// snapshots equals actual busy milliseconds for that interval.
 fn query_disk_performance(drive_root: &str) -> Option<DiskPerfData> {
     let drive_letter = drive_root.chars().next().unwrap_or('C');
     let path = format!(r"\\.\{}:", drive_letter);
@@ -904,9 +889,6 @@ fn query_disk_performance(drive_root: &str) -> Option<DiskPerfData> {
             time_reading_ms: read_time_ms,
             time_writing_ms: write_time_ms,
             queue_depth: raw.queue_depth as u64,
-            // DiskPerformance::QueryTime is absolute NT time (since 1601). Convert
-            // to time-since-boot first so exported cumulative busy time does not
-            // carry a 1601-epoch offset (which appears as ~425 years in dashboards).
             time_in_progress_ms: query_time_100ns
                 .saturating_sub(boot_time_100ns)
                 .saturating_sub(idle_time_100ns)
@@ -1095,8 +1077,6 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
                         };
                     }
                     if let Some(mem) = get_process_mem(handle) {
-                        // vm_size_kib: keep virtual_size from SystemProcessInformation (already set).
-                        // PagefileUsage is commit charge (private bytes), not virtual address space.
                         process.vm_rss_kib = Some((mem.WorkingSetSize as u64) / 1024);
                         process.vm_data_kib = Some((mem.PrivateUsage as u64) / 1024);
                         process.vm_swap_kib = Some((mem.PagefileUsage as u64) / 1024);
@@ -1164,6 +1144,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         interrupts: BTreeMap::new(),
         softirqs: BTreeMap::new(),
         net_snmp: BTreeMap::new(),
+        sockets: BTreeMap::new(),
         softnet: Vec::new(),
         swaps: Vec::new(),
         mounts: Vec::new(),
