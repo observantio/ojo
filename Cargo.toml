@@ -37,8 +37,21 @@ procfs = "0.18"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.59", features = [
   "Win32_Foundation",
+
+  # networking
   "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+
+  # storage / filesystem
   "Win32_Storage_FileSystem",
+
+  # ioctl
+  "Win32_System_Ioctl",
+
+  # required by CreateFileW
+  "Win32_Security",
+
+  # system APIs
   "Win32_System_IO",
   "Win32_System_Kernel",
   "Win32_System_ProcessStatus",

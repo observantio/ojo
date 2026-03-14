@@ -1,6 +1,6 @@
 service:
-  name: ojo
-  instance_id: buildx
+  name: windows
+  instance_id: windows-0001
 
 collection:
   poll_interval_secs: 5
@@ -8,7 +8,7 @@ collection:
 
 export:
   otlp:
-    endpoint: "http://localhost:4355/v1/metrics"
+    endpoint: "http://192.168.0.143:4355/v1/metrics"
     protocol: http/protobuf
     compression: gzip
     timeout_secs: 10

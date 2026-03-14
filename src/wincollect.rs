@@ -8,29 +8,41 @@ use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::null_mut;
 use std::slice;
+use tracing::debug;
+
 use windows::core::{PCWSTR, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, NTSTATUS};
+
+use windows::Win32::Foundation::{CloseHandle, GetLastError, FILETIME, HANDLE, NTSTATUS};
+
 use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2};
+
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDriveStringsW, DRIVE_FIXED,
-    FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    IOCTL_STORAGE_QUERY_PROPERTY, OPEN_EXISTING, STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR,
-    STORAGE_DESCRIPTOR_HEADER, STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
+    CreateFileW, GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDriveStringsW,
+    FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
-use windows::Win32::System::Kernel::FILETIME;
+
+use windows::Win32::System::Ioctl::{
+    IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
+    STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_DESCRIPTOR_HEADER, STORAGE_DEVICE_NUMBER,
+    STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
+};
+
+use windows::Win32::System::IO::DeviceIoControl;
+
 use windows::Win32::System::ProcessStatus::{
     GetPerformanceInfo, GetProcessMemoryInfo, PERFORMANCE_INFORMATION, PROCESS_MEMORY_COUNTERS_EX,
 };
+
 use windows::Win32::System::SystemInformation::{
-    GetSystemInfo, GetSystemTimes, GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
+    GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
     SYSTEM_INFO,
 };
+
 use windows::Win32::System::Threading::{
-    GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, OpenProcess,
-    QueryFullProcessImageNameW, PROCESS_ACCESS_RIGHTS, PROCESS_IO_COUNTERS,
+    GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, IO_COUNTERS,
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_ACCESS_RIGHTS, PROCESS_NAME_FORMAT,
     PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
-use windows::Win32::System::IO::DeviceIoControl;
 
 #[link(name = "ntdll")]
 unsafe extern "system" {
@@ -43,15 +55,29 @@ unsafe extern "system" {
 }
 
 const STATUS_INFO_LENGTH_MISMATCH: i32 = -1073741820i32;
+const SYSTEM_PERFORMANCE_INFORMATION_CLASS: u32 = 2;
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
 const SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS: u32 = 8;
+const DRIVE_FIXED_VALUE: u32 = 3;
+const IOCTL_DISK_PERFORMANCE: u32 = 0x0007_0020;
+const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct UnicodeString {
     length: u16,
     maximum_length: u16,
     buffer: PWSTR,
+}
+
+impl Default for UnicodeString {
+    fn default() -> Self {
+        Self {
+            length: 0,
+            maximum_length: 0,
+            buffer: PWSTR::null(),
+        }
+    }
 }
 
 #[repr(C)]
@@ -110,6 +136,102 @@ struct SystemProcessorPerformanceInformation {
     interrupt_count: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct SystemPerformanceInformation {
+    idle_process_time: LargeInteger,
+    io_read_transfer_count: LargeInteger,
+    io_write_transfer_count: LargeInteger,
+    io_other_transfer_count: LargeInteger,
+    io_read_operation_count: u32,
+    io_write_operation_count: u32,
+    io_other_operation_count: u32,
+    available_pages: u32,
+    committed_pages: u32,
+    commit_limit: u32,
+    peak_commitment: u32,
+    page_fault_count: u32,
+    copy_on_write_count: u32,
+    transition_count: u32,
+    cache_transition_count: u32,
+    demand_zero_count: u32,
+    page_read_count: u32,
+    page_read_io_count: u32,
+    cache_read_count: u32,
+    cache_io_count: u32,
+    dirty_pages_write_count: u32,
+    dirty_write_io_count: u32,
+    mapped_pages_write_count: u32,
+    mapped_write_io_count: u32,
+    paged_pool_pages: u32,
+    non_paged_pool_pages: u32,
+    paged_pool_allocs: u32,
+    paged_pool_frees: u32,
+    non_paged_pool_allocs: u32,
+    non_paged_pool_frees: u32,
+    free_system_ptes: u32,
+    resident_system_code_page: u32,
+    total_system_driver_pages: u32,
+    total_system_code_pages: u32,
+    non_paged_pool_lookaside_hits: u32,
+    paged_pool_lookaside_hits: u32,
+    spare3_count: u32,
+    resident_system_cache_page: u32,
+    resident_paged_pool_page: u32,
+    resident_system_driver_page: u32,
+    ccp_fast_read_no_wait: u32,
+    ccp_fast_read_wait: u32,
+    ccp_fast_read_resource_miss: u32,
+    ccp_fast_read_not_possible: u32,
+    ccp_fast_mdl_read_no_wait: u32,
+    ccp_fast_mdl_read_wait: u32,
+    ccp_fast_mdl_read_resource_miss: u32,
+    ccp_fast_mdl_read_not_possible: u32,
+    ccp_map_data_no_wait: u32,
+    ccp_map_data_wait: u32,
+    ccp_map_data_no_wait_miss: u32,
+    ccp_map_data_wait_miss: u32,
+    ccp_pin_mapped_data_count: u32,
+    ccp_pin_read_no_wait: u32,
+    ccp_pin_read_wait: u32,
+    ccp_pin_read_no_wait_miss: u32,
+    ccp_pin_read_wait_miss: u32,
+    ccp_copy_read_no_wait: u32,
+    ccp_copy_read_wait: u32,
+    ccp_copy_read_no_wait_miss: u32,
+    ccp_copy_read_wait_miss: u32,
+    ccp_mdl_read_no_wait: u32,
+    ccp_mdl_read_wait: u32,
+    ccp_mdl_read_no_wait_miss: u32,
+    ccp_mdl_read_wait_miss: u32,
+    ccp_read_ahead_ios: u32,
+    ccp_lazy_write_ios: u32,
+    ccp_lazy_write_pages: u32,
+    ccp_data_flushes: u32,
+    ccp_data_pages: u32,
+    context_switches: u32,
+    first_level_tb_fills: u32,
+    second_level_tb_fills: u32,
+    system_calls: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct DiskPerformance {
+    bytes_read: LargeInteger,
+    bytes_written: LargeInteger,
+    read_time: LargeInteger,
+    write_time: LargeInteger,
+    idle_time: LargeInteger,
+    read_count: u32,
+    write_count: u32,
+    queue_depth: u32,
+    split_count: u32,
+    query_time: LargeInteger,
+    storage_device_number: u32,
+    storage_manager_name: [u16; 8],
+}
+
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -118,12 +240,22 @@ fn filetime_to_u64(ft: FILETIME) -> u64 {
     ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64
 }
 
+fn filetime_now_100ns() -> u64 {
+    unsafe { filetime_to_u64(GetSystemTimeAsFileTime()) }
+}
+
+fn filetime_100ns_to_unix_secs(v: u64) -> u64 {
+    v.saturating_sub(WINDOWS_TO_UNIX_EPOCH_100NS) / 10_000_000
+}
+
+fn boot_time_filetime_100ns() -> u64 {
+    let now = filetime_now_100ns();
+    let uptime_100ns = (current_uptime_secs() * 10_000_000.0) as u64;
+    now.saturating_sub(uptime_100ns)
+}
+
 fn nt_time_100ns(v: i64) -> u64 {
-    if v < 0 {
-        0
-    } else {
-        v as u64
-    }
+    if v < 0 { 0 } else { v as u64 }
 }
 
 fn page_size() -> u64 {
@@ -150,14 +282,25 @@ fn nt_success(status: NTSTATUS) -> bool {
     status.0 >= 0
 }
 
+fn system_performance_info() -> Option<SystemPerformanceInformation> {
+    let buf = query_system_information(SYSTEM_PERFORMANCE_INFORMATION_CLASS).ok()?;
+    if buf.len() < size_of::<SystemPerformanceInformation>() {
+        return None;
+    }
+    Some(unsafe { *(buf.as_ptr() as *const SystemPerformanceInformation) })
+}
+
 fn query_system_information(class: u32) -> Result<Vec<u8>> {
     let mut size: u32 = 64 * 1024;
+
     loop {
         let mut buf = vec![0u8; size as usize];
         let mut ret_len = 0u32;
+
         let status = unsafe {
             NtQuerySystemInformation(class, buf.as_mut_ptr() as *mut c_void, size, &mut ret_len)
         };
+
         if nt_success(status) {
             if ret_len > 0 && (ret_len as usize) <= buf.len() {
                 buf.truncate(ret_len as usize);
@@ -203,7 +346,15 @@ fn process_image_name(handle: HANDLE) -> Option<String> {
     unsafe {
         let mut buf = vec![0u16; 32768];
         let mut size = buf.len() as u32;
-        if QueryFullProcessImageNameW(handle, 0, PWSTR(buf.as_mut_ptr()), &mut size).as_bool() {
+
+        if QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_FORMAT(0),
+            PWSTR(buf.as_mut_ptr()),
+            &mut size,
+        )
+        .is_ok()
+        {
             Some(String::from_utf16_lossy(&buf[..size as usize]))
         } else {
             None
@@ -218,7 +369,7 @@ fn get_process_times_ticks_100ns(handle: HANDLE) -> Option<(u64, u64, u64)> {
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
 
-        if GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user).as_bool() {
+        if GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user).is_ok() {
             Some((
                 filetime_to_u64(user),
                 filetime_to_u64(kernel),
@@ -238,7 +389,7 @@ fn get_process_mem(handle: HANDLE) -> Option<PROCESS_MEMORY_COUNTERS_EX> {
             &mut pmc as *mut _ as *mut _,
             size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
         )
-        .as_bool()
+        .is_ok()
         {
             Some(pmc)
         } else {
@@ -247,10 +398,10 @@ fn get_process_mem(handle: HANDLE) -> Option<PROCESS_MEMORY_COUNTERS_EX> {
     }
 }
 
-fn get_process_io(handle: HANDLE) -> Option<PROCESS_IO_COUNTERS> {
+fn get_process_io(handle: HANDLE) -> Option<IO_COUNTERS> {
     unsafe {
-        let mut io = PROCESS_IO_COUNTERS::default();
-        if GetProcessIoCounters(handle, &mut io).as_bool() {
+        let mut io = IO_COUNTERS::default();
+        if GetProcessIoCounters(handle, &mut io).is_ok() {
             Some(io)
         } else {
             None
@@ -261,7 +412,7 @@ fn get_process_io(handle: HANDLE) -> Option<PROCESS_IO_COUNTERS> {
 fn get_process_handle_count_safe(handle: HANDLE) -> Option<u64> {
     unsafe {
         let mut count = 0u32;
-        if GetProcessHandleCount(handle, &mut count).as_bool() {
+        if GetProcessHandleCount(handle, &mut count).is_ok() {
             Some(count as u64)
         } else {
             None
@@ -281,83 +432,118 @@ fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
 }
 
 fn collect_per_cpu_times() -> Result<(Vec<CpuTimes>, u64)> {
-    let buf = query_system_information(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS)?;
-    let count = buf.len() / size_of::<SystemProcessorPerformanceInformation>();
-    let infos = unsafe {
-        slice::from_raw_parts(
-            buf.as_ptr() as *const SystemProcessorPerformanceInformation,
-            count,
-        )
-    };
+    debug!("wincollect: collect_per_cpu_times start");
+    let mut per_cpu = Vec::new();
+    let mut interrupt_total = 0u64;
 
-    let mut per_cpu = Vec::with_capacity(count);
-    let mut total_interrupt_count = 0u64;
+    if let Ok(buf) = query_system_information(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS) {
+        let size = size_of::<SystemProcessorPerformanceInformation>();
+        if size > 0 && buf.len() >= size {
+            let count = buf.len() / size;
+            let infos = unsafe {
+                slice::from_raw_parts(
+                    buf.as_ptr() as *const SystemProcessorPerformanceInformation,
+                    count,
+                )
+            };
 
-    for cpu in infos {
-        let idle = nt_time_100ns(cpu.idle_time.quad_part);
-        let kernel = nt_time_100ns(cpu.kernel_time.quad_part);
-        let user = nt_time_100ns(cpu.user_time.quad_part);
-        let dpc = nt_time_100ns(cpu.dpc_time.quad_part);
-        let interrupt = nt_time_100ns(cpu.interrupt_time.quad_part);
+            for info in infos {
+                let idle = nt_time_100ns(info.idle_time.quad_part);
+                let kernel_total = nt_time_100ns(info.kernel_time.quad_part);
+                let user = nt_time_100ns(info.user_time.quad_part);
+                let irq = nt_time_100ns(info.interrupt_time.quad_part);
+                let softirq = nt_time_100ns(info.dpc_time.quad_part);
+                let system = kernel_total
+                    .saturating_sub(idle)
+                    .saturating_sub(irq)
+                    .saturating_sub(softirq);
 
-        total_interrupt_count = total_interrupt_count.saturating_add(cpu.interrupt_count as u64);
-
-        per_cpu.push(CpuTimes {
-            user,
-            nice: 0,
-            system: kernel.saturating_sub(idle),
-            idle,
-            iowait: 0,
-            irq: interrupt,
-            softirq: dpc,
-            steal: 0,
-            guest: 0,
-            guest_nice: 0,
-        });
+                per_cpu.push(CpuTimes {
+                    user,
+                    nice: 0,
+                    system,
+                    idle,
+                    iowait: 0,
+                    irq,
+                    softirq,
+                    steal: 0,
+                    guest: 0,
+                    guest_nice: 0,
+                });
+                interrupt_total = interrupt_total.saturating_add(info.interrupt_count as u64);
+            }
+        }
     }
 
-    Ok((per_cpu, total_interrupt_count))
-}
+    if !per_cpu.is_empty() {
+        return Ok((per_cpu, interrupt_total));
+    }
 
-fn collect_system_total_cpu() -> Result<CpuTimes> {
-    unsafe {
-        let mut idle = FILETIME::default();
-        let mut kernel = FILETIME::default();
-        let mut user = FILETIME::default();
-
-        GetSystemTimes(&mut idle, &mut kernel, &mut user)
-            .ok()
-            .context("GetSystemTimes failed")?;
-
-        let idle_u = filetime_to_u64(idle);
-        let kernel_u = filetime_to_u64(kernel);
-        let user_u = filetime_to_u64(user);
-
-        Ok(CpuTimes {
-            user: user_u,
+    let idle_100ns = (current_uptime_secs() * 10_000_000.0) as u64;
+    Ok((
+        vec![CpuTimes {
+            user: 0,
             nice: 0,
-            system: kernel_u.saturating_sub(idle_u),
-            idle: idle_u,
+            system: 0,
+            idle: idle_100ns,
             iowait: 0,
             irq: 0,
             softirq: 0,
             steal: 0,
             guest: 0,
             guest_nice: 0,
-        })
-    }
+        }],
+        0,
+    ))
+}
+
+fn sum_cpu_times(per_cpu: &[CpuTimes]) -> CpuTimes {
+    per_cpu.iter().fold(
+        CpuTimes {
+            user: 0,
+            nice: 0,
+            system: 0,
+            idle: 0,
+            iowait: 0,
+            irq: 0,
+            softirq: 0,
+            steal: 0,
+            guest: 0,
+            guest_nice: 0,
+        },
+        |mut acc, cpu| {
+            acc.user = acc.user.saturating_add(cpu.user);
+            acc.nice = acc.nice.saturating_add(cpu.nice);
+            acc.system = acc.system.saturating_add(cpu.system);
+            acc.idle = acc.idle.saturating_add(cpu.idle);
+            acc.iowait = acc.iowait.saturating_add(cpu.iowait);
+            acc.irq = acc.irq.saturating_add(cpu.irq);
+            acc.softirq = acc.softirq.saturating_add(cpu.softirq);
+            acc.steal = acc.steal.saturating_add(cpu.steal);
+            acc.guest = acc.guest.saturating_add(cpu.guest);
+            acc.guest_nice = acc.guest_nice.saturating_add(cpu.guest_nice);
+            acc
+        },
+    )
 }
 
 pub fn collect_system() -> Result<SystemSnapshot> {
+    debug!("wincollect: collect_system start");
     let (per_cpu, total_interrupt_count) = collect_per_cpu_times()?;
-    let cpu_total = collect_system_total_cpu()?;
-    let process_count = collect_process_summaries(false)?.len() as u64;
+    debug!("wincollect: collect_system per_cpu done");
+    let cpu_total = sum_cpu_times(&per_cpu);
+    let processes = collect_process_summaries(false)?;
+    let process_count = processes.len() as u64;
+    let perf = system_performance_info();
+    let procs_running = processes.iter().filter(|proc| proc.pid > 0).count() as u32;
+    let boot_filetime = boot_time_filetime_100ns();
+    debug!("wincollect: collect_system process_summaries done");
 
     Ok(SystemSnapshot {
         ticks_per_second: 10_000_000,
-        boot_time_epoch_secs: 0,
+        boot_time_epoch_secs: filetime_100ns_to_unix_secs(boot_filetime),
         uptime_secs: current_uptime_secs(),
-        context_switches: 0,
+        context_switches: perf.map(|p| p.context_switches as u64).unwrap_or(0),
         forks_since_boot: 0,
         interrupts_total: total_interrupt_count,
         softirqs_total: 0,
@@ -365,7 +551,7 @@ pub fn collect_system() -> Result<SystemSnapshot> {
         pid_max: 0,
         entropy_available_bits: 0,
         entropy_pool_size_bits: 0,
-        procs_running: 0,
+        procs_running,
         procs_blocked: 0,
         cpu_total,
         per_cpu,
@@ -447,6 +633,7 @@ fn drive_strings() -> Result<Vec<String>> {
 
         let mut out = Vec::new();
         let mut start = 0usize;
+
         for i in 0..len {
             if buf[i] == 0 {
                 if i > start {
@@ -455,6 +642,7 @@ fn drive_strings() -> Result<Vec<String>> {
                 start = i + 1;
             }
         }
+
         Ok(out)
     }
 }
@@ -483,6 +671,7 @@ fn query_storage_alignment(drive_root: &str) -> (Option<u64>, Option<u64>, Optio
             QueryType: STORAGE_QUERY_TYPE(0),
             AdditionalParameters: [0],
         };
+
         let mut out = vec![0u8; 1024];
         let mut returned = 0u32;
 
@@ -496,7 +685,7 @@ fn query_storage_alignment(drive_root: &str) -> (Option<u64>, Option<u64>, Optio
             Some(&mut returned),
             None,
         )
-        .as_bool();
+        .is_ok();
 
         let _ = CloseHandle(handle);
 
@@ -508,11 +697,120 @@ fn query_storage_alignment(drive_root: &str) -> (Option<u64>, Option<u64>, Optio
         }
 
         let desc = &*(out.as_ptr() as *const STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR);
+
         (
             Some(desc.BytesPerLogicalSector as u64),
             Some(desc.BytesPerPhysicalSector as u64),
             None,
         )
+    }
+}
+
+fn query_disk_performance(
+    drive_root: &str,
+    logical_block_size: Option<u64>,
+) -> Option<(u64, u64, u64, u64, u64, u64, u64, u64, u64)> {
+    let drive_letter = drive_root.chars().next().unwrap_or('C');
+    let path = format!(r"\\.\{}:", drive_letter);
+    let path_w = wide_z(&path);
+
+    unsafe {
+        let handle = CreateFileW(
+            PCWSTR(path_w.as_ptr()),
+            FILE_GENERIC_READ.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None,
+        )
+        .ok()?;
+
+        let query_perf = |h: HANDLE| -> Option<DiskPerformance> {
+            let mut perf = DiskPerformance::default();
+            let mut returned = 0u32;
+            let ok = DeviceIoControl(
+                h,
+                IOCTL_DISK_PERFORMANCE,
+                None,
+                0,
+                Some(&mut perf as *mut _ as *mut c_void),
+                size_of::<DiskPerformance>() as u32,
+                Some(&mut returned),
+                None,
+            )
+            .is_ok();
+
+            if ok && returned >= size_of::<DiskPerformance>() as u32 {
+                Some(perf)
+            } else {
+                None
+            }
+        };
+
+        let perf = if let Some(perf) = query_perf(handle) {
+            Some(perf)
+        } else {
+            let mut dev_num = STORAGE_DEVICE_NUMBER::default();
+            let mut returned = 0u32;
+            let got_device_number = DeviceIoControl(
+                handle,
+                IOCTL_STORAGE_GET_DEVICE_NUMBER,
+                None,
+                0,
+                Some(&mut dev_num as *mut _ as *mut c_void),
+                size_of::<STORAGE_DEVICE_NUMBER>() as u32,
+                Some(&mut returned),
+                None,
+            )
+            .is_ok();
+
+            if got_device_number && returned >= size_of::<STORAGE_DEVICE_NUMBER>() as u32 {
+                let physical = format!(r"\\.\PhysicalDrive{}", dev_num.DeviceNumber);
+                let physical_w = wide_z(&physical);
+                if let Ok(physical_handle) = CreateFileW(
+                    PCWSTR(physical_w.as_ptr()),
+                    FILE_GENERIC_READ.0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    None,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    None,
+                ) {
+                    let perf = query_perf(physical_handle);
+                    let _ = CloseHandle(physical_handle);
+                    perf
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let _ = CloseHandle(handle);
+        let perf = perf?;
+
+        let bytes_per_sector = logical_block_size.unwrap_or(512).max(1);
+        let bytes_read = perf.bytes_read.quad_part.max(0) as u64;
+        let bytes_written = perf.bytes_written.quad_part.max(0) as u64;
+        let read_time_ms = nt_time_100ns(perf.read_time.quad_part) / 10_000;
+        let write_time_ms = nt_time_100ns(perf.write_time.quad_part) / 10_000;
+        let query_time_100ns = nt_time_100ns(perf.query_time.quad_part);
+        let idle_time_100ns = nt_time_100ns(perf.idle_time.quad_part);
+        let busy_time_ms = query_time_100ns.saturating_sub(idle_time_100ns) / 10_000;
+
+        Some((
+            perf.read_count as u64,
+            perf.write_count as u64,
+            bytes_read / bytes_per_sector,
+            bytes_written / bytes_per_sector,
+            read_time_ms,
+            write_time_ms,
+            perf.queue_depth as u64,
+            busy_time_ms,
+            read_time_ms.saturating_add(write_time_ms),
+        ))
     }
 }
 
@@ -522,14 +820,16 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
 
     for drive in drives {
         let drive_w = wide_z(&drive);
+
         unsafe {
-            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED {
+            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED_VALUE {
                 continue;
             }
 
             let mut free_available = 0u64;
             let mut total_bytes = 0u64;
             let mut total_free = 0u64;
+
             let _ = GetDiskFreeSpaceExW(
                 PCWSTR(drive_w.as_ptr()),
                 Some(&mut free_available),
@@ -538,18 +838,19 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
             );
 
             let (logical, physical, rotational) = query_storage_alignment(&drive);
+            let perf = query_disk_performance(&drive, logical);
 
             out.push(DiskSnapshot {
                 name: drive.trim_end_matches('\\').to_string(),
-                reads: 0,
-                writes: 0,
-                sectors_read: 0,
-                sectors_written: 0,
-                time_reading_ms: 0,
-                time_writing_ms: 0,
-                in_progress: 0,
-                time_in_progress_ms: 0,
-                weighted_time_in_progress_ms: 0,
+                reads: perf.map(|v| v.0).unwrap_or(0),
+                writes: perf.map(|v| v.1).unwrap_or(0),
+                sectors_read: perf.map(|v| v.2).unwrap_or(0),
+                sectors_written: perf.map(|v| v.3).unwrap_or(0),
+                time_reading_ms: perf.map(|v| v.4).unwrap_or(0),
+                time_writing_ms: perf.map(|v| v.5).unwrap_or(0),
+                in_progress: perf.map(|v| v.6).unwrap_or(0),
+                time_in_progress_ms: perf.map(|v| v.7).unwrap_or(0),
+                weighted_time_in_progress_ms: perf.map(|v| v.8).unwrap_or(0),
                 logical_block_size: logical,
                 physical_block_size: physical,
                 rotational,
@@ -580,6 +881,7 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
 
         for row in rows {
             let name = wchar_array_to_string(&row.Alias);
+
             out.push(NetDevSnapshot {
                 name,
                 mtu: Some(row.Mtu as u64),
@@ -593,7 +895,7 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
                 rx_fifo: 0,
                 rx_frame: 0,
                 rx_compressed: 0,
-                rx_multicast: row.InMulticastPkts,
+                rx_multicast: row.InNUcastPkts,
                 tx_bytes: row.OutOctets,
                 tx_packets: row.OutUcastPkts + row.OutNUcastPkts,
                 tx_errs: row.OutErrors,
@@ -615,6 +917,7 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
     let mut out = Vec::new();
     let mut offset = 0usize;
     let page = page_size();
+    let boot_filetime = boot_time_filetime_100ns();
 
     loop {
         if offset + size_of::<SystemProcessInformation>() > buf.len() {
@@ -646,24 +949,25 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
             nice: 0,
             minflt: spi.page_fault_count as u64,
             majflt: spi.hard_fault_count as u64,
-            vsize_bytes: spi.virtual_size as u64,
+            vsize_bytes: spi.pagefile_usage as u64,
             rss_pages: (spi.working_set_size as u64 / page) as i64,
             utime_ticks: nt_time_100ns(spi.user_time.quad_part),
             stime_ticks: nt_time_100ns(spi.kernel_time.quad_part),
-            start_time_ticks: nt_time_100ns(spi.create_time.quad_part),
+            start_time_ticks: nt_time_100ns(spi.create_time.quad_part)
+                .saturating_sub(boot_filetime),
             processor: None,
             rt_priority: None,
             policy: None,
             oom_score: None,
             fd_count: None,
-            read_chars: None,
-            write_chars: None,
+            read_chars: Some(spi.read_transfer_count.quad_part.max(0) as u64),
+            write_chars: Some(spi.write_transfer_count.quad_part.max(0) as u64),
             syscr: Some(spi.read_operation_count.quad_part.max(0) as u64),
             syscw: Some(spi.write_operation_count.quad_part.max(0) as u64),
             read_bytes: Some(spi.read_transfer_count.quad_part.max(0) as u64),
             write_bytes: Some(spi.write_transfer_count.quad_part.max(0) as u64),
             cancelled_write_bytes: Some(spi.other_transfer_count.quad_part),
-            vm_size_kib: Some((spi.virtual_size as u64) / 1024),
+            vm_size_kib: Some((spi.pagefile_usage as u64) / 1024),
             vm_rss_kib: Some((spi.working_set_size as u64) / 1024),
             vm_data_kib: Some((spi.private_page_count as u64) / 1024),
             vm_stack_kib: None,
@@ -686,17 +990,22 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
                     if let Some((utime, stime, ctime)) = get_process_times_ticks_100ns(handle) {
                         process.utime_ticks = utime;
                         process.stime_ticks = stime;
-                        process.start_time_ticks = ctime;
+                        process.start_time_ticks = ctime.saturating_sub(boot_filetime);
                     }
 
                     if let Some(mem) = get_process_mem(handle) {
-                        process.vm_size_kib = Some((mem.PrivateUsage as u64) / 1024);
+                        process.vsize_bytes = mem.PagefileUsage as u64;
+                        process.vm_size_kib = Some((mem.PagefileUsage as u64) / 1024);
                         process.vm_rss_kib = Some((mem.WorkingSetSize as u64) / 1024);
+                        process.vm_data_kib = Some((mem.PrivateUsage as u64) / 1024);
+                        process.vm_swap_kib = Some((mem.PagefileUsage as u64) / 1024);
                         process.vm_hwm_kib = Some((mem.PeakWorkingSetSize as u64) / 1024);
                         process.rss_pages = (mem.WorkingSetSize as u64 / page) as i64;
                     }
 
                     if let Some(io) = get_process_io(handle) {
+                        process.read_chars = Some(io.ReadTransferCount);
+                        process.write_chars = Some(io.WriteTransferCount);
                         process.syscr = Some(io.ReadOperationCount);
                         process.syscw = Some(io.WriteOperationCount);
                         process.read_bytes = Some(io.ReadTransferCount);
@@ -717,6 +1026,7 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
         if spi.next_entry_offset == 0 {
             break;
         }
+
         offset += spi.next_entry_offset as usize;
     }
 
@@ -728,10 +1038,29 @@ pub fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
+    debug!("wincollect: collect_snapshot start");
+    let system = collect_system()?;
+    debug!("wincollect: collect_system done");
+    let memory = collect_memory()?;
+    debug!("wincollect: collect_memory done");
+    let load = collect_load()?;
+    debug!("wincollect: collect_load done");
+    let disks = collect_disks()?;
+    debug!(disk_count = disks.len(), "wincollect: collect_disks done");
+    let net = collect_net()?;
+    debug!(iface_count = net.len(), "wincollect: collect_net done");
+    let processes = if include_process_metrics {
+        let p = collect_processes()?;
+        debug!(process_count = p.len(), "wincollect: collect_processes done");
+        p
+    } else {
+        Vec::new()
+    };
+
     Ok(Snapshot {
-        system: collect_system()?,
-        memory: collect_memory()?,
-        load: collect_load()?,
+        system,
+        memory,
+        load,
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
         vmstat: BTreeMap::new(),
@@ -744,12 +1073,8 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         cpuinfo: Vec::new(),
         zoneinfo: BTreeMap::new(),
         buddyinfo: BTreeMap::new(),
-        disks: collect_disks()?,
-        net: collect_net()?,
-        processes: if include_process_metrics {
-            collect_processes()?
-        } else {
-            Vec::new()
-        },
+        disks,
+        net,
+        processes,
     })
 }

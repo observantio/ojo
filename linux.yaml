@@ -1,0 +1,22 @@
+service:
+  name: linux
+  instance_id: linux-0001
+
+collection:
+  poll_interval_secs: 5
+  include_process_metrics: true
+
+export:
+  otlp:
+    endpoint: "http://192.168.0.143:4355/v1/metrics"
+    protocol: http/protobuf
+    compression: gzip
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include:
+    - system.
+    - process.

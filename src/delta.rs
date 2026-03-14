@@ -399,10 +399,11 @@ impl PrevState {
 
         for cur in &current.disks {
             if let Some(prv) = prev.disks.iter().find(|d| d.name == cur.name) {
+                let sector_size = cur.logical_block_size.unwrap_or(512).max(1) as f64;
                 let read_sectors = cur.sectors_read.saturating_sub(prv.sectors_read);
                 let write_sectors = cur.sectors_written.saturating_sub(prv.sectors_written);
-                let read_bytes = read_sectors as f64 * 512.0;
-                let write_bytes = write_sectors as f64 * 512.0;
+                let read_bytes = read_sectors as f64 * sector_size;
+                let write_bytes = write_sectors as f64 * sector_size;
                 let reads = cur.reads.saturating_sub(prv.reads);
                 let writes = cur.writes.saturating_sub(prv.writes);
                 let read_time_ms = cur.time_reading_ms.saturating_sub(prv.time_reading_ms);

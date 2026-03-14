@@ -21,7 +21,7 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Instant;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,13 +59,31 @@ fn main() -> Result<()> {
 
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
+        debug!("poll tick start");
 
         let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        debug!(
+            elapsed_ms = started_at.elapsed().as_millis(),
+            process_count = snap.system.process_count,
+            disks = snap.disks.len(),
+            net_ifaces = snap.net.len(),
+            procs = snap.processes.len(),
+            "snapshot collected"
+        );
+
         let derived = prev.derive(&snap, cfg.poll_interval);
         instruments.record(&snap, &derived, cfg.include_process_metrics);
+        debug!(
+            elapsed_ms = started_at.elapsed().as_millis(),
+            "metrics recorded"
+        );
 
         match provider.force_flush() {
             Ok(()) => {
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush ok"
+                );
                 match export_state {
                     ExportState::Pending => info!("Connected to OTLP exporter"),
                     ExportState::Reconnecting => info!("Reconnected to OTLP exporter"),
@@ -74,6 +92,10 @@ fn main() -> Result<()> {
                 export_state = ExportState::Connected;
             }
             Err(err) => {
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush err"
+                );
                 match export_state {
                     ExportState::Connected => {
                         warn!(error = %err, "Exporter flush failed; reconnecting")
@@ -85,6 +107,8 @@ fn main() -> Result<()> {
                 export_state = ExportState::Reconnecting;
             }
         }
+
+        debug!(elapsed_ms = started_at.elapsed().as_millis(), "poll tick done");
 
         let elapsed = started_at.elapsed();
         if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {
