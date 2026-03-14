@@ -455,6 +455,7 @@ fn collect_system() -> Result<SystemSnapshot> {
         })
         .collect();
     Ok(SystemSnapshot {
+        is_windows: false,
         ticks_per_second: procfs::ticks_per_second() as u64,
         cpu_cycle_utilization: None,
         boot_time_epoch_secs: stat.btime,
@@ -539,6 +540,7 @@ fn collect_disks() -> Result<Vec<DiskSnapshot>> {
             let base = Path::new("/sys/block").join(&d.name).join("queue");
             DiskSnapshot {
                 name: d.name.clone(),
+                has_counters: true,
                 reads: d.reads,
                 writes: d.writes,
                 sectors_read: d.sectors_read,

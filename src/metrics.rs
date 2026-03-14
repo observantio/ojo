@@ -760,6 +760,7 @@ impl ProcMetrics {
     }
 
     fn record_system(&self, snap: &Snapshot, derived: &DerivedMetrics) {
+        let is_windows = snap.system.is_windows;
         self.record_f64(
             "system.uptime",
             &self.otel_system_uptime,
@@ -779,31 +780,35 @@ impl ProcMetrics {
             non_negative_u64(snap.system.procs_running),
             &[KeyValue::new("state", "running")],
         );
-        self.record_u64(
-            "system.processes.count",
-            &self.otel_system_processes,
-            non_negative_u64(snap.system.procs_blocked),
-            &[KeyValue::new("state", "blocked")],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.processes.count",
+                &self.otel_system_processes,
+                non_negative_u64(snap.system.procs_blocked),
+                &[KeyValue::new("state", "blocked")],
+            );
+        }
 
-        self.record_u64(
-            "system.linux.pid.max",
-            &self.otel_system_pid_max,
-            snap.system.pid_max,
-            &[],
-        );
-        self.record_u64(
-            "system.linux.entropy",
-            &self.otel_system_entropy,
-            snap.system.entropy_available_bits,
-            &[KeyValue::new("state", "available")],
-        );
-        self.record_u64(
-            "system.linux.entropy",
-            &self.otel_system_entropy,
-            snap.system.entropy_pool_size_bits,
-            &[KeyValue::new("state", "pool_size")],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.linux.pid.max",
+                &self.otel_system_pid_max,
+                snap.system.pid_max,
+                &[],
+            );
+            self.record_u64(
+                "system.linux.entropy",
+                &self.otel_system_entropy,
+                snap.system.entropy_available_bits,
+                &[KeyValue::new("state", "available")],
+            );
+            self.record_u64(
+                "system.linux.entropy",
+                &self.otel_system_entropy,
+                snap.system.entropy_pool_size_bits,
+                &[KeyValue::new("state", "pool_size")],
+            );
+        }
 
         self.add_u64(
             "system.cpu.interrupts",
@@ -831,6 +836,9 @@ impl ProcMetrics {
         );
 
         for (state, value) in &derived.cpu_time_delta_secs {
+            if is_windows && *state == "iowait" {
+                continue;
+            }
             self.add_f64(
                 "system.cpu.time",
                 &self.otel_system_cpu_time,
@@ -891,13 +899,15 @@ impl ProcMetrics {
                 &[KeyValue::new("cpu", cpu.to_string())],
             );
         }
-        for (cpu, ratio) in &derived.per_cpu_iowait_ratio {
-            self.record_f64(
-                "system.cpu.core.iowait_ratio",
-                &self.per_cpu_iowait,
-                *ratio,
-                &[KeyValue::new("cpu", cpu.to_string())],
-            );
+        if !is_windows {
+            for (cpu, ratio) in &derived.per_cpu_iowait_ratio {
+                self.record_f64(
+                    "system.cpu.core.iowait_ratio",
+                    &self.per_cpu_iowait,
+                    *ratio,
+                    &[KeyValue::new("cpu", cpu.to_string())],
+                );
+            }
         }
         for (cpu, ratio) in &derived.per_cpu_system_ratio {
             self.record_f64(
@@ -918,27 +928,30 @@ impl ProcMetrics {
             snap.load.fifteen,
             &[],
         );
-        self.record_u64(
-            "system.linux.load.runnable",
-            &self.load_runnable,
-            non_negative_u64(snap.load.runnable),
-            &[],
-        );
-        self.record_u64(
-            "system.linux.load.entities",
-            &self.load_entities,
-            non_negative_u64(snap.load.entities),
-            &[],
-        );
-        self.record_u64(
-            "system.linux.load.latest_pid",
-            &self.load_latest_pid,
-            non_negative_u64(snap.load.latest_pid),
-            &[],
-        );
+        if !snap.system.is_windows {
+            self.record_u64(
+                "system.linux.load.runnable",
+                &self.load_runnable,
+                non_negative_u64(snap.load.runnable),
+                &[],
+            );
+            self.record_u64(
+                "system.linux.load.entities",
+                &self.load_entities,
+                non_negative_u64(snap.load.entities),
+                &[],
+            );
+            self.record_u64(
+                "system.linux.load.latest_pid",
+                &self.load_latest_pid,
+                non_negative_u64(snap.load.latest_pid),
+                &[],
+            );
+        }
     }
 
     fn record_memory(&self, snap: &Snapshot, derived: &DerivedMetrics) {
+        let is_windows = snap.system.is_windows;
         let m = &snap.memory;
 
         self.record_u64("system.memory.total", &self.mem_total_bytes, m.mem_total_bytes, &[]);
@@ -949,82 +962,88 @@ impl ProcMetrics {
             m.mem_available_bytes,
             &[],
         );
-        self.record_u64(
-            "system.memory.buffers",
-            &self.mem_buffers_bytes,
-            m.buffers_bytes,
-            &[],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.memory.buffers",
+                &self.mem_buffers_bytes,
+                m.buffers_bytes,
+                &[],
+            );
+        }
         self.record_u64(
             "system.memory.cached",
             &self.mem_cached_bytes,
             m.cached_bytes,
             &[],
         );
-        self.record_u64(
-            "system.memory.active",
-            &self.mem_active_bytes,
-            m.active_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.inactive",
-            &self.mem_inactive_bytes,
-            m.inactive_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.anon",
-            &self.mem_anon_bytes,
-            m.anon_pages_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.mapped",
-            &self.mem_mapped_bytes,
-            m.mapped_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.shmem",
-            &self.mem_shmem_bytes,
-            m.shmem_bytes,
-            &[],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.memory.active",
+                &self.mem_active_bytes,
+                m.active_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.inactive",
+                &self.mem_inactive_bytes,
+                m.inactive_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.anon",
+                &self.mem_anon_bytes,
+                m.anon_pages_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.mapped",
+                &self.mem_mapped_bytes,
+                m.mapped_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.shmem",
+                &self.mem_shmem_bytes,
+                m.shmem_bytes,
+                &[],
+            );
+        }
         self.record_u64("system.swap.total", &self.swap_total_bytes, m.swap_total_bytes, &[]);
         self.record_u64("system.swap.free", &self.swap_free_bytes, m.swap_free_bytes, &[]);
-        self.record_u64(
-            "system.swap.cached",
-            &self.swap_cached_bytes,
-            m.swap_cached_bytes,
-            &[],
-        );
-        self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, m.dirty_bytes, &[]);
-        self.record_u64(
-            "system.memory.writeback",
-            &self.mem_writeback_bytes,
-            m.writeback_bytes,
-            &[],
-        );
-        self.record_u64("system.memory.slab", &self.mem_slab_bytes, m.slab_bytes, &[]);
-        self.record_u64(
-            "system.memory.sreclaimable",
-            &self.mem_sreclaimable_bytes,
-            m.sreclaimable_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.sunreclaim",
-            &self.mem_sunreclaim_bytes,
-            m.sunreclaim_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.page_tables",
-            &self.mem_page_tables_bytes,
-            m.page_tables_bytes,
-            &[],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.swap.cached",
+                &self.swap_cached_bytes,
+                m.swap_cached_bytes,
+                &[],
+            );
+            self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, m.dirty_bytes, &[]);
+            self.record_u64(
+                "system.memory.writeback",
+                &self.mem_writeback_bytes,
+                m.writeback_bytes,
+                &[],
+            );
+            self.record_u64("system.memory.slab", &self.mem_slab_bytes, m.slab_bytes, &[]);
+            self.record_u64(
+                "system.memory.sreclaimable",
+                &self.mem_sreclaimable_bytes,
+                m.sreclaimable_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.sunreclaim",
+                &self.mem_sunreclaim_bytes,
+                m.sunreclaim_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.page_tables",
+                &self.mem_page_tables_bytes,
+                m.page_tables_bytes,
+                &[],
+            );
+        }
         self.record_u64(
             "system.memory.commit_limit",
             &self.mem_commit_limit_bytes,
@@ -1037,36 +1056,38 @@ impl ProcMetrics {
             m.committed_as_bytes,
             &[],
         );
-        self.record_u64(
-            "system.memory.kernel_stack",
-            &self.mem_kernel_stack_bytes,
-            m.kernel_stack_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.anon_hugepages",
-            &self.mem_anon_hugepages_bytes,
-            m.anon_hugepages_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.hugepages_total",
-            &self.mem_hugepages_total,
-            m.hugepages_total,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.hugepages_free",
-            &self.mem_hugepages_free,
-            m.hugepages_free,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.hugepage_size",
-            &self.mem_hugepage_size_bytes,
-            m.hugepage_size_bytes,
-            &[],
-        );
+        if !is_windows {
+            self.record_u64(
+                "system.memory.kernel_stack",
+                &self.mem_kernel_stack_bytes,
+                m.kernel_stack_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.anon_hugepages",
+                &self.mem_anon_hugepages_bytes,
+                m.anon_hugepages_bytes,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.hugepages_total",
+                &self.mem_hugepages_total,
+                m.hugepages_total,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.hugepages_free",
+                &self.mem_hugepages_free,
+                m.hugepages_free,
+                &[],
+            );
+            self.record_u64(
+                "system.memory.hugepage_size",
+                &self.mem_hugepage_size_bytes,
+                m.hugepage_size_bytes,
+                &[],
+            );
+        }
 
         self.record_f64(
             "system.memory.used_ratio",
@@ -1080,12 +1101,14 @@ impl ProcMetrics {
             derived.swap_used_ratio,
             &[],
         );
-        self.record_f64(
-            "system.memory.dirty_writeback_ratio",
-            &self.mem_dirty_writeback_ratio,
-            derived.dirty_writeback_ratio,
-            &[],
-        );
+        if !is_windows {
+            self.record_f64(
+                "system.memory.dirty_writeback_ratio",
+                &self.mem_dirty_writeback_ratio,
+                derived.dirty_writeback_ratio,
+                &[],
+            );
+        }
     }
 
     fn record_paging(&self, derived: &DerivedMetrics) {
@@ -1155,24 +1178,28 @@ impl ProcMetrics {
             snap.system.boot_time_epoch_secs,
             &[],
         );
-        self.record_u64(
-            "system.processes.forks",
-            &self.forks_total,
-            snap.system.forks_since_boot,
-            &[],
-        );
+        if !snap.system.is_windows {
+            self.record_u64(
+                "system.processes.forks",
+                &self.forks_total,
+                snap.system.forks_since_boot,
+                &[],
+            );
+        }
         self.record_u64(
             "system.processes.running",
             &self.procs_running,
             non_negative_u64(snap.system.procs_running),
             &[],
         );
-        self.record_u64(
-            "system.processes.blocked",
-            &self.procs_blocked,
-            non_negative_u64(snap.system.procs_blocked),
-            &[],
-        );
+        if !snap.system.is_windows {
+            self.record_u64(
+                "system.processes.blocked",
+                &self.procs_blocked,
+                non_negative_u64(snap.system.procs_blocked),
+                &[],
+            );
+        }
 
         for (key, value) in &snap.vmstat {
             self.record_i64(
@@ -1509,42 +1536,44 @@ impl ProcMetrics {
                 );
             }
 
-            self.record_u64(
-                "system.disk.io_in_progress",
-                &self.disk_in_progress,
-                disk.in_progress,
-                &attrs,
-            );
-            self.record_u64(
-                "system.disk.pending_operations",
-                &self.otel_disk_pending,
-                disk.in_progress,
-                &attrs,
-            );
-            self.record_u64(
-                "system.disk.time_reading",
-                &self.disk_time_reading_ms,
-                disk.time_reading_ms,
-                &attrs,
-            );
-            self.record_u64(
-                "system.disk.time_writing",
-                &self.disk_time_writing_ms,
-                disk.time_writing_ms,
-                &attrs,
-            );
-            self.record_u64(
-                "system.disk.time_in_progress",
-                &self.disk_time_in_progress_ms,
-                disk.time_in_progress_ms,
-                &attrs,
-            );
-            self.record_u64(
-                "system.disk.weighted_time_in_progress",
-                &self.disk_weighted_time_in_progress_ms,
-                disk.weighted_time_in_progress_ms,
-                &attrs,
-            );
+            if disk.has_counters {
+                self.record_u64(
+                    "system.disk.io_in_progress",
+                    &self.disk_in_progress,
+                    disk.in_progress,
+                    &attrs,
+                );
+                self.record_u64(
+                    "system.disk.pending_operations",
+                    &self.otel_disk_pending,
+                    disk.in_progress,
+                    &attrs,
+                );
+                self.record_u64(
+                    "system.disk.time_reading",
+                    &self.disk_time_reading_ms,
+                    disk.time_reading_ms,
+                    &attrs,
+                );
+                self.record_u64(
+                    "system.disk.time_writing",
+                    &self.disk_time_writing_ms,
+                    disk.time_writing_ms,
+                    &attrs,
+                );
+                self.record_u64(
+                    "system.disk.time_in_progress",
+                    &self.disk_time_in_progress_ms,
+                    disk.time_in_progress_ms,
+                    &attrs,
+                );
+                self.record_u64(
+                    "system.disk.weighted_time_in_progress",
+                    &self.disk_weighted_time_in_progress_ms,
+                    disk.weighted_time_in_progress_ms,
+                    &attrs,
+                );
+            }
         }
     }
 
@@ -1787,6 +1816,7 @@ impl ProcMetrics {
     }
 
     fn record_processes(&self, snap: &Snapshot, derived: &DerivedMetrics) {
+        let is_windows = snap.system.is_windows;
         for proc in &snap.processes {
             if proc.comm.is_empty() {
                 continue;
@@ -1826,59 +1856,63 @@ impl ProcMetrics {
                 proc.num_threads,
                 &base_attrs,
             );
-            self.record_i64(
-                "process.linux.priority",
-                &self.process_priority,
-                proc.priority,
-                &base_attrs,
-            );
-            self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &base_attrs);
-            self.record_u64(
-                "process.linux.memory.vsize",
-                &self.process_vsize_bytes,
-                proc.vsize_bytes,
-                &base_attrs,
-            );
-
-            if let Some(value) = proc.read_bytes {
-                self.record_u64(
-                    "process.linux.io.read_bytes",
-                    &self.process_read_bytes,
-                    value,
-                    &base_attrs,
-                );
-            }
-            if let Some(value) = proc.write_bytes {
-                self.record_u64(
-                    "process.linux.io.write_bytes",
-                    &self.process_write_bytes,
-                    value,
-                    &base_attrs,
-                );
-            }
-            if let Some(value) = proc.cancelled_write_bytes {
+            if !is_windows {
                 self.record_i64(
-                    "process.linux.io.cancelled_write_bytes",
-                    &self.process_cancelled_write_bytes,
-                    value,
+                    "process.linux.priority",
+                    &self.process_priority,
+                    proc.priority,
+                    &base_attrs,
+                );
+                self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &base_attrs);
+                self.record_u64(
+                    "process.linux.memory.vsize",
+                    &self.process_vsize_bytes,
+                    proc.vsize_bytes,
                     &base_attrs,
                 );
             }
-            if let Some(value) = proc.vm_size_kib {
-                self.record_u64(
-                    "process.linux.memory.vm_size",
-                    &self.process_vm_size_bytes,
-                    kib_to_bytes(value),
-                    &base_attrs,
-                );
-            }
-            if let Some(value) = proc.vm_rss_kib {
-                self.record_u64(
-                    "process.linux.memory.vm_rss",
-                    &self.process_vm_rss_bytes,
-                    kib_to_bytes(value),
-                    &base_attrs,
-                );
+
+            if !is_windows {
+                if let Some(value) = proc.read_bytes {
+                    self.record_u64(
+                        "process.linux.io.read_bytes",
+                        &self.process_read_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.write_bytes {
+                    self.record_u64(
+                        "process.linux.io.write_bytes",
+                        &self.process_write_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.cancelled_write_bytes {
+                    self.record_i64(
+                        "process.linux.io.cancelled_write_bytes",
+                        &self.process_cancelled_write_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_size_kib {
+                    self.record_u64(
+                        "process.linux.memory.vm_size",
+                        &self.process_vm_size_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_rss_kib {
+                    self.record_u64(
+                        "process.linux.memory.vm_rss",
+                        &self.process_vm_rss_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
             }
 
             if let Some(value) = derived.process_cpu_user_delta_secs.get(&proc.pid) {
@@ -2034,21 +2068,23 @@ impl ProcMetrics {
                     &base_attrs,
                 );
             }
-            if let Some(value) = proc.oom_score {
-                self.record_i64(
-                    "process.linux.oom_score",
-                    &self.otel_process_oom_score,
-                    value,
-                    &base_attrs,
-                );
-            }
-            if let Some(value) = proc.processor {
-                self.record_i64(
-                    "process.linux.processor",
-                    &self.otel_process_processor,
-                    value,
-                    &base_attrs,
-                );
+            if !is_windows {
+                if let Some(value) = proc.oom_score {
+                    self.record_i64(
+                        "process.linux.oom_score",
+                        &self.otel_process_oom_score,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.processor {
+                    self.record_i64(
+                        "process.linux.processor",
+                        &self.otel_process_processor,
+                        value,
+                        &base_attrs,
+                    );
+                }
             }
 
             let start_time_unix = snap.system.boot_time_epoch_secs as f64
@@ -2060,36 +2096,40 @@ impl ProcMetrics {
                 start_time_unix,
                 &base_attrs,
             );
-            self.record_u64(
-                "process.linux.start_time",
-                &self.otel_process_start_time_ticks,
-                proc.start_time_ticks,
-                &base_attrs,
-            );
-
-            if let Some(value) = proc.rt_priority {
+            if !is_windows {
                 self.record_u64(
-                    "process.linux.scheduler",
-                    &self.otel_process_sched_priority,
-                    value,
-                    &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("field", "rt_priority"),
-                    ],
+                    "process.linux.start_time",
+                    &self.otel_process_start_time_ticks,
+                    proc.start_time_ticks,
+                    &base_attrs,
                 );
             }
-            if let Some(value) = proc.policy {
-                self.record_u64(
-                    "process.linux.scheduler",
-                    &self.otel_process_sched_priority,
-                    value,
-                    &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("field", "policy"),
-                    ],
-                );
+
+            if !is_windows {
+                if let Some(value) = proc.rt_priority {
+                    self.record_u64(
+                        "process.linux.scheduler",
+                        &self.otel_process_sched_priority,
+                        value,
+                        &[
+                            pid_kv.clone(),
+                            comm_kv.clone(),
+                            KeyValue::new("field", "rt_priority"),
+                        ],
+                    );
+                }
+                if let Some(value) = proc.policy {
+                    self.record_u64(
+                        "process.linux.scheduler",
+                        &self.otel_process_sched_priority,
+                        value,
+                        &[
+                            pid_kv.clone(),
+                            comm_kv.clone(),
+                            KeyValue::new("field", "policy"),
+                        ],
+                    );
+                }
             }
 
             if proc.rss_pages >= 0 {

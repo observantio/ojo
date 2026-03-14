@@ -32,6 +32,7 @@ pub struct SoftnetCpuSnapshot {
 
 #[derive(Clone, Debug, Default)]
 pub struct SystemSnapshot {
+    pub is_windows: bool,
     pub ticks_per_second: u64,
     pub cpu_cycle_utilization: Option<f64>,
     pub boot_time_epoch_secs: u64,
@@ -152,6 +153,7 @@ pub struct CpuInfoSnapshot {
 #[derive(Clone, Debug, Default)]
 pub struct DiskSnapshot {
     pub name: String,
+    pub has_counters: bool,
     pub reads: u64,
     pub writes: u64,
     pub sectors_read: u64,

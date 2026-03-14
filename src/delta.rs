@@ -295,6 +295,9 @@ impl PrevState {
 
         for cur in &current.disks {
             if let Some(prv) = prev.disks.iter().find(|d| d.name == cur.name) {
+                if !cur.has_counters || !prv.has_counters {
+                    continue;
+                }
                 let read_sectors = cur.sectors_read.saturating_sub(prv.sectors_read);
                 let write_sectors = cur.sectors_written.saturating_sub(prv.sectors_written);
                 let read_bytes = read_sectors as f64 * sector_bytes;

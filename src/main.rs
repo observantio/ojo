@@ -85,8 +85,8 @@ fn main() -> Result<()> {
                     "force_flush ok"
                 );
                 match export_state {
-                    ExportState::Pending => info!("Connected to OTLP exporter"),
-                    ExportState::Reconnecting => info!("Reconnected to OTLP exporter"),
+                    ExportState::Pending => info!("Connected Successfully"),
+                    ExportState::Reconnecting => info!("Reconnected Successfully"),
                     ExportState::Connected => {}
                 }
                 export_state = ExportState::Connected;
