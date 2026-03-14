@@ -288,11 +288,7 @@ impl PrevState {
             ));
         }
 
-        // Disk sectors are stored in 512-byte units on both platforms:
-        // Linux /proc/diskstats always uses 512-byte sectors regardless of physical sector size.
-        // Windows wincollect stores bytes/512 in sectors_read/written to match this convention.
         let sector_bytes = 512.0_f64;
-
         for cur in &current.disks {
             if let Some(prv) = prev.disks.iter().find(|d| d.name == cur.name) {
                 if !cur.has_counters || !prv.has_counters {
