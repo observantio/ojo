@@ -16,8 +16,12 @@ use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, GetLastError, FILETIME, HANDLE, NTSTATUS};
 use windows::Win32::NetworkManagement::IpHelper::{
     FreeMibTable, GetIfTable2, GetIpStatistics, GetTcpStatistics, GetTcpTable2, GetUdpStatistics,
-    GetUdpTable, MIB_IF_TABLE2, MIB_IPSTATS_LH, MIB_TCP_STATE, MIB_TCPSTATS_LH, MIB_TCPTABLE2,
-    MIB_UDPSTATS, MIB_UDPTABLE,
+    GetUdpTable, MIB_IF_TABLE2, MIB_IPSTATS_LH, MIB_TCP_STATE, MIB_TCPROW2, MIB_TCPSTATS_LH,
+    MIB_TCPTABLE2,
+    MIB_TCP_STATE_CLOSE_WAIT, MIB_TCP_STATE_CLOSING, MIB_TCP_STATE_ESTAB,
+    MIB_TCP_STATE_FIN_WAIT1, MIB_TCP_STATE_FIN_WAIT2, MIB_TCP_STATE_LAST_ACK,
+    MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_RCVD, MIB_TCP_STATE_SYN_SENT,
+    MIB_TCP_STATE_TIME_WAIT, MIB_UDPSTATS, MIB_UDPTABLE,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, FILE_ATTRIBUTE_NORMAL,
@@ -38,8 +42,8 @@ use windows::Win32::System::SystemInformation::{
 };
 use windows::Win32::System::Threading::{
     GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, GetSystemTimes,
-    IO_COUNTERS, OpenProcess, QueryFullProcessImageNameW, PROCESS_ACCESS_RIGHTS,
-    PROCESS_NAME_FORMAT, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    IO_COUNTERS, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
 };
 
 #[link(name = "ntdll")]
@@ -50,47 +54,6 @@ unsafe extern "system" {
         system_information_length: u32,
         return_length: *mut u32,
     ) -> NTSTATUS;
-}
-
-#[link(name = "pdh")]
-unsafe extern "system" {
-    fn PdhOpenQueryW(data_source: *const u16, user_data: usize, query: *mut isize) -> u32;
-    fn PdhAddEnglishCounterW(
-        query: isize,
-        full_counter_path: *const u16,
-        user_data: usize,
-        counter: *mut isize,
-    ) -> u32;
-    fn PdhAddCounterW(
-        query: isize,
-        full_counter_path: *const u16,
-        user_data: usize,
-        counter: *mut isize,
-    ) -> u32;
-    fn PdhCollectQueryData(query: isize) -> u32;
-    fn PdhGetFormattedCounterValue(
-        counter: isize,
-        format: u32,
-        counter_type: *mut u32,
-        value: *mut PdhFmtCountervalue,
-    ) -> u32;
-    fn PdhCloseQuery(query: isize) -> u32;
-}
-
-const PDH_FMT_DOUBLE: u32 = 0x00000200;
-const PDH_ERROR_SUCCESS: u32 = 0;
-
-#[repr(C)]
-union PdhFmtCountervalueUnion {
-    double_value: f64,
-    large_value: i64,
-    long_value: i32,
-}
-
-#[repr(C)]
-struct PdhFmtCountervalue {
-    cstatus: u32,
-    value: PdhFmtCountervalueUnion,
 }
 
 const STATUS_INFO_LENGTH_MISMATCH: i32 = -1073741820i32;
@@ -387,7 +350,7 @@ fn page_size_from_nt() -> u64 {
         )
     };
     if nt_success(status) && ret_len >= size_of::<SystemBasicInformation>() as u32 {
-        let info = unsafe { &*(buf.as_ptr() as *const SystemBasicInformation) };
+        let info = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemBasicInformation) };
         if info.page_size > 0 {
             return info.page_size as u64;
         }
@@ -411,7 +374,7 @@ fn cpu_count_from_nt() -> usize {
         )
     };
     if nt_success(status) && ret_len >= size_of::<SystemBasicInformation>() as u32 {
-        let info = unsafe { &*(buf.as_ptr() as *const SystemBasicInformation) };
+        let info = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemBasicInformation) };
         if info.number_of_processors > 0 {
             return info.number_of_processors as usize;
         }
@@ -435,7 +398,8 @@ fn boot_time_from_nt() -> Option<u64> {
         )
     };
     if nt_success(status) && ret_len >= 16 {
-        let info = unsafe { &*(buf.as_ptr() as *const SystemTimeOfDayInformation) };
+        let info =
+            unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemTimeOfDayInformation) };
         let boot_100ns = nt_time_100ns(info.boot_time.quad_part);
         if boot_100ns > WINDOWS_TO_UNIX_EPOCH_100NS {
             return Some(filetime_100ns_to_unix_secs(boot_100ns));
@@ -468,6 +432,88 @@ fn boot_time_filetime_100ns() -> u64 {
 
 fn process_basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
+}
+
+fn open_process_limited(pid: u32) -> Option<HANDLE> {
+    unsafe {
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid)
+            .ok()
+            .or_else(|| OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok())
+    }
+}
+
+fn process_image_name(handle: HANDLE) -> Option<String> {
+    let mut buf = vec![0u16; 32_768];
+    let mut len = buf.len() as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+        .ok()?;
+    }
+    Some(String::from_utf16_lossy(&buf[..len as usize]))
+}
+
+fn get_process_times_100ns(handle: HANDLE) -> Option<(u64, u64, u64)> {
+    unsafe {
+        let mut ctime = FILETIME::default();
+        let mut etime = FILETIME::default();
+        let mut ktime = FILETIME::default();
+        let mut utime = FILETIME::default();
+        if GetProcessTimes(handle, &mut ctime, &mut etime, &mut ktime, &mut utime).is_err() {
+            return None;
+        }
+        Some((
+            filetime_to_u64(utime),
+            filetime_to_u64(ktime),
+            filetime_to_u64(ctime),
+        ))
+    }
+}
+
+fn get_process_mem(handle: HANDLE) -> Option<PROCESS_MEMORY_COUNTERS_EX> {
+    let mut mem = PROCESS_MEMORY_COUNTERS_EX::default();
+    mem.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+    unsafe {
+        if GetProcessMemoryInfo(
+            handle,
+            &mut mem as *mut _ as *mut _,
+            size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+        )
+        .is_err()
+        {
+            return None;
+        }
+    }
+    Some(mem)
+}
+
+fn get_process_io(handle: HANDLE) -> Option<IO_COUNTERS> {
+    let mut io = IO_COUNTERS::default();
+    unsafe {
+        if GetProcessIoCounters(handle, &mut io).is_err() {
+            return None;
+        }
+    }
+    Some(io)
+}
+
+fn get_process_handle_count_safe(handle: HANDLE) -> Option<u64> {
+    let mut count = 0u32;
+    unsafe {
+        if GetProcessHandleCount(handle, &mut count).is_err() {
+            return None;
+        }
+    }
+    Some(count as u64)
+}
+
+fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
+    let pc = unsafe { GetPriorityClass(handle) };
+    if pc == 0 { None } else { Some(pc as u64) }
 }
 
 fn query_system_information(class: u32) -> Result<Vec<u8>> {
@@ -548,7 +594,7 @@ fn collect_net_snmp() -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
     unsafe {
         let mut ip = MIB_IPSTATS_LH::default();
-        if GetIpStatistics(&mut ip).is_ok() {
+        if GetIpStatistics(&mut ip) == 0 {
             out.insert("Ip.InReceives".to_string(), ip.dwInReceives as u64);
             out.insert("Ip.InHdrErrors".to_string(), ip.dwInHdrErrors as u64);
             out.insert("Ip.InAddrErrors".to_string(), ip.dwInAddrErrors as u64);
@@ -569,7 +615,7 @@ fn collect_net_snmp() -> BTreeMap<String, u64> {
         }
 
         let mut tcp = MIB_TCPSTATS_LH::default();
-        if GetTcpStatistics(&mut tcp).is_ok() {
+        if GetTcpStatistics(&mut tcp) == 0 {
             out.insert("Tcp.ActiveOpens".to_string(), tcp.dwActiveOpens as u64);
             out.insert("Tcp.PassiveOpens".to_string(), tcp.dwPassiveOpens as u64);
             out.insert("Tcp.AttemptFails".to_string(), tcp.dwAttemptFails as u64);
@@ -583,7 +629,7 @@ fn collect_net_snmp() -> BTreeMap<String, u64> {
         }
 
         let mut udp = MIB_UDPSTATS::default();
-        if GetUdpStatistics(&mut udp).is_ok() {
+        if GetUdpStatistics(&mut udp) == 0 {
             out.insert("Udp.InDatagrams".to_string(), udp.dwInDatagrams as u64);
             out.insert("Udp.NoPorts".to_string(), udp.dwNoPorts as u64);
             out.insert("Udp.InErrors".to_string(), udp.dwInErrors as u64);
@@ -598,13 +644,14 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
     unsafe {
         let mut size = 0u32;
-        GetTcpTable2(null_mut(), &mut size, 0);
+        GetTcpTable2(None, &mut size, false);
         if size > 0 {
             let mut buf = vec![0u8; size as usize];
-            if GetTcpTable2(buf.as_mut_ptr() as *mut MIB_TCPTABLE2, &mut size, 0).is_ok() {
-                let table = &*(buf.as_ptr() as *const MIB_TCPTABLE2);
-                let count = table.dwNumEntries as usize;
-                let rows = slice::from_raw_parts(table.table.as_ptr(), count);
+            if GetTcpTable2(Some(buf.as_mut_ptr() as *mut MIB_TCPTABLE2), &mut size, false) == 0
+            {
+                let table_ptr = buf.as_ptr() as *const MIB_TCPTABLE2;
+                let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as usize;
+                let rows_ptr = std::ptr::addr_of!((*table_ptr).table) as *const MIB_TCPROW2;
                 let mut established = 0u64;
                 let mut listen = 0u64;
                 let mut time_wait = 0u64;
@@ -615,18 +662,19 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
                 let mut fin_wait2 = 0u64;
                 let mut closing = 0u64;
                 let mut last_ack = 0u64;
-                for row in rows {
+                for i in 0..count {
+                    let row = rows_ptr.add(i).read_unaligned();
                     match MIB_TCP_STATE(row.dwState as i32) {
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_ESTAB => established += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_LISTEN => listen += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_TIME_WAIT => time_wait += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_CLOSE_WAIT => close_wait += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_SYN_SENT => syn_sent += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_SYN_RCVD => syn_recv += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_FIN_WAIT1 => fin_wait1 += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_FIN_WAIT2 => fin_wait2 += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_CLOSING => closing += 1,
-                        s if s == MIB_TCP_STATE::MIB_TCP_STATE_LAST_ACK => last_ack += 1,
+                        s if s == MIB_TCP_STATE_ESTAB => established += 1,
+                        s if s == MIB_TCP_STATE_LISTEN => listen += 1,
+                        s if s == MIB_TCP_STATE_TIME_WAIT => time_wait += 1,
+                        s if s == MIB_TCP_STATE_CLOSE_WAIT => close_wait += 1,
+                        s if s == MIB_TCP_STATE_SYN_SENT => syn_sent += 1,
+                        s if s == MIB_TCP_STATE_SYN_RCVD => syn_recv += 1,
+                        s if s == MIB_TCP_STATE_FIN_WAIT1 => fin_wait1 += 1,
+                        s if s == MIB_TCP_STATE_FIN_WAIT2 => fin_wait2 += 1,
+                        s if s == MIB_TCP_STATE_CLOSING => closing += 1,
+                        s if s == MIB_TCP_STATE_LAST_ACK => last_ack += 1,
                         _ => {}
                     }
                 }
@@ -646,12 +694,13 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
         }
 
         let mut size = 0u32;
-        GetUdpTable(null_mut(), &mut size, 0);
+        GetUdpTable(None, &mut size, false);
         if size > 0 {
             let mut buf = vec![0u8; size as usize];
-            if GetUdpTable(buf.as_mut_ptr() as *mut MIB_UDPTABLE, &mut size, 0).is_ok() {
-                let table = &*(buf.as_ptr() as *const MIB_UDPTABLE);
-                out.insert("v4.udp.inuse".to_string(), table.dwNumEntries as u64);
+            if GetUdpTable(Some(buf.as_mut_ptr() as *mut MIB_UDPTABLE), &mut size, false) == 0 {
+                let table_ptr = buf.as_ptr() as *const MIB_UDPTABLE;
+                let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as u64;
+                out.insert("v4.udp.inuse".to_string(), count);
             }
         }
     }
@@ -737,7 +786,7 @@ fn query_seek_penalty(drive_letter: char) -> Option<bool> {
         )
         .ok()?;
         let mut query = STORAGE_PROPERTY_QUERY {
-            PropertyId: STORAGE_PROPERTY_ID(STORAGE_PROPERTY_ID_SEEK_PENALTY),
+            PropertyId: STORAGE_PROPERTY_ID(STORAGE_PROPERTY_ID_SEEK_PENALTY as i32),
             QueryType: STORAGE_QUERY_TYPE(0),
             AdditionalParameters: [0],
         };

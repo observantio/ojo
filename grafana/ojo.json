@@ -176,7 +176,7 @@
                 }
               ]
             },
-            "unit": "bytes"
+            "unit": "short"
           },
           "overrides": []
         },
@@ -274,7 +274,7 @@
                 }
               ]
             },
-            "unit": "bytes"
+            "unit": "percentunit"
           },
           "overrides": []
         },
