@@ -892,6 +892,7 @@ fn query_disk_performance(drive_root: &str) -> Option<DiskPerfData> {
         let read_time_ms = nt_time_100ns(raw.read_time.quad_part) / 10_000;
         let write_time_ms = nt_time_100ns(raw.write_time.quad_part) / 10_000;
         let query_time_100ns = nt_time_100ns(raw.query_time.quad_part);
+        let boot_time_100ns = boot_time_filetime_100ns();
         let idle_time_100ns = nt_time_100ns(raw.idle_time.quad_part);
 
         Some(DiskPerfData {
@@ -902,7 +903,13 @@ fn query_disk_performance(drive_root: &str) -> Option<DiskPerfData> {
             time_reading_ms: read_time_ms,
             time_writing_ms: write_time_ms,
             queue_depth: raw.queue_depth as u64,
-            time_in_progress_ms: query_time_100ns.saturating_sub(idle_time_100ns) / 10_000,
+            // DiskPerformance::QueryTime is absolute NT time (since 1601). Convert
+            // to time-since-boot first so exported cumulative busy time does not
+            // carry a 1601-epoch offset (which appears as ~425 years in dashboards).
+            time_in_progress_ms: query_time_100ns
+                .saturating_sub(boot_time_100ns)
+                .saturating_sub(idle_time_100ns)
+                / 10_000,
             weighted_time_in_progress_ms: read_time_ms.saturating_add(write_time_ms),
         })
     }

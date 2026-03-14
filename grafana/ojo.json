@@ -2267,7 +2267,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_start_time_seconds{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_start_time_seconds{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"} * 1000",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -3312,7 +3312,7 @@
                 }
               ]
             },
-            "unit": "bytes"
+            "unit": "percentunit"
           },
           "overrides": []
         },
@@ -3704,7 +3704,7 @@
                 }
               ]
             },
-            "unit": "ms"
+            "unit": "short"
           },
           "overrides": []
         },
@@ -5403,14 +5403,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_disk_weighted_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
+            "expr": "system_disk_queue_depth{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Weighted Time In Progress Rate",
+        "title": "System Disk Avg Queue Depth",
         "type": "timeseries"
       },
       {
