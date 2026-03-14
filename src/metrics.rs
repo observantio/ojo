@@ -1,6 +1,6 @@
 use crate::catalog::{
-    buddyinfo_attrs, interrupts_attrs, net_snmp_attrs, pressure_attrs,
-    pressure_stall_time_attrs, softirqs_attrs, vmstat_attrs, zoneinfo_attrs,
+    buddyinfo_attrs, interrupts_attrs, net_snmp_attrs, pressure_attrs, pressure_stall_time_attrs,
+    softirqs_attrs, vmstat_attrs, zoneinfo_attrs,
 };
 use crate::delta::DerivedMetrics;
 use crate::model::Snapshot;
@@ -419,32 +419,98 @@ impl ProcMetrics {
             load_runnable: meter.u64_gauge("system.linux.load.runnable").build(),
             load_entities: meter.u64_gauge("system.linux.load.entities").build(),
             load_latest_pid: meter.u64_gauge("system.linux.load.latest_pid").build(),
-            mem_total_bytes: meter.u64_gauge("system.memory.total").with_unit("By").build(),
-            mem_free_bytes: meter.u64_gauge("system.memory.free").with_unit("By").build(),
-            mem_available_bytes: meter.u64_gauge("system.memory.available").with_unit("By").build(),
-            mem_buffers_bytes: meter.u64_gauge("system.memory.buffers").with_unit("By").build(),
-            mem_cached_bytes: meter.u64_gauge("system.memory.cached").with_unit("By").build(),
-            mem_active_bytes: meter.u64_gauge("system.memory.active").with_unit("By").build(),
-            mem_inactive_bytes: meter.u64_gauge("system.memory.inactive").with_unit("By").build(),
-            mem_anon_bytes: meter.u64_gauge("system.memory.anon").with_unit("By").build(),
-            mem_mapped_bytes: meter.u64_gauge("system.memory.mapped").with_unit("By").build(),
-            mem_shmem_bytes: meter.u64_gauge("system.memory.shmem").with_unit("By").build(),
+            mem_total_bytes: meter
+                .u64_gauge("system.memory.total")
+                .with_unit("By")
+                .build(),
+            mem_free_bytes: meter
+                .u64_gauge("system.memory.free")
+                .with_unit("By")
+                .build(),
+            mem_available_bytes: meter
+                .u64_gauge("system.memory.available")
+                .with_unit("By")
+                .build(),
+            mem_buffers_bytes: meter
+                .u64_gauge("system.memory.buffers")
+                .with_unit("By")
+                .build(),
+            mem_cached_bytes: meter
+                .u64_gauge("system.memory.cached")
+                .with_unit("By")
+                .build(),
+            mem_active_bytes: meter
+                .u64_gauge("system.memory.active")
+                .with_unit("By")
+                .build(),
+            mem_inactive_bytes: meter
+                .u64_gauge("system.memory.inactive")
+                .with_unit("By")
+                .build(),
+            mem_anon_bytes: meter
+                .u64_gauge("system.memory.anon")
+                .with_unit("By")
+                .build(),
+            mem_mapped_bytes: meter
+                .u64_gauge("system.memory.mapped")
+                .with_unit("By")
+                .build(),
+            mem_shmem_bytes: meter
+                .u64_gauge("system.memory.shmem")
+                .with_unit("By")
+                .build(),
             swap_total_bytes: meter.u64_gauge("system.swap.total").with_unit("By").build(),
             swap_free_bytes: meter.u64_gauge("system.swap.free").with_unit("By").build(),
-            swap_cached_bytes: meter.u64_gauge("system.swap.cached").with_unit("By").build(),
-            mem_dirty_bytes: meter.u64_gauge("system.memory.dirty").with_unit("By").build(),
-            mem_writeback_bytes: meter.u64_gauge("system.memory.writeback").with_unit("By").build(),
-            mem_slab_bytes: meter.u64_gauge("system.memory.slab").with_unit("By").build(),
-            mem_sreclaimable_bytes: meter.u64_gauge("system.memory.sreclaimable").with_unit("By").build(),
-            mem_sunreclaim_bytes: meter.u64_gauge("system.memory.sunreclaim").with_unit("By").build(),
-            mem_page_tables_bytes: meter.u64_gauge("system.memory.page_tables").with_unit("By").build(),
-            mem_commit_limit_bytes: meter.u64_gauge("system.memory.commit_limit").with_unit("By").build(),
-            mem_committed_as_bytes: meter.u64_gauge("system.memory.committed_as").with_unit("By").build(),
-            mem_kernel_stack_bytes: meter.u64_gauge("system.memory.kernel_stack").with_unit("By").build(),
-            mem_anon_hugepages_bytes: meter.u64_gauge("system.memory.anon_hugepages").with_unit("By").build(),
+            swap_cached_bytes: meter
+                .u64_gauge("system.swap.cached")
+                .with_unit("By")
+                .build(),
+            mem_dirty_bytes: meter
+                .u64_gauge("system.memory.dirty")
+                .with_unit("By")
+                .build(),
+            mem_writeback_bytes: meter
+                .u64_gauge("system.memory.writeback")
+                .with_unit("By")
+                .build(),
+            mem_slab_bytes: meter
+                .u64_gauge("system.memory.slab")
+                .with_unit("By")
+                .build(),
+            mem_sreclaimable_bytes: meter
+                .u64_gauge("system.memory.sreclaimable")
+                .with_unit("By")
+                .build(),
+            mem_sunreclaim_bytes: meter
+                .u64_gauge("system.memory.sunreclaim")
+                .with_unit("By")
+                .build(),
+            mem_page_tables_bytes: meter
+                .u64_gauge("system.memory.page_tables")
+                .with_unit("By")
+                .build(),
+            mem_commit_limit_bytes: meter
+                .u64_gauge("system.memory.commit_limit")
+                .with_unit("By")
+                .build(),
+            mem_committed_as_bytes: meter
+                .u64_gauge("system.memory.committed_as")
+                .with_unit("By")
+                .build(),
+            mem_kernel_stack_bytes: meter
+                .u64_gauge("system.memory.kernel_stack")
+                .with_unit("By")
+                .build(),
+            mem_anon_hugepages_bytes: meter
+                .u64_gauge("system.memory.anon_hugepages")
+                .with_unit("By")
+                .build(),
             mem_hugepages_total: meter.u64_gauge("system.memory.hugepages_total").build(),
             mem_hugepages_free: meter.u64_gauge("system.memory.hugepages_free").build(),
-            mem_hugepage_size_bytes: meter.u64_gauge("system.memory.hugepage_size").with_unit("By").build(),
+            mem_hugepage_size_bytes: meter
+                .u64_gauge("system.memory.hugepage_size")
+                .with_unit("By")
+                .build(),
             mem_used_ratio: meter.f64_gauge("system.memory.used_ratio").build(),
             swap_used_ratio: meter.f64_gauge("system.swap.used_ratio").build(),
             mem_dirty_writeback_ratio: meter
@@ -467,12 +533,24 @@ impl ProcMetrics {
             per_cpu_iowait: meter.f64_gauge("system.cpu.core.iowait_ratio").build(),
             per_cpu_system: meter.f64_gauge("system.cpu.core.system_ratio").build(),
             vmstat_value: meter.i64_gauge("system.linux.vmstat").build(),
-            swap_device_size: meter.u64_gauge("system.linux.swap.device.size").with_unit("By").build(),
-            swap_device_used: meter.u64_gauge("system.linux.swap.device.used").with_unit("By").build(),
+            swap_device_size: meter
+                .u64_gauge("system.linux.swap.device.size")
+                .with_unit("By")
+                .build(),
+            swap_device_used: meter
+                .u64_gauge("system.linux.swap.device.used")
+                .with_unit("By")
+                .build(),
             swap_device_priority: meter.i64_gauge("system.linux.swap.device.priority").build(),
             filesystem_mount_state: meter.u64_gauge("system.filesystem.mount.state").build(),
-            cpu_frequency_hz: meter.f64_gauge("system.cpu.frequency").with_unit("Hz").build(),
-            cpu_cache_size: meter.u64_gauge("system.cpu.cache.size").with_unit("By").build(),
+            cpu_frequency_hz: meter
+                .f64_gauge("system.cpu.frequency")
+                .with_unit("Hz")
+                .build(),
+            cpu_cache_size: meter
+                .u64_gauge("system.cpu.cache.size")
+                .with_unit("By")
+                .build(),
             cpu_info_state: meter.u64_gauge("system.cpu.info").build(),
             zoneinfo_value: meter.u64_gauge("system.linux.zoneinfo").build(),
             buddyinfo_blocks: meter.u64_gauge("system.linux.buddy.blocks").build(),
@@ -501,9 +579,15 @@ impl ProcMetrics {
             softnet_time_squeezed_per_sec: meter
                 .f64_gauge("system.linux.net.softnet.time_squeezed_per_sec")
                 .build(),
-            softnet_drop_ratio: meter.f64_gauge("system.linux.net.softnet.drop_ratio").build(),
-            softnet_cpu_processed: meter.u64_gauge("system.linux.net.softnet.cpu.processed").build(),
-            softnet_cpu_dropped: meter.u64_gauge("system.linux.net.softnet.cpu.dropped").build(),
+            softnet_drop_ratio: meter
+                .f64_gauge("system.linux.net.softnet.drop_ratio")
+                .build(),
+            softnet_cpu_processed: meter
+                .u64_gauge("system.linux.net.softnet.cpu.processed")
+                .build(),
+            softnet_cpu_dropped: meter
+                .u64_gauge("system.linux.net.softnet.cpu.dropped")
+                .build(),
             softnet_cpu_time_squeezed: meter
                 .u64_gauge("system.linux.net.softnet.cpu.time_squeezed")
                 .build(),
@@ -513,26 +597,55 @@ impl ProcMetrics {
             disk_reads_per_sec: meter.f64_gauge("system.disk.read_ops_per_sec").build(),
             disk_writes_per_sec: meter.f64_gauge("system.disk.write_ops_per_sec").build(),
             disk_total_iops: meter.f64_gauge("system.disk.ops_per_sec").build(),
-            disk_read_await_ms: meter.f64_gauge("system.disk.read_await").with_unit("ms").build(),
-            disk_write_await_ms: meter.f64_gauge("system.disk.write_await").with_unit("ms").build(),
-            disk_avg_read_size_bytes: meter.f64_gauge("system.disk.avg_read_size").with_unit("By").build(),
-            disk_avg_write_size_bytes: meter.f64_gauge("system.disk.avg_write_size").with_unit("By").build(),
+            disk_read_await_ms: meter
+                .f64_gauge("system.disk.read_await")
+                .with_unit("ms")
+                .build(),
+            disk_write_await_ms: meter
+                .f64_gauge("system.disk.write_await")
+                .with_unit("ms")
+                .build(),
+            disk_avg_read_size_bytes: meter
+                .f64_gauge("system.disk.avg_read_size")
+                .with_unit("By")
+                .build(),
+            disk_avg_write_size_bytes: meter
+                .f64_gauge("system.disk.avg_write_size")
+                .with_unit("By")
+                .build(),
             disk_utilization: meter.f64_gauge("system.disk.utilization").build(),
             disk_queue_depth: meter.f64_gauge("system.disk.queue_depth").build(),
-            disk_logical_block_size: meter.u64_gauge("system.disk.logical_block_size").with_unit("By").build(),
-            disk_physical_block_size: meter.u64_gauge("system.disk.physical_block_size").with_unit("By").build(),
+            disk_logical_block_size: meter
+                .u64_gauge("system.disk.logical_block_size")
+                .with_unit("By")
+                .build(),
+            disk_physical_block_size: meter
+                .u64_gauge("system.disk.physical_block_size")
+                .with_unit("By")
+                .build(),
             disk_rotational: meter.u64_gauge("system.disk.rotational").build(),
             disk_in_progress: meter.u64_gauge("system.disk.io_in_progress").build(),
-            disk_time_reading_ms: meter.u64_gauge("system.disk.time_reading").with_unit("ms").build(),
-            disk_time_writing_ms: meter.u64_gauge("system.disk.time_writing").with_unit("ms").build(),
-            disk_time_in_progress_ms: meter.u64_gauge("system.disk.time_in_progress").with_unit("ms").build(),
+            disk_time_reading_ms: meter
+                .u64_gauge("system.disk.time_reading")
+                .with_unit("ms")
+                .build(),
+            disk_time_writing_ms: meter
+                .u64_gauge("system.disk.time_writing")
+                .with_unit("ms")
+                .build(),
+            disk_time_in_progress_ms: meter
+                .u64_gauge("system.disk.time_in_progress")
+                .with_unit("ms")
+                .build(),
             disk_weighted_time_in_progress_ms: meter
                 .u64_gauge("system.disk.weighted_time_in_progress")
                 .with_unit("ms")
                 .build(),
             net_rx_bps: meter.f64_gauge("system.network.rx_bytes_per_sec").build(),
             net_tx_bps: meter.f64_gauge("system.network.tx_bytes_per_sec").build(),
-            net_total_bps: meter.f64_gauge("system.network.total_bytes_per_sec").build(),
+            net_total_bps: meter
+                .f64_gauge("system.network.total_bytes_per_sec")
+                .build(),
             net_rx_pps: meter.f64_gauge("system.network.rx_packets_per_sec").build(),
             net_tx_pps: meter.f64_gauge("system.network.tx_packets_per_sec").build(),
             net_rx_errs_per_sec: meter.f64_gauge("system.network.rx_errors_per_sec").build(),
@@ -560,19 +673,31 @@ impl ProcMetrics {
             net_tx_carrier: meter.u64_gauge("system.network.tx_carrier").build(),
             net_tx_compressed: meter.u64_gauge("system.network.tx_compressed").build(),
             process_cpu_ratio: meter.f64_gauge("process.cpu.utilization").build(),
-            process_rss_bytes: meter.u64_gauge("process.memory.rss").with_unit("By").build(),
+            process_rss_bytes: meter
+                .u64_gauge("process.memory.rss")
+                .with_unit("By")
+                .build(),
             process_ppid: meter.i64_gauge("process.parent_pid").build(),
             process_num_threads: meter.i64_gauge("process.thread.count").build(),
             process_priority: meter.i64_gauge("process.linux.priority").build(),
             process_nice: meter.i64_gauge("process.linux.nice").build(),
-            process_vsize_bytes: meter.u64_gauge("process.linux.memory.vsize").with_unit("By").build(),
+            process_vsize_bytes: meter
+                .u64_gauge("process.linux.memory.vsize")
+                .with_unit("By")
+                .build(),
             process_read_bytes: meter.u64_gauge("process.linux.io.read_bytes").build(),
             process_write_bytes: meter.u64_gauge("process.linux.io.write_bytes").build(),
             process_cancelled_write_bytes: meter
                 .i64_gauge("process.linux.io.cancelled_write_bytes")
                 .build(),
-            process_vm_size_bytes: meter.u64_gauge("process.linux.memory.vm_size").with_unit("By").build(),
-            process_vm_rss_bytes: meter.u64_gauge("process.linux.memory.vm_rss").with_unit("By").build(),
+            process_vm_size_bytes: meter
+                .u64_gauge("process.linux.memory.vm_size")
+                .with_unit("By")
+                .build(),
+            process_vm_rss_bytes: meter
+                .u64_gauge("process.linux.memory.vm_rss")
+                .with_unit("By")
+                .build(),
         }
     }
 
@@ -628,7 +753,12 @@ impl ProcMetrics {
     }
 
     fn record_system(&self, snap: &Snapshot, derived: &DerivedMetrics) {
-        self.record_f64("system.uptime", &self.otel_system_uptime, snap.system.uptime_secs, &[]);
+        self.record_f64(
+            "system.uptime",
+            &self.otel_system_uptime,
+            snap.system.uptime_secs,
+            &[],
+        );
         self.record_u64(
             "system.processes.count",
             &self.otel_system_processes,
@@ -647,7 +777,12 @@ impl ProcMetrics {
             snap.system.procs_blocked as u64,
             &[KeyValue::new("state", "blocked")],
         );
-        self.record_u64("system.linux.pid.max", &self.otel_system_pid_max, snap.system.pid_max, &[]);
+        self.record_u64(
+            "system.linux.pid.max",
+            &self.otel_system_pid_max,
+            snap.system.pid_max,
+            &[],
+        );
         self.record_u64(
             "system.linux.entropy",
             &self.otel_system_entropy,
@@ -660,8 +795,18 @@ impl ProcMetrics {
             snap.system.entropy_pool_size_bits,
             &[KeyValue::new("state", "pool_size")],
         );
-        self.add_u64("system.cpu.interrupts", &self.otel_system_interrupts, derived.interrupts_delta, &[]);
-        self.add_u64("system.cpu.softirqs", &self.otel_system_softirqs, derived.softirqs_delta, &[]);
+        self.add_u64(
+            "system.cpu.interrupts",
+            &self.otel_system_interrupts,
+            derived.interrupts_delta,
+            &[],
+        );
+        self.add_u64(
+            "system.cpu.softirqs",
+            &self.otel_system_softirqs,
+            derived.softirqs_delta,
+            &[],
+        );
         self.add_u64(
             "system.context_switches",
             &self.otel_system_context_switches,
@@ -718,7 +863,12 @@ impl ProcMetrics {
             derived.swap_outs_delta,
             &[KeyValue::new("direction", "out")],
         );
-        self.record_f64("system.cpu.utilization", &self.cpu_utilization, derived.cpu_utilization_ratio, &[]);
+        self.record_f64(
+            "system.cpu.utilization",
+            &self.cpu_utilization,
+            derived.cpu_utilization_ratio,
+            &[],
+        );
         for (cpu, ratio) in &derived.per_cpu_utilization_ratio {
             self.record_f64(
                 "system.cpu.core.utilization",
@@ -746,49 +896,214 @@ impl ProcMetrics {
     }
 
     fn record_load(&self, snap: &Snapshot) {
-        self.record_f64("system.cpu.load_average.1m", &self.load_1m, snap.load.one, &[]);
-        self.record_f64("system.cpu.load_average.5m", &self.load_5m, snap.load.five, &[]);
-        self.record_f64("system.cpu.load_average.15m", &self.load_15m, snap.load.fifteen, &[]);
-        self.record_u64("system.linux.load.runnable", &self.load_runnable, snap.load.runnable as u64, &[]);
-        self.record_u64("system.linux.load.entities", &self.load_entities, snap.load.entities as u64, &[]);
-        self.record_u64("system.linux.load.latest_pid", &self.load_latest_pid, snap.load.latest_pid as u64, &[]);
+        self.record_f64(
+            "system.cpu.load_average.1m",
+            &self.load_1m,
+            snap.load.one,
+            &[],
+        );
+        self.record_f64(
+            "system.cpu.load_average.5m",
+            &self.load_5m,
+            snap.load.five,
+            &[],
+        );
+        self.record_f64(
+            "system.cpu.load_average.15m",
+            &self.load_15m,
+            snap.load.fifteen,
+            &[],
+        );
+        self.record_u64(
+            "system.linux.load.runnable",
+            &self.load_runnable,
+            snap.load.runnable as u64,
+            &[],
+        );
+        self.record_u64(
+            "system.linux.load.entities",
+            &self.load_entities,
+            snap.load.entities as u64,
+            &[],
+        );
+        self.record_u64(
+            "system.linux.load.latest_pid",
+            &self.load_latest_pid,
+            snap.load.latest_pid as u64,
+            &[],
+        );
     }
 
     fn record_memory(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         let m = &snap.memory;
-        self.record_u64("system.memory.total", &self.mem_total_bytes, m.mem_total_bytes, &[]);
-        self.record_u64("system.memory.free", &self.mem_free_bytes, m.mem_free_bytes, &[]);
-        self.record_u64("system.memory.available", &self.mem_available_bytes, m.mem_available_bytes, &[]);
-        self.record_u64("system.memory.buffers", &self.mem_buffers_bytes, m.buffers_bytes, &[]);
-        self.record_u64("system.memory.cached", &self.mem_cached_bytes, m.cached_bytes, &[]);
-        self.record_u64("system.memory.active", &self.mem_active_bytes, m.active_bytes, &[]);
-        self.record_u64("system.memory.inactive", &self.mem_inactive_bytes, m.inactive_bytes, &[]);
-        self.record_u64("system.memory.anon", &self.mem_anon_bytes, m.anon_pages_bytes, &[]);
-        self.record_u64("system.memory.mapped", &self.mem_mapped_bytes, m.mapped_bytes, &[]);
-        self.record_u64("system.memory.shmem", &self.mem_shmem_bytes, m.shmem_bytes, &[]);
-        self.record_u64("system.swap.total", &self.swap_total_bytes, m.swap_total_bytes, &[]);
-        self.record_u64("system.swap.free", &self.swap_free_bytes, m.swap_free_bytes, &[]);
-        self.record_u64("system.swap.cached", &self.swap_cached_bytes, m.swap_cached_bytes, &[]);
-        self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, m.dirty_bytes, &[]);
-        self.record_u64("system.memory.writeback", &self.mem_writeback_bytes, m.writeback_bytes, &[]);
-        self.record_u64("system.memory.slab", &self.mem_slab_bytes, m.slab_bytes, &[]);
-        self.record_u64("system.memory.sreclaimable", &self.mem_sreclaimable_bytes, m.sreclaimable_bytes, &[]);
-        self.record_u64("system.memory.sunreclaim", &self.mem_sunreclaim_bytes, m.sunreclaim_bytes, &[]);
-        self.record_u64("system.memory.page_tables", &self.mem_page_tables_bytes, m.page_tables_bytes, &[]);
-        self.record_u64("system.memory.commit_limit", &self.mem_commit_limit_bytes, m.commit_limit_bytes, &[]);
-        self.record_u64("system.memory.committed_as", &self.mem_committed_as_bytes, m.committed_as_bytes, &[]);
-        self.record_u64("system.memory.kernel_stack", &self.mem_kernel_stack_bytes, m.kernel_stack_bytes, &[]);
+        self.record_u64(
+            "system.memory.total",
+            &self.mem_total_bytes,
+            m.mem_total_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.free",
+            &self.mem_free_bytes,
+            m.mem_free_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.available",
+            &self.mem_available_bytes,
+            m.mem_available_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.buffers",
+            &self.mem_buffers_bytes,
+            m.buffers_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.cached",
+            &self.mem_cached_bytes,
+            m.cached_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.active",
+            &self.mem_active_bytes,
+            m.active_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.inactive",
+            &self.mem_inactive_bytes,
+            m.inactive_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.anon",
+            &self.mem_anon_bytes,
+            m.anon_pages_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.mapped",
+            &self.mem_mapped_bytes,
+            m.mapped_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.shmem",
+            &self.mem_shmem_bytes,
+            m.shmem_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.swap.total",
+            &self.swap_total_bytes,
+            m.swap_total_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.swap.free",
+            &self.swap_free_bytes,
+            m.swap_free_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.swap.cached",
+            &self.swap_cached_bytes,
+            m.swap_cached_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.dirty",
+            &self.mem_dirty_bytes,
+            m.dirty_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.writeback",
+            &self.mem_writeback_bytes,
+            m.writeback_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.slab",
+            &self.mem_slab_bytes,
+            m.slab_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.sreclaimable",
+            &self.mem_sreclaimable_bytes,
+            m.sreclaimable_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.sunreclaim",
+            &self.mem_sunreclaim_bytes,
+            m.sunreclaim_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.page_tables",
+            &self.mem_page_tables_bytes,
+            m.page_tables_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.commit_limit",
+            &self.mem_commit_limit_bytes,
+            m.commit_limit_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.committed_as",
+            &self.mem_committed_as_bytes,
+            m.committed_as_bytes,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.kernel_stack",
+            &self.mem_kernel_stack_bytes,
+            m.kernel_stack_bytes,
+            &[],
+        );
         self.record_u64(
             "system.memory.anon_hugepages",
             &self.mem_anon_hugepages_bytes,
             m.anon_hugepages_bytes,
             &[],
         );
-        self.record_u64("system.memory.hugepages_total", &self.mem_hugepages_total, m.hugepages_total, &[]);
-        self.record_u64("system.memory.hugepages_free", &self.mem_hugepages_free, m.hugepages_free, &[]);
-        self.record_u64("system.memory.hugepage_size", &self.mem_hugepage_size_bytes, m.hugepage_size_bytes, &[]);
-        self.record_f64("system.memory.used_ratio", &self.mem_used_ratio, derived.memory_used_ratio, &[]);
-        self.record_f64("system.swap.used_ratio", &self.swap_used_ratio, derived.swap_used_ratio, &[]);
+        self.record_u64(
+            "system.memory.hugepages_total",
+            &self.mem_hugepages_total,
+            m.hugepages_total,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.hugepages_free",
+            &self.mem_hugepages_free,
+            m.hugepages_free,
+            &[],
+        );
+        self.record_u64(
+            "system.memory.hugepage_size",
+            &self.mem_hugepage_size_bytes,
+            m.hugepage_size_bytes,
+            &[],
+        );
+        self.record_f64(
+            "system.memory.used_ratio",
+            &self.mem_used_ratio,
+            derived.memory_used_ratio,
+            &[],
+        );
+        self.record_f64(
+            "system.swap.used_ratio",
+            &self.swap_used_ratio,
+            derived.swap_used_ratio,
+            &[],
+        );
         self.record_f64(
             "system.memory.dirty_writeback_ratio",
             &self.mem_dirty_writeback_ratio,
@@ -798,26 +1113,60 @@ impl ProcMetrics {
     }
 
     fn record_paging(&self, derived: &DerivedMetrics) {
-        self.record_f64("system.paging.faults_per_sec", &self.page_faults_per_sec, derived.page_faults_per_sec, &[]);
+        self.record_f64(
+            "system.paging.faults_per_sec",
+            &self.page_faults_per_sec,
+            derived.page_faults_per_sec,
+            &[],
+        );
         self.record_f64(
             "system.paging.major_faults_per_sec",
             &self.major_page_faults_per_sec,
             derived.major_page_faults_per_sec,
             &[],
         );
-        self.record_f64("system.paging.page_ins_per_sec", &self.page_ins_per_sec, derived.page_ins_per_sec, &[]);
-        self.record_f64("system.paging.page_outs_per_sec", &self.page_outs_per_sec, derived.page_outs_per_sec, &[]);
-        self.record_f64("system.swap.ins_per_sec", &self.swap_ins_per_sec, derived.swap_ins_per_sec, &[]);
-        self.record_f64("system.swap.outs_per_sec", &self.swap_outs_per_sec, derived.swap_outs_per_sec, &[]);
+        self.record_f64(
+            "system.paging.page_ins_per_sec",
+            &self.page_ins_per_sec,
+            derived.page_ins_per_sec,
+            &[],
+        );
+        self.record_f64(
+            "system.paging.page_outs_per_sec",
+            &self.page_outs_per_sec,
+            derived.page_outs_per_sec,
+            &[],
+        );
+        self.record_f64(
+            "system.swap.ins_per_sec",
+            &self.swap_ins_per_sec,
+            derived.swap_ins_per_sec,
+            &[],
+        );
+        self.record_f64(
+            "system.swap.outs_per_sec",
+            &self.swap_outs_per_sec,
+            derived.swap_outs_per_sec,
+            &[],
+        );
     }
 
     fn record_pressure(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         for (key, value) in &snap.pressure {
-            let Some(attrs) = pressure_attrs(key) else { continue };
-            self.record_f64("system.linux.pressure", &self.otel_system_pressure, *value, &attrs);
+            let Some(attrs) = pressure_attrs(key) else {
+                continue;
+            };
+            self.record_f64(
+                "system.linux.pressure",
+                &self.otel_system_pressure,
+                *value,
+                &attrs,
+            );
         }
         for (key, value) in &derived.pressure_total_delta_secs {
-            let Some(attrs) = pressure_stall_time_attrs(key) else { continue };
+            let Some(attrs) = pressure_stall_time_attrs(key) else {
+                continue;
+            };
             self.add_f64(
                 "system.linux.pressure.stall_time",
                 &self.otel_system_pressure_stall_time,
@@ -828,17 +1177,52 @@ impl ProcMetrics {
     }
 
     fn record_stat(&self, snap: &Snapshot) {
-        self.record_u64("system.boot.time", &self.boot_time_epoch_secs, snap.system.boot_time_epoch_secs, &[]);
-        self.record_u64("system.context_switches", &self.ctxt_total, snap.system.context_switches, &[]);
-        self.record_u64("system.processes.forks", &self.forks_total, snap.system.forks_since_boot, &[]);
-        self.record_u64("system.processes.running", &self.procs_running, snap.system.procs_running as u64, &[]);
-        self.record_u64("system.processes.blocked", &self.procs_blocked, snap.system.procs_blocked as u64, &[]);
+        self.record_u64(
+            "system.boot.time",
+            &self.boot_time_epoch_secs,
+            snap.system.boot_time_epoch_secs,
+            &[],
+        );
+        self.record_u64(
+            "system.context_switches",
+            &self.ctxt_total,
+            snap.system.context_switches,
+            &[],
+        );
+        self.record_u64(
+            "system.processes.forks",
+            &self.forks_total,
+            snap.system.forks_since_boot,
+            &[],
+        );
+        self.record_u64(
+            "system.processes.running",
+            &self.procs_running,
+            snap.system.procs_running as u64,
+            &[],
+        );
+        self.record_u64(
+            "system.processes.blocked",
+            &self.procs_blocked,
+            snap.system.procs_blocked as u64,
+            &[],
+        );
 
         for (key, value) in &snap.vmstat {
-            self.record_i64("system.linux.vmstat", &self.vmstat_value, *value, &vmstat_attrs(key));
+            self.record_i64(
+                "system.linux.vmstat",
+                &self.vmstat_value,
+                *value,
+                &vmstat_attrs(key),
+            );
         }
         for (key, value) in &snap.net_snmp {
-            self.record_u64("system.linux.net.snmp", &self.net_snmp_value, *value, &net_snmp_attrs(key));
+            self.record_u64(
+                "system.linux.net.snmp",
+                &self.net_snmp_value,
+                *value,
+                &net_snmp_attrs(key),
+            );
         }
     }
 
@@ -847,13 +1231,23 @@ impl ProcMetrics {
             let Some(attrs) = interrupts_attrs(key) else {
                 continue;
             };
-            self.add_u64("system.linux.interrupts", &self.otel_linux_interrupts, *value, &attrs);
+            self.add_u64(
+                "system.linux.interrupts",
+                &self.otel_linux_interrupts,
+                *value,
+                &attrs,
+            );
         }
         for (key, value) in &derived.linux_softirqs_delta {
             let Some(attrs) = softirqs_attrs(key) else {
                 continue;
             };
-            self.add_u64("system.linux.softirqs", &self.otel_linux_softirqs, *value, &attrs);
+            self.add_u64(
+                "system.linux.softirqs",
+                &self.otel_linux_softirqs,
+                *value,
+                &attrs,
+            );
         }
 
         for swap in &snap.swaps {
@@ -907,7 +1301,12 @@ impl ProcMetrics {
                 );
             }
             if let Some(value) = cpu.cache_size_bytes {
-                self.record_u64("system.cpu.cache.size", &self.cpu_cache_size, value, &cpu_attr);
+                self.record_u64(
+                    "system.cpu.cache.size",
+                    &self.cpu_cache_size,
+                    value,
+                    &cpu_attr,
+                );
             }
 
             let mut attrs = vec![KeyValue::new("cpu", cpu.cpu.to_string())];
@@ -924,14 +1323,24 @@ impl ProcMetrics {
             let Some(attrs) = zoneinfo_attrs(key) else {
                 continue;
             };
-            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
+            self.record_u64(
+                "system.linux.zoneinfo",
+                &self.zoneinfo_value,
+                *value,
+                &attrs,
+            );
         }
 
         for (key, value) in &snap.buddyinfo {
             let Some(attrs) = buddyinfo_attrs(key) else {
                 continue;
             };
-            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
+            self.record_u64(
+                "system.linux.buddy.blocks",
+                &self.buddyinfo_blocks,
+                *value,
+                &attrs,
+            );
         }
     }
 
@@ -984,11 +1393,26 @@ impl ProcMetrics {
             derived.softnet_time_squeezed_per_sec,
             &[],
         );
-        self.record_f64("system.linux.net.softnet.drop_ratio", &self.softnet_drop_ratio, derived.softnet_drop_ratio, &[]);
+        self.record_f64(
+            "system.linux.net.softnet.drop_ratio",
+            &self.softnet_drop_ratio,
+            derived.softnet_drop_ratio,
+            &[],
+        );
         for cpu in &snap.softnet {
             let attrs = [KeyValue::new("cpu", cpu.cpu.to_string())];
-            self.record_u64("system.linux.net.softnet.cpu.processed", &self.softnet_cpu_processed, cpu.processed, &attrs);
-            self.record_u64("system.linux.net.softnet.cpu.dropped", &self.softnet_cpu_dropped, cpu.dropped, &attrs);
+            self.record_u64(
+                "system.linux.net.softnet.cpu.processed",
+                &self.softnet_cpu_processed,
+                cpu.processed,
+                &attrs,
+            );
+            self.record_u64(
+                "system.linux.net.softnet.cpu.dropped",
+                &self.softnet_cpu_dropped,
+                cpu.dropped,
+                &attrs,
+            );
             self.record_u64(
                 "system.linux.net.softnet.cpu.time_squeezed",
                 &self.softnet_cpu_time_squeezed,
@@ -1002,44 +1426,105 @@ impl ProcMetrics {
         for disk in &snap.disks {
             let dev = disk.name.clone();
             let attrs = [KeyValue::new("device", dev.clone())];
-            let read_attrs = [KeyValue::new("device", dev.clone()), KeyValue::new("direction", "read")];
-            let write_attrs = [KeyValue::new("device", dev.clone()), KeyValue::new("direction", "write")];
+            let read_attrs = [
+                KeyValue::new("device", dev.clone()),
+                KeyValue::new("direction", "read"),
+            ];
+            let write_attrs = [
+                KeyValue::new("device", dev.clone()),
+                KeyValue::new("direction", "write"),
+            ];
 
             if let Some(v) = derived.disk_read_bytes_per_sec.get(&disk.name) {
-                self.record_f64("system.disk.read_bytes_per_sec", &self.disk_read_bps, *v, &attrs);
+                self.record_f64(
+                    "system.disk.read_bytes_per_sec",
+                    &self.disk_read_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_write_bytes_per_sec.get(&disk.name) {
-                self.record_f64("system.disk.write_bytes_per_sec", &self.disk_write_bps, *v, &attrs);
+                self.record_f64(
+                    "system.disk.write_bytes_per_sec",
+                    &self.disk_write_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_total_bytes_per_sec.get(&disk.name) {
-                self.record_f64("system.disk.total_bytes_per_sec", &self.disk_total_bps, *v, &attrs);
+                self.record_f64(
+                    "system.disk.total_bytes_per_sec",
+                    &self.disk_total_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_reads_per_sec.get(&disk.name) {
-                self.record_f64("system.disk.read_ops_per_sec", &self.disk_reads_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.disk.read_ops_per_sec",
+                    &self.disk_reads_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_writes_per_sec.get(&disk.name) {
-                self.record_f64("system.disk.write_ops_per_sec", &self.disk_writes_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.disk.write_ops_per_sec",
+                    &self.disk_writes_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_total_iops.get(&disk.name) {
                 self.record_f64("system.disk.ops_per_sec", &self.disk_total_iops, *v, &attrs);
             }
             if let Some(v) = derived.disk_read_await_ms.get(&disk.name) {
-                self.record_f64("system.disk.read_await", &self.disk_read_await_ms, *v, &attrs);
+                self.record_f64(
+                    "system.disk.read_await",
+                    &self.disk_read_await_ms,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_write_await_ms.get(&disk.name) {
-                self.record_f64("system.disk.write_await", &self.disk_write_await_ms, *v, &attrs);
+                self.record_f64(
+                    "system.disk.write_await",
+                    &self.disk_write_await_ms,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_avg_read_size_bytes.get(&disk.name) {
-                self.record_f64("system.disk.avg_read_size", &self.disk_avg_read_size_bytes, *v, &attrs);
+                self.record_f64(
+                    "system.disk.avg_read_size",
+                    &self.disk_avg_read_size_bytes,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_avg_write_size_bytes.get(&disk.name) {
-                self.record_f64("system.disk.avg_write_size", &self.disk_avg_write_size_bytes, *v, &attrs);
+                self.record_f64(
+                    "system.disk.avg_write_size",
+                    &self.disk_avg_write_size_bytes,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_utilization_ratio.get(&disk.name) {
-                self.record_f64("system.disk.utilization", &self.disk_utilization, *v, &attrs);
+                self.record_f64(
+                    "system.disk.utilization",
+                    &self.disk_utilization,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_queue_depth.get(&disk.name) {
-                self.record_f64("system.disk.queue_depth", &self.disk_queue_depth, *v, &attrs);
+                self.record_f64(
+                    "system.disk.queue_depth",
+                    &self.disk_queue_depth,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.disk_read_bytes_delta.get(&disk.name) {
                 self.add_u64("system.disk.io", &self.otel_disk_io, *v, &read_attrs);
@@ -1048,33 +1533,88 @@ impl ProcMetrics {
                 self.add_u64("system.disk.io", &self.otel_disk_io, *v, &write_attrs);
             }
             if let Some(v) = derived.disk_reads_delta.get(&disk.name) {
-                self.add_u64("system.disk.operations", &self.otel_disk_operations, *v, &read_attrs);
+                self.add_u64(
+                    "system.disk.operations",
+                    &self.otel_disk_operations,
+                    *v,
+                    &read_attrs,
+                );
             }
             if let Some(v) = derived.disk_writes_delta.get(&disk.name) {
-                self.add_u64("system.disk.operations", &self.otel_disk_operations, *v, &write_attrs);
+                self.add_u64(
+                    "system.disk.operations",
+                    &self.otel_disk_operations,
+                    *v,
+                    &write_attrs,
+                );
             }
             if let Some(v) = derived.disk_read_time_delta_secs.get(&disk.name) {
-                self.add_f64("system.disk.operation_time", &self.otel_disk_operation_time, *v, &read_attrs);
+                self.add_f64(
+                    "system.disk.operation_time",
+                    &self.otel_disk_operation_time,
+                    *v,
+                    &read_attrs,
+                );
             }
             if let Some(v) = derived.disk_write_time_delta_secs.get(&disk.name) {
-                self.add_f64("system.disk.operation_time", &self.otel_disk_operation_time, *v, &write_attrs);
+                self.add_f64(
+                    "system.disk.operation_time",
+                    &self.otel_disk_operation_time,
+                    *v,
+                    &write_attrs,
+                );
             }
             if let Some(v) = derived.disk_io_time_delta_secs.get(&disk.name) {
                 self.add_f64("system.disk.io_time", &self.otel_disk_io_time, *v, &attrs);
             }
             if let Some(v) = disk.logical_block_size {
-                self.record_u64("system.disk.logical_block_size", &self.disk_logical_block_size, v, &attrs);
+                self.record_u64(
+                    "system.disk.logical_block_size",
+                    &self.disk_logical_block_size,
+                    v,
+                    &attrs,
+                );
             }
             if let Some(v) = disk.physical_block_size {
-                self.record_u64("system.disk.physical_block_size", &self.disk_physical_block_size, v, &attrs);
+                self.record_u64(
+                    "system.disk.physical_block_size",
+                    &self.disk_physical_block_size,
+                    v,
+                    &attrs,
+                );
             }
             if let Some(v) = disk.rotational {
-                self.record_u64("system.disk.rotational", &self.disk_rotational, u64::from(v), &attrs);
+                self.record_u64(
+                    "system.disk.rotational",
+                    &self.disk_rotational,
+                    u64::from(v),
+                    &attrs,
+                );
             }
-            self.record_u64("system.disk.io_in_progress", &self.disk_in_progress, disk.in_progress, &attrs);
-            self.record_u64("system.disk.pending_operations", &self.otel_disk_pending, disk.in_progress, &attrs);
-            self.record_u64("system.disk.time_reading", &self.disk_time_reading_ms, disk.time_reading_ms, &attrs);
-            self.record_u64("system.disk.time_writing", &self.disk_time_writing_ms, disk.time_writing_ms, &attrs);
+            self.record_u64(
+                "system.disk.io_in_progress",
+                &self.disk_in_progress,
+                disk.in_progress,
+                &attrs,
+            );
+            self.record_u64(
+                "system.disk.pending_operations",
+                &self.otel_disk_pending,
+                disk.in_progress,
+                &attrs,
+            );
+            self.record_u64(
+                "system.disk.time_reading",
+                &self.disk_time_reading_ms,
+                disk.time_reading_ms,
+                &attrs,
+            );
+            self.record_u64(
+                "system.disk.time_writing",
+                &self.disk_time_writing_ms,
+                disk.time_writing_ms,
+                &attrs,
+            );
             self.record_u64(
                 "system.disk.time_in_progress",
                 &self.disk_time_in_progress_ms,
@@ -1094,41 +1634,102 @@ impl ProcMetrics {
         for net in &snap.net {
             let dev = net.name.clone();
             let attrs = [KeyValue::new("device", dev.clone())];
-            let rx_attrs = [KeyValue::new("device", dev.clone()), KeyValue::new("direction", "receive")];
-            let tx_attrs = [KeyValue::new("device", dev.clone()), KeyValue::new("direction", "transmit")];
+            let rx_attrs = [
+                KeyValue::new("device", dev.clone()),
+                KeyValue::new("direction", "receive"),
+            ];
+            let tx_attrs = [
+                KeyValue::new("device", dev.clone()),
+                KeyValue::new("direction", "transmit"),
+            ];
 
             if let Some(v) = derived.net_rx_bytes_per_sec.get(&net.name) {
-                self.record_f64("system.network.rx_bytes_per_sec", &self.net_rx_bps, *v, &attrs);
+                self.record_f64(
+                    "system.network.rx_bytes_per_sec",
+                    &self.net_rx_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_tx_bytes_per_sec.get(&net.name) {
-                self.record_f64("system.network.tx_bytes_per_sec", &self.net_tx_bps, *v, &attrs);
+                self.record_f64(
+                    "system.network.tx_bytes_per_sec",
+                    &self.net_tx_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_total_bytes_per_sec.get(&net.name) {
-                self.record_f64("system.network.total_bytes_per_sec", &self.net_total_bps, *v, &attrs);
+                self.record_f64(
+                    "system.network.total_bytes_per_sec",
+                    &self.net_total_bps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_rx_packets_per_sec.get(&net.name) {
-                self.record_f64("system.network.rx_packets_per_sec", &self.net_rx_pps, *v, &attrs);
+                self.record_f64(
+                    "system.network.rx_packets_per_sec",
+                    &self.net_rx_pps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_tx_packets_per_sec.get(&net.name) {
-                self.record_f64("system.network.tx_packets_per_sec", &self.net_tx_pps, *v, &attrs);
+                self.record_f64(
+                    "system.network.tx_packets_per_sec",
+                    &self.net_tx_pps,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_rx_errs_per_sec.get(&net.name) {
-                self.record_f64("system.network.rx_errors_per_sec", &self.net_rx_errs_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.network.rx_errors_per_sec",
+                    &self.net_rx_errs_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_tx_errs_per_sec.get(&net.name) {
-                self.record_f64("system.network.tx_errors_per_sec", &self.net_tx_errs_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.network.tx_errors_per_sec",
+                    &self.net_tx_errs_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_rx_drop_per_sec.get(&net.name) {
-                self.record_f64("system.network.rx_drops_per_sec", &self.net_rx_drop_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.network.rx_drops_per_sec",
+                    &self.net_rx_drop_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_tx_drop_per_sec.get(&net.name) {
-                self.record_f64("system.network.tx_drops_per_sec", &self.net_tx_drop_per_sec, *v, &attrs);
+                self.record_f64(
+                    "system.network.tx_drops_per_sec",
+                    &self.net_tx_drop_per_sec,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_rx_loss_ratio.get(&net.name) {
-                self.record_f64("system.network.rx_loss_ratio", &self.net_rx_loss_ratio, *v, &attrs);
+                self.record_f64(
+                    "system.network.rx_loss_ratio",
+                    &self.net_rx_loss_ratio,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_tx_loss_ratio.get(&net.name) {
-                self.record_f64("system.network.tx_loss_ratio", &self.net_tx_loss_ratio, *v, &attrs);
+                self.record_f64(
+                    "system.network.tx_loss_ratio",
+                    &self.net_tx_loss_ratio,
+                    *v,
+                    &attrs,
+                );
             }
             if let Some(v) = derived.net_rx_bytes_delta.get(&net.name) {
                 self.add_u64("system.network.io", &self.otel_network_io, *v, &rx_attrs);
@@ -1137,22 +1738,52 @@ impl ProcMetrics {
                 self.add_u64("system.network.io", &self.otel_network_io, *v, &tx_attrs);
             }
             if let Some(v) = derived.net_rx_packets_delta.get(&net.name) {
-                self.add_u64("system.network.packets", &self.otel_network_packets, *v, &rx_attrs);
+                self.add_u64(
+                    "system.network.packets",
+                    &self.otel_network_packets,
+                    *v,
+                    &rx_attrs,
+                );
             }
             if let Some(v) = derived.net_tx_packets_delta.get(&net.name) {
-                self.add_u64("system.network.packets", &self.otel_network_packets, *v, &tx_attrs);
+                self.add_u64(
+                    "system.network.packets",
+                    &self.otel_network_packets,
+                    *v,
+                    &tx_attrs,
+                );
             }
             if let Some(v) = derived.net_rx_errs_delta.get(&net.name) {
-                self.add_u64("system.network.errors", &self.otel_network_errors, *v, &rx_attrs);
+                self.add_u64(
+                    "system.network.errors",
+                    &self.otel_network_errors,
+                    *v,
+                    &rx_attrs,
+                );
             }
             if let Some(v) = derived.net_tx_errs_delta.get(&net.name) {
-                self.add_u64("system.network.errors", &self.otel_network_errors, *v, &tx_attrs);
+                self.add_u64(
+                    "system.network.errors",
+                    &self.otel_network_errors,
+                    *v,
+                    &tx_attrs,
+                );
             }
             if let Some(v) = derived.net_rx_drop_delta.get(&net.name) {
-                self.add_u64("system.network.dropped", &self.otel_network_dropped, *v, &rx_attrs);
+                self.add_u64(
+                    "system.network.dropped",
+                    &self.otel_network_dropped,
+                    *v,
+                    &rx_attrs,
+                );
             }
             if let Some(v) = derived.net_tx_drop_delta.get(&net.name) {
-                self.add_u64("system.network.dropped", &self.otel_network_dropped, *v, &tx_attrs);
+                self.add_u64(
+                    "system.network.dropped",
+                    &self.otel_network_dropped,
+                    *v,
+                    &tx_attrs,
+                );
             }
             if let Some(v) = net.mtu {
                 self.record_u64("system.network.mtu", &self.net_mtu, v, &attrs);
@@ -1161,25 +1792,105 @@ impl ProcMetrics {
                 self.record_u64("system.network.speed_mbps", &self.net_speed_mbps, v, &attrs);
             }
             if let Some(v) = net.tx_queue_len {
-                self.record_u64("system.network.tx_queue_len", &self.net_tx_queue_len, v, &attrs);
+                self.record_u64(
+                    "system.network.tx_queue_len",
+                    &self.net_tx_queue_len,
+                    v,
+                    &attrs,
+                );
             }
             if let Some(v) = net.carrier_up {
-                self.record_u64("system.network.carrier_up", &self.net_carrier_up, u64::from(v), &attrs);
+                self.record_u64(
+                    "system.network.carrier_up",
+                    &self.net_carrier_up,
+                    u64::from(v),
+                    &attrs,
+                );
             }
-            self.record_u64("system.network.rx_packets", &self.net_rx_packets, net.rx_packets, &attrs);
-            self.record_u64("system.network.rx_errors", &self.net_rx_errs, net.rx_errs, &attrs);
-            self.record_u64("system.network.rx_dropped", &self.net_rx_drop, net.rx_drop, &attrs);
-            self.record_u64("system.network.rx_fifo", &self.net_rx_fifo, net.rx_fifo, &attrs);
-            self.record_u64("system.network.rx_frame", &self.net_rx_frame, net.rx_frame, &attrs);
-            self.record_u64("system.network.rx_compressed", &self.net_rx_compressed, net.rx_compressed, &attrs);
-            self.record_u64("system.network.rx_multicast", &self.net_rx_multicast, net.rx_multicast, &attrs);
-            self.record_u64("system.network.tx_packets", &self.net_tx_packets, net.tx_packets, &attrs);
-            self.record_u64("system.network.tx_errors", &self.net_tx_errs, net.tx_errs, &attrs);
-            self.record_u64("system.network.tx_dropped", &self.net_tx_drop, net.tx_drop, &attrs);
-            self.record_u64("system.network.tx_fifo", &self.net_tx_fifo, net.tx_fifo, &attrs);
-            self.record_u64("system.network.tx_collisions", &self.net_tx_colls, net.tx_colls, &attrs);
-            self.record_u64("system.network.tx_carrier", &self.net_tx_carrier, net.tx_carrier, &attrs);
-            self.record_u64("system.network.tx_compressed", &self.net_tx_compressed, net.tx_compressed, &attrs);
+            self.record_u64(
+                "system.network.rx_packets",
+                &self.net_rx_packets,
+                net.rx_packets,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_errors",
+                &self.net_rx_errs,
+                net.rx_errs,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_dropped",
+                &self.net_rx_drop,
+                net.rx_drop,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_fifo",
+                &self.net_rx_fifo,
+                net.rx_fifo,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_frame",
+                &self.net_rx_frame,
+                net.rx_frame,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_compressed",
+                &self.net_rx_compressed,
+                net.rx_compressed,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.rx_multicast",
+                &self.net_rx_multicast,
+                net.rx_multicast,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_packets",
+                &self.net_tx_packets,
+                net.tx_packets,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_errors",
+                &self.net_tx_errs,
+                net.tx_errs,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_dropped",
+                &self.net_tx_drop,
+                net.tx_drop,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_fifo",
+                &self.net_tx_fifo,
+                net.tx_fifo,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_collisions",
+                &self.net_tx_colls,
+                net.tx_colls,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_carrier",
+                &self.net_tx_carrier,
+                net.tx_carrier,
+                &attrs,
+            );
+            self.record_u64(
+                "system.network.tx_compressed",
+                &self.net_tx_compressed,
+                net.tx_compressed,
+                &attrs,
+            );
         }
     }
 
@@ -1200,23 +1911,58 @@ impl ProcMetrics {
             ];
 
             if let Some(cpu) = derived.process_cpu_ratio.get(&proc.pid) {
-                self.record_f64("process.cpu.utilization", &self.process_cpu_ratio, *cpu, &attrs);
+                self.record_f64(
+                    "process.cpu.utilization",
+                    &self.process_cpu_ratio,
+                    *cpu,
+                    &attrs,
+                );
             }
             if proc.rss_pages >= 0 {
                 let rss = (proc.rss_pages as u64).saturating_mul(4096);
                 self.record_u64("process.memory.rss", &self.process_rss_bytes, rss, &attrs);
             }
-            self.record_i64("process.parent_pid", &self.process_ppid, proc.ppid as i64, &attrs);
-            self.record_i64("process.thread.count", &self.process_num_threads, proc.num_threads, &attrs);
-            self.record_i64("process.linux.priority", &self.process_priority, proc.priority, &attrs);
+            self.record_i64(
+                "process.parent_pid",
+                &self.process_ppid,
+                proc.ppid as i64,
+                &attrs,
+            );
+            self.record_i64(
+                "process.thread.count",
+                &self.process_num_threads,
+                proc.num_threads,
+                &attrs,
+            );
+            self.record_i64(
+                "process.linux.priority",
+                &self.process_priority,
+                proc.priority,
+                &attrs,
+            );
             self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &attrs);
-            self.record_u64("process.linux.memory.vsize", &self.process_vsize_bytes, proc.vsize_bytes, &attrs);
+            self.record_u64(
+                "process.linux.memory.vsize",
+                &self.process_vsize_bytes,
+                proc.vsize_bytes,
+                &attrs,
+            );
 
             if let Some(value) = proc.read_bytes {
-                self.record_u64("process.linux.io.read_bytes", &self.process_read_bytes, value, &attrs);
+                self.record_u64(
+                    "process.linux.io.read_bytes",
+                    &self.process_read_bytes,
+                    value,
+                    &attrs,
+                );
             }
             if let Some(value) = proc.write_bytes {
-                self.record_u64("process.linux.io.write_bytes", &self.process_write_bytes, value, &attrs);
+                self.record_u64(
+                    "process.linux.io.write_bytes",
+                    &self.process_write_bytes,
+                    value,
+                    &attrs,
+                );
             }
             if let Some(value) = proc.cancelled_write_bytes {
                 self.record_i64(
@@ -1388,17 +2134,37 @@ impl ProcMetrics {
                 );
             }
             if let Some(value) = proc.fd_count {
-                self.record_u64("process.open_file_descriptors", &self.otel_process_open_fds, value, &attrs);
+                self.record_u64(
+                    "process.open_file_descriptors",
+                    &self.otel_process_open_fds,
+                    value,
+                    &attrs,
+                );
             }
             if let Some(value) = proc.oom_score {
-                self.record_i64("process.linux.oom_score", &self.otel_process_oom_score, value, &attrs);
+                self.record_i64(
+                    "process.linux.oom_score",
+                    &self.otel_process_oom_score,
+                    value,
+                    &attrs,
+                );
             }
             if let Some(value) = proc.processor {
-                self.record_i64("process.linux.processor", &self.otel_process_processor, value, &attrs);
+                self.record_i64(
+                    "process.linux.processor",
+                    &self.otel_process_processor,
+                    value,
+                    &attrs,
+                );
             }
             let start_time_unix = snap.system.boot_time_epoch_secs as f64
                 + (proc.start_time_ticks as f64 / snap.system.ticks_per_second.max(1) as f64);
-            self.record_f64("process.start_time", &self.otel_process_start_time, start_time_unix, &attrs);
+            self.record_f64(
+                "process.start_time",
+                &self.otel_process_start_time,
+                start_time_unix,
+                &attrs,
+            );
             self.record_u64(
                 "process.linux.start_time",
                 &self.otel_process_start_time_ticks,

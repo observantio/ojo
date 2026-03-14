@@ -207,8 +207,8 @@ impl Config {
 }
 
 fn hostname_fallback() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|s| s.trim().to_string())
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "unknown-host".to_string())
 }
 

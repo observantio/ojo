@@ -8,7 +8,6 @@ use opentelemetry_sdk::{
     Resource,
 };
 use reqwest::blocking::Client;
-use std::fs;
 
 pub fn init_meter_provider(cfg: &Config) -> Result<SdkMeterProvider> {
     let exporter = match cfg.otlp_protocol.as_str() {
@@ -50,7 +49,7 @@ pub fn init_meter_provider(cfg: &Config) -> Result<SdkMeterProvider> {
 }
 
 fn hostname() -> String {
-    fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|value| value.trim().to_string())
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "unknown-host".to_string())
 }

@@ -2,9 +2,13 @@ mod catalog;
 mod collector;
 mod config;
 mod delta;
+#[cfg(not(target_os = "windows"))]
+mod linuxcollect;
 mod metrics;
 mod model;
 mod otel;
+#[cfg(target_os = "windows")]
+mod wincollect;
 
 use anyhow::Result;
 use config::Config;
@@ -32,9 +36,9 @@ fn main() -> Result<()> {
     cfg.apply_otel_env();
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new("info")
-        }))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     let provider = otel::init_meter_provider(&cfg)?;
@@ -71,7 +75,9 @@ fn main() -> Result<()> {
             }
             Err(err) => {
                 match export_state {
-                    ExportState::Connected => warn!(error = %err, "Exporter flush failed; reconnecting"),
+                    ExportState::Connected => {
+                        warn!(error = %err, "Exporter flush failed; reconnecting")
+                    }
                     ExportState::Pending | ExportState::Reconnecting => {
                         warn!(error = %err, "Exporter still unavailable")
                     }
