@@ -331,6 +331,25 @@ fn system_performance_info() -> Option<SystemPerformanceInformation> {
     Some(unsafe { *(buf.as_ptr() as *const SystemPerformanceInformation) })
 }
 
+fn collect_vmstat() -> BTreeMap<String, i64> {
+    let mut vmstat = BTreeMap::new();
+    let Some(perf) = system_performance_info() else {
+        return vmstat;
+    };
+
+    let page_reads = perf.page_read_count as u64;
+    let page_writes = perf.dirty_pages_write_count as u64 + perf.mapped_pages_write_count as u64;
+
+    vmstat.insert("pgfault".to_string(), perf.page_fault_count as i64);
+    vmstat.insert("pgmajfault".to_string(), perf.page_read_count as i64);
+    vmstat.insert("pgpgin".to_string(), page_reads.min(i64::MAX as u64) as i64);
+    vmstat.insert("pgpgout".to_string(), page_writes.min(i64::MAX as u64) as i64);
+    vmstat.insert("pswpin".to_string(), page_reads.min(i64::MAX as u64) as i64);
+    vmstat.insert("pswpout".to_string(), page_writes.min(i64::MAX as u64) as i64);
+
+    vmstat
+}
+
 fn query_system_information(class: u32) -> Result<Vec<u8>> {
     let mut size: u32 = 64 * 1024;
     loop {
@@ -1117,6 +1136,8 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
     let net = collect_net()?;
     debug!(iface_count = net.len(), "wincollect: collect_net done");
+    let vmstat = collect_vmstat();
+    debug!(vmstat_keys = vmstat.len(), "wincollect: collect_vmstat done");
     let processes = if include_process_metrics {
         let p = collect_processes()?;
         debug!(process_count = p.len(), "wincollect: collect_processes done");
@@ -1130,7 +1151,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         load,
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
-        vmstat: BTreeMap::new(),
+        vmstat,
         interrupts: BTreeMap::new(),
         softirqs: BTreeMap::new(),
         net_snmp: BTreeMap::new(),

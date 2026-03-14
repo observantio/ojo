@@ -4913,7 +4913,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(rate(system_disk_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
+            "expr": "1000 * clamp_min(rate(system_disk_io_time_seconds_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
