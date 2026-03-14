@@ -59,6 +59,7 @@ unsafe extern "system" {
 const STATUS_INFO_LENGTH_MISMATCH: i32 = -1073741820i32;
 const SYSTEM_PERFORMANCE_INFORMATION_CLASS: u32 = 2;
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
+const SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS: u32 = 8;
 const DRIVE_FIXED_VALUE: u32 = 3;
 const IOCTL_DISK_PERFORMANCE: u32 = 0x0007_0020;
 const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
@@ -125,7 +126,6 @@ struct SystemProcessInformation {
     write_transfer_count: LargeInteger,
     other_transfer_count: LargeInteger,
 }
-
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -204,6 +204,19 @@ struct SystemPerformanceInformation {
     first_level_tb_fills: u32,
     second_level_tb_fills: u32,
     system_calls: u32,
+}
+
+/// Per-CPU performance data from NtQuerySystemInformation class 8.
+/// `kernel_time` includes `idle_time`; system = kernel - idle.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct SystemProcessorPerformanceInformation {
+    idle_time: LargeInteger,
+    kernel_time: LargeInteger,
+    user_time: LargeInteger,
+    dpc_time: LargeInteger,
+    interrupt_time: LargeInteger,
+    interrupt_count: u32,
 }
 
 #[repr(C)]
@@ -434,6 +447,46 @@ fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
     }
 }
 
+/// Returns real per-CPU times from NtQuerySystemInformation class 8.
+/// Each entry's kernel_time includes idle_time; system = kernel - idle.
+fn per_cpu_times_from_nt() -> Option<Vec<CpuTimes>> {
+    let buf = query_system_information(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS).ok()?;
+    let entry_size = size_of::<SystemProcessorPerformanceInformation>();
+    if buf.len() < entry_size {
+        return None;
+    }
+
+    let count = buf.len() / entry_size;
+    let mut out = Vec::with_capacity(count);
+
+    for i in 0..count {
+        let entry = unsafe {
+            &*(buf.as_ptr().add(i * entry_size) as *const SystemProcessorPerformanceInformation)
+        };
+        let idle = nt_time_100ns(entry.idle_time.quad_part);
+        let kernel = nt_time_100ns(entry.kernel_time.quad_part);
+        let user = nt_time_100ns(entry.user_time.quad_part);
+        let dpc = nt_time_100ns(entry.dpc_time.quad_part);
+        let irq = nt_time_100ns(entry.interrupt_time.quad_part);
+        let system = kernel.saturating_sub(idle).saturating_sub(dpc).saturating_sub(irq);
+
+        out.push(CpuTimes {
+            user,
+            nice: 0,
+            system,
+            idle,
+            iowait: 0,
+            irq,
+            softirq: dpc,
+            steal: 0,
+            guest: 0,
+            guest_nice: 0,
+        });
+    }
+
+    Some(out)
+}
+
 fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
     let mut idle = FILETIME::default();
     let mut kernel = FILETIME::default();
@@ -451,6 +504,7 @@ fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
     let idle_100ns = filetime_to_u64(idle);
     let kernel_100ns = filetime_to_u64(kernel);
     let user_100ns = filetime_to_u64(user);
+    // kernel includes idle; extract pure system time
     let system_100ns = kernel_100ns.saturating_sub(idle_100ns);
 
     let total = CpuTimes {
@@ -466,24 +520,30 @@ fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
         guest_nice: 0,
     };
 
-    let cores = cpu_count().max(1) as u64;
-    let per_core_user = user_100ns / cores;
-    let per_core_system = system_100ns / cores;
-    let per_core_idle = idle_100ns / cores;
-    let per_cpu = (0..cores)
-        .map(|_| CpuTimes {
-            user: per_core_user,
-            nice: 0,
-            system: per_core_system,
-            idle: per_core_idle,
-            iowait: 0,
-            irq: 0,
-            softirq: 0,
-            steal: 0,
-            guest: 0,
-            guest_nice: 0,
-        })
-        .collect::<Vec<_>>();
+    // Use real per-CPU data; fall back to uniform split only if unavailable.
+    let per_cpu = match per_cpu_times_from_nt() {
+        Some(v) if !v.is_empty() => v,
+        _ => {
+            let cores = cpu_count().max(1) as u64;
+            let per_core_user = user_100ns / cores;
+            let per_core_system = system_100ns / cores;
+            let per_core_idle = idle_100ns / cores;
+            (0..cores)
+                .map(|_| CpuTimes {
+                    user: per_core_user,
+                    nice: 0,
+                    system: per_core_system,
+                    idle: per_core_idle,
+                    iowait: 0,
+                    irq: 0,
+                    softirq: 0,
+                    steal: 0,
+                    guest: 0,
+                    guest_nice: 0,
+                })
+                .collect()
+        }
+    };
 
     Ok((total, per_cpu))
 }
@@ -491,14 +551,24 @@ fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
 pub fn collect_system() -> Result<SystemSnapshot> {
     debug!("wincollect: collect_system start");
     let uptime_secs = current_uptime_secs();
-    let processes = collect_process_summaries(false)?;
     let (cpu_total, per_cpu) = cpu_times_from_system()?;
     debug!("wincollect: collect_system per_cpu done");
-    let process_count = processes.len() as u64;
+
     let perf = system_performance_info();
-    let procs_running = processes.iter().filter(|proc| proc.pid > 0).count() as u32;
     let boot_filetime = boot_time_filetime_100ns();
-    debug!("wincollect: collect_system process_summaries done");
+
+    // Use GetPerformanceInfo for process count — avoids a full process enumeration.
+    let (process_count, procs_running) = unsafe {
+        let mut info = PERFORMANCE_INFORMATION::default();
+        info.cb = size_of::<PERFORMANCE_INFORMATION>() as u32;
+        if GetPerformanceInfo(&mut info, info.cb).is_ok() {
+            (info.ProcessCount as u64, info.ProcessCount as u32)
+        } else {
+            (0u64, 0u32)
+        }
+    };
+
+    debug!("wincollect: collect_system process_count done");
 
     Ok(SystemSnapshot {
         ticks_per_second: 10_000_000,
@@ -895,11 +965,13 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
 
         for row in rows {
             let name = wchar_array_to_string(&row.Alias);
+            // Use the higher of the two link speeds for asymmetric links.
+            let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
 
             out.push(NetDevSnapshot {
                 name,
                 mtu: Some(row.Mtu as u64),
-                speed_mbps: Some(row.ReceiveLinkSpeed / 1_000_000),
+                speed_mbps: Some(speed_mbps),
                 tx_queue_len: None,
                 carrier_up: Some(row.OperStatus.0 == 1),
                 rx_bytes: row.InOctets,
@@ -942,6 +1014,14 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
         let pid = spi.unique_process_id.0 as usize as i32;
         let ppid = spi.inherited_from_unique_process_id.0 as usize as i32;
 
+        // create_time of 0 means the kernel/idle process; treat start as boot (ticks = 0).
+        let raw_create = nt_time_100ns(spi.create_time.quad_part);
+        let start_time_ticks = if raw_create > boot_filetime {
+            raw_create - boot_filetime
+        } else {
+            0
+        };
+
         let mut process = ProcessSnapshot {
             pid,
             ppid,
@@ -963,12 +1043,12 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
             nice: 0,
             minflt: spi.page_fault_count as u64,
             majflt: spi.hard_fault_count as u64,
-            vsize_bytes: spi.pagefile_usage as u64,
+            // virtual_size is the full virtual address space, matching Linux vsize.
+            vsize_bytes: spi.virtual_size as u64,
             rss_pages: (spi.working_set_size as u64 / page) as i64,
             utime_ticks: nt_time_100ns(spi.user_time.quad_part),
             stime_ticks: nt_time_100ns(spi.kernel_time.quad_part),
-            start_time_ticks: nt_time_100ns(spi.create_time.quad_part)
-                .saturating_sub(boot_filetime),
+            start_time_ticks,
             processor: None,
             rt_priority: None,
             policy: None,
@@ -980,13 +1060,16 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
             syscw: Some(spi.write_operation_count.quad_part.max(0) as u64),
             read_bytes: Some(spi.read_transfer_count.quad_part.max(0) as u64),
             write_bytes: Some(spi.write_transfer_count.quad_part.max(0) as u64),
-            cancelled_write_bytes: Some(spi.other_transfer_count.quad_part),
-            vm_size_kib: Some((spi.pagefile_usage as u64) / 1024),
+            // Windows has no cancelled-write-bytes equivalent; other_transfer_count is
+            // metadata/IOCTL I/O, not cancelled writes.
+            cancelled_write_bytes: None,
+            vm_size_kib: Some((spi.virtual_size as u64) / 1024),
             vm_rss_kib: Some((spi.working_set_size as u64) / 1024),
             vm_data_kib: Some((spi.private_page_count as u64) / 1024),
             vm_stack_kib: None,
             vm_exe_kib: None,
             vm_lib_kib: None,
+            // pagefile_usage = private committed bytes (pagefile-backed); closest to vm_swap.
             vm_swap_kib: Some((spi.pagefile_usage as u64) / 1024),
             vm_pte_kib: None,
             vm_hwm_kib: Some((spi.peak_working_set_size as u64) / 1024),
@@ -1004,11 +1087,16 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
                     if let Some((utime, stime, ctime)) = get_process_times_ticks_100ns(handle) {
                         process.utime_ticks = utime;
                         process.stime_ticks = stime;
-                        process.start_time_ticks = ctime.saturating_sub(boot_filetime);
+                        process.start_time_ticks = if ctime > boot_filetime {
+                            ctime - boot_filetime
+                        } else {
+                            0
+                        };
                     }
 
                     if let Some(mem) = get_process_mem(handle) {
-                        process.vsize_bytes = mem.PagefileUsage as u64;
+                        // PagefileUsage = private committed bytes; VirtualSize isn't in
+                        // PROCESS_MEMORY_COUNTERS_EX, so keep the spi value for vsize_bytes.
                         process.vm_size_kib = Some((mem.PagefileUsage as u64) / 1024);
                         process.vm_rss_kib = Some((mem.WorkingSetSize as u64) / 1024);
                         process.vm_data_kib = Some((mem.PrivateUsage as u64) / 1024);
@@ -1024,7 +1112,6 @@ fn collect_process_summaries(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
                         process.syscw = Some(io.WriteOperationCount);
                         process.read_bytes = Some(io.ReadTransferCount);
                         process.write_bytes = Some(io.WriteTransferCount);
-                        process.cancelled_write_bytes = Some(io.OtherTransferCount as i64);
                     }
 
                     process.fd_count = get_process_handle_count_safe(handle);
