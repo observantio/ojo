@@ -510,6 +510,7 @@ fn collect_system() -> Result<SystemSnapshot> {
 
     Ok(SystemSnapshot {
         ticks_per_second: procfs::ticks_per_second() as u64,
+        cpu_cycle_utilization: None,
         boot_time_epoch_secs: stat.btime,
         uptime_secs,
         context_switches: stat.ctxt,

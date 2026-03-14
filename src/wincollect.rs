@@ -60,6 +60,7 @@ const STATUS_INFO_LENGTH_MISMATCH: i32 = -1073741820i32;
 const SYSTEM_PERFORMANCE_INFORMATION_CLASS: u32 = 2;
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
 const SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS: u32 = 8;
+const SYSTEM_PROCESSOR_CYCLE_TIME_INFORMATION_CLASS: u32 = 0x6B;
 const DRIVE_FIXED_VALUE: u32 = 3;
 const IOCTL_DISK_PERFORMANCE: u32 = 0x0007_0020;
 const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
@@ -566,16 +567,82 @@ fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
     Ok((total, per_cpu))
 }
 
+/// Computes cycle-based CPU utilization ratio, matching Task Manager's
+/// "% Processor Utility". Uses QueryIdleProcessorCycleTime (documented Win32)
+/// for idle cycles, and NtQuerySystemInformation class 0x6B for total non-idle
+/// cycles per CPU (undocumented but used by Process Hacker, Sysinternals, etc.).
+///
+/// Unlike GetSystemTimes, cycle counts are proportional to actual work done at
+/// the CPU's current frequency, so they agree with Task Manager under turbo/throttle.
+fn cpu_utilization_from_cycles() -> Option<f64> {
+    let ncpu = cpu_count().max(1);
+
+    // Idle cycle counts per logical CPU.
+    let idle_cycles: Vec<u64> = {
+        let mut buf = vec![0u64; ncpu];
+        let mut len = (ncpu * size_of::<u64>()) as u32;
+        let ok = unsafe {
+            windows::Win32::System::Threading::QueryIdleProcessorCycleTime(
+                &mut len,
+                buf.as_mut_ptr(),
+            )
+            .as_bool()
+        };
+        if !ok {
+            return None;
+        }
+        let actual = (len as usize / size_of::<u64>()).min(ncpu);
+        buf.truncate(actual);
+        buf
+    };
+
+    // Total (non-idle) cycle counts per logical CPU via undocumented class 0x6B.
+    // Returns a plain ULONG64[] array, one entry per CPU.
+    let busy_cycles: Vec<u64> = {
+        let buf_size = (ncpu * size_of::<u64>()) as u32;
+        let mut buf = vec![0u8; buf_size as usize];
+        let mut ret_len = 0u32;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SYSTEM_PROCESSOR_CYCLE_TIME_INFORMATION_CLASS,
+                buf.as_mut_ptr() as *mut c_void,
+                buf_size,
+                &mut ret_len,
+            )
+        };
+        if !nt_success(status) || ret_len < size_of::<u64>() as u32 {
+            return None;
+        }
+        let count = (ret_len as usize / size_of::<u64>()).min(ncpu);
+        (0..count)
+            .map(|i| unsafe { *(buf.as_ptr().add(i * size_of::<u64>()) as *const u64) })
+            .collect()
+    };
+
+    if idle_cycles.is_empty() || busy_cycles.is_empty() {
+        return None;
+    }
+
+    let total_idle: u64 = idle_cycles.iter().sum();
+    let total_busy: u64 = busy_cycles.iter().sum();
+    let total = total_idle.saturating_add(total_busy);
+    if total == 0 {
+        return None;
+    }
+
+    Some(total_busy as f64 / total as f64)
+}
+
 pub fn collect_system() -> Result<SystemSnapshot> {
     debug!("wincollect: collect_system start");
     let uptime_secs = current_uptime_secs();
     let (cpu_total, per_cpu) = cpu_times_from_system()?;
+    let cpu_cycle_utilization = cpu_utilization_from_cycles();
     debug!("wincollect: collect_system per_cpu done");
 
     let perf = system_performance_info();
     let boot_filetime = boot_time_filetime_100ns();
 
-    // Use GetPerformanceInfo for process count — avoids a full process enumeration.
     let (process_count, procs_running) = unsafe {
         let mut info = PERFORMANCE_INFORMATION::default();
         info.cb = size_of::<PERFORMANCE_INFORMATION>() as u32;
@@ -604,6 +671,7 @@ pub fn collect_system() -> Result<SystemSnapshot> {
         procs_blocked: 0,
         cpu_total,
         per_cpu,
+        cpu_cycle_utilization,
     })
 }
 

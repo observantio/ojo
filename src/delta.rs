@@ -131,7 +131,9 @@ impl PrevState {
             .busy()
             .saturating_sub(prev.system.cpu_total.busy());
 
-        if total_delta > 0 {
+        if let Some(ratio) = current.system.cpu_cycle_utilization {
+            out.cpu_utilization_ratio = ratio;
+        } else if total_delta > 0 {
             out.cpu_utilization_ratio = busy_delta as f64 / total_delta as f64;
         }
         let hz = current.system.ticks_per_second.max(1) as f64;

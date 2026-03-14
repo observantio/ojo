@@ -33,6 +33,7 @@ pub struct SoftnetCpuSnapshot {
 #[derive(Clone, Debug, Default)]
 pub struct SystemSnapshot {
     pub ticks_per_second: u64,
+    pub cpu_cycle_utilization: Option<f64>,
     pub boot_time_epoch_secs: u64,
     pub uptime_secs: f64,
     pub context_switches: u64,
