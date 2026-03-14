@@ -86,16 +86,6 @@ fn read_proc_i64(path: impl AsRef<Path>) -> Option<i64> {
     read_proc_first_value(path)?.parse().ok()
 }
 
-fn parse_status_kib(path: &Path, key: &str) -> Option<u64> {
-    let prefix = format!("{key}:");
-    for line in fs::read_to_string(path).ok()?.lines() {
-        if let Some(rest) = line.strip_prefix(&prefix) {
-            return rest.split_whitespace().next()?.parse().ok();
-        }
-    }
-    None
-}
-
 fn parse_status_u64(path: &Path, key: &str) -> Option<u64> {
     let prefix = format!("{key}:");
     for line in fs::read_to_string(path).ok()?.lines() {
@@ -118,13 +108,11 @@ fn count_fds(pid: i32) -> Option<u64> {
 
 fn collect_pressure() -> Result<BTreeMap<String, f64>> {
     let mut out = BTreeMap::new();
-
     for resource in ["cpu", "memory", "io", "irq"] {
         let path = Path::new("/proc/pressure").join(resource);
         let Ok(contents) = fs::read_to_string(path) else {
             continue;
         };
-
         for line in contents.lines() {
             let mut parts = line.split_whitespace();
             let Some(scope) = parts.next() else { continue };
@@ -141,19 +129,16 @@ fn collect_pressure() -> Result<BTreeMap<String, f64>> {
             }
         }
     }
-
     Ok(out)
 }
 
 fn collect_pressure_totals() -> Result<BTreeMap<String, u64>> {
     let mut out = BTreeMap::new();
-
     for resource in ["cpu", "memory", "io", "irq"] {
         let path = Path::new("/proc/pressure").join(resource);
         let Ok(contents) = fs::read_to_string(path) else {
             continue;
         };
-
         for line in contents.lines() {
             let mut parts = line.split_whitespace();
             let Some(scope) = parts.next() else { continue };
@@ -170,7 +155,6 @@ fn collect_pressure_totals() -> Result<BTreeMap<String, u64>> {
             }
         }
     }
-
     Ok(out)
 }
 
@@ -178,7 +162,6 @@ fn collect_proc_stat_totals() -> Result<(u64, u64)> {
     let contents = fs::read_to_string("/proc/stat")?;
     let mut interrupts_total = 0;
     let mut softirqs_total = 0;
-
     for line in contents.lines() {
         let mut parts = line.split_whitespace();
         match parts.next() {
@@ -191,7 +174,6 @@ fn collect_proc_stat_totals() -> Result<(u64, u64)> {
             _ => {}
         }
     }
-
     Ok((interrupts_total, softirqs_total))
 }
 
@@ -208,7 +190,6 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
     let contents = std::fs::read_to_string("/proc/net/snmp")?;
     let mut out = BTreeMap::new();
     let mut pending: Option<(String, Vec<String>)> = None;
-
     for line in contents.lines() {
         let mut parts = line.split_whitespace();
         let Some(raw_prefix) = parts.next() else {
@@ -216,7 +197,6 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
         };
         let prefix = raw_prefix.trim_end_matches(':').to_string();
         let cols = parts.map(str::to_string).collect::<Vec<_>>();
-
         if let Some((pending_prefix, headers)) = pending.take() {
             if pending_prefix == prefix {
                 for (header, value) in headers.iter().zip(cols.iter()) {
@@ -231,7 +211,6 @@ fn collect_net_snmp() -> Result<BTreeMap<String, u64>> {
             pending = Some((prefix, cols));
         }
     }
-
     Ok(out)
 }
 
@@ -239,7 +218,6 @@ fn collect_interrupts() -> Result<BTreeMap<String, u64>> {
     let contents = fs::read_to_string("/proc/interrupts")?;
     let mut out = BTreeMap::new();
     let mut cpus = 0usize;
-
     for (idx, line) in contents.lines().enumerate() {
         if idx == 0 {
             cpus = line
@@ -248,12 +226,10 @@ fn collect_interrupts() -> Result<BTreeMap<String, u64>> {
                 .count();
             continue;
         }
-
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-
         let Some((irq_raw, rest)) = trimmed.split_once(':') else {
             continue;
         };
@@ -265,7 +241,6 @@ fn collect_interrupts() -> Result<BTreeMap<String, u64>> {
             }
         }
     }
-
     Ok(out)
 }
 
@@ -273,7 +248,6 @@ fn collect_softirqs() -> Result<BTreeMap<String, u64>> {
     let contents = fs::read_to_string("/proc/softirqs")?;
     let mut out = BTreeMap::new();
     let mut cpus = 0usize;
-
     for (idx, line) in contents.lines().enumerate() {
         if idx == 0 {
             cpus = line
@@ -282,12 +256,10 @@ fn collect_softirqs() -> Result<BTreeMap<String, u64>> {
                 .count();
             continue;
         }
-
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-
         let Some((kind_raw, rest)) = trimmed.split_once(':') else {
             continue;
         };
@@ -299,7 +271,6 @@ fn collect_softirqs() -> Result<BTreeMap<String, u64>> {
             }
         }
     }
-
     Ok(out)
 }
 
@@ -313,7 +284,6 @@ fn collect_softnet() -> Result<Vec<SoftnetCpuSnapshot>> {
             if cols.len() < 3 {
                 return None;
             }
-
             Some(SoftnetCpuSnapshot {
                 cpu,
                 processed: u64::from_str_radix(cols[0], 16).unwrap_or(0),
@@ -327,21 +297,17 @@ fn collect_softnet() -> Result<Vec<SoftnetCpuSnapshot>> {
 fn collect_swaps() -> Result<Vec<SwapDeviceSnapshot>> {
     let contents = fs::read_to_string("/proc/swaps")?;
     let mut out = Vec::new();
-
     for (idx, line) in contents.lines().enumerate() {
         if idx == 0 {
             continue;
         }
-
         let cols = line.split_whitespace().collect::<Vec<_>>();
         if cols.len() < 5 {
             continue;
         }
-
         let size_kib = cols[2].parse::<u64>().unwrap_or(0);
         let used_kib = cols[3].parse::<u64>().unwrap_or(0);
         let priority = cols[4].parse::<i64>().unwrap_or(0);
-
         out.push(SwapDeviceSnapshot {
             device: cols[0].to_string(),
             swap_type: cols[1].to_string(),
@@ -350,20 +316,17 @@ fn collect_swaps() -> Result<Vec<SwapDeviceSnapshot>> {
             priority,
         });
     }
-
     Ok(out)
 }
 
 fn collect_mounts() -> Result<Vec<MountSnapshot>> {
     let contents = fs::read_to_string("/proc/mounts")?;
     let mut out = Vec::new();
-
     for line in contents.lines() {
         let cols = line.split_whitespace().collect::<Vec<_>>();
         if cols.len() < 4 {
             continue;
         }
-
         out.push(MountSnapshot {
             device: cols[0].replace("\\040", " "),
             mountpoint: cols[1].replace("\\040", " "),
@@ -371,7 +334,6 @@ fn collect_mounts() -> Result<Vec<MountSnapshot>> {
             read_only: cols[3].split(',').any(|option| option == "ro"),
         });
     }
-
     Ok(out)
 }
 
@@ -380,7 +342,6 @@ fn collect_cpuinfo() -> Result<Vec<CpuInfoSnapshot>> {
     let mut out = Vec::new();
     let mut current = CpuInfoSnapshot::default();
     let mut seen = false;
-
     for line in contents.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -391,14 +352,12 @@ fn collect_cpuinfo() -> Result<Vec<CpuInfoSnapshot>> {
             }
             continue;
         }
-
         let Some((key, value)) = trimmed.split_once(':') else {
             continue;
         };
         let key = key.trim();
         let value = value.trim();
         seen = true;
-
         match key {
             "processor" => current.cpu = value.parse::<usize>().unwrap_or(0),
             "vendor_id" => current.vendor_id = Some(value.to_string()),
@@ -414,17 +373,14 @@ fn collect_cpuinfo() -> Result<Vec<CpuInfoSnapshot>> {
             _ => {}
         }
     }
-
     if seen {
         out.push(current);
     }
-
     for cpu in &mut out {
         if cpu.mhz.is_none() {
             cpu.mhz = read_cpu_frequency_mhz(cpu.cpu);
         }
     }
-
     Ok(out)
 }
 
@@ -433,13 +389,11 @@ fn collect_zoneinfo() -> Result<BTreeMap<String, u64>> {
     let mut out = BTreeMap::new();
     let mut current_node = String::new();
     let mut current_zone = String::new();
-
     for line in contents.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-
         if let Some(rest) = trimmed.strip_prefix("Node ") {
             if let Some((node_part, zone_part)) = rest.split_once(", zone") {
                 current_node = node_part.trim().to_string();
@@ -447,11 +401,9 @@ fn collect_zoneinfo() -> Result<BTreeMap<String, u64>> {
             }
             continue;
         }
-
         if current_node.is_empty() || current_zone.is_empty() {
             continue;
         }
-
         let cols = trimmed.split_whitespace().collect::<Vec<_>>();
         if cols.len() != 2 {
             continue;
@@ -460,20 +412,17 @@ fn collect_zoneinfo() -> Result<BTreeMap<String, u64>> {
             out.insert(format!("{current_node}|{current_zone}|{}", cols[0]), value);
         }
     }
-
     Ok(out)
 }
 
 fn collect_buddyinfo() -> Result<BTreeMap<String, u64>> {
     let contents = fs::read_to_string("/proc/buddyinfo")?;
     let mut out = BTreeMap::new();
-
     for line in contents.lines() {
         let cols = line.split_whitespace().collect::<Vec<_>>();
         if cols.len() < 5 || cols[0] != "Node" {
             continue;
         }
-
         let node = cols[1].trim_end_matches(',');
         let zone = cols[3].trim_end_matches(',');
         for (order, value) in cols[4..].iter().enumerate() {
@@ -482,7 +431,6 @@ fn collect_buddyinfo() -> Result<BTreeMap<String, u64>> {
             }
         }
     }
-
     Ok(out)
 }
 
@@ -490,7 +438,6 @@ fn collect_system() -> Result<SystemSnapshot> {
     let stat = procfs::KernelStats::current()?;
     let (interrupts_total, softirqs_total) = collect_proc_stat_totals()?;
     let uptime_secs = collect_uptime_secs()?;
-
     let per_cpu = stat
         .cpu_time
         .iter()
@@ -507,7 +454,6 @@ fn collect_system() -> Result<SystemSnapshot> {
             guest_nice: opt_u64(cpu.guest_nice),
         })
         .collect();
-
     Ok(SystemSnapshot {
         ticks_per_second: procfs::ticks_per_second() as u64,
         cpu_cycle_utilization: None,
@@ -519,7 +465,8 @@ fn collect_system() -> Result<SystemSnapshot> {
         softirqs_total,
         process_count: all_processes()?.count() as u64,
         pid_max: read_proc_u64("/proc/sys/kernel/pid_max").unwrap_or(0),
-        entropy_available_bits: read_proc_u64("/proc/sys/kernel/random/entropy_avail").unwrap_or(0),
+        entropy_available_bits: read_proc_u64("/proc/sys/kernel/random/entropy_avail")
+            .unwrap_or(0),
         entropy_pool_size_bits: read_proc_u64("/proc/sys/kernel/random/poolsize").unwrap_or(0),
         procs_running: stat.procs_running.unwrap_or(0),
         procs_blocked: stat.procs_blocked.unwrap_or(0),
@@ -612,7 +559,6 @@ fn collect_disks() -> Result<Vec<DiskSnapshot>> {
 fn collect_net() -> Result<Vec<NetDevSnapshot>> {
     let devs = std::fs::read_to_string("/proc/net/dev")?;
     let mut out = Vec::new();
-
     for line in devs.lines().skip(2) {
         let mut parts = line.split(':');
         let name = parts.next().unwrap_or("").trim().to_string();
@@ -624,9 +570,7 @@ fn collect_net() -> Result<Vec<NetDevSnapshot>> {
         if data.len() < 16 || name.is_empty() {
             continue;
         }
-
         let sys = Path::new("/sys/class/net").join(&name);
-
         out.push(NetDevSnapshot {
             name,
             mtu: read_sysfs_u64(sys.join("mtu")),
@@ -651,22 +595,18 @@ fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             tx_compressed: data[15].parse().unwrap_or(0),
         });
     }
-
     Ok(out)
 }
 
 fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
     let mut out = Vec::new();
-
     for entry in all_processes()? {
         let Ok(process) = entry else { continue };
         let Ok(stat) = process.stat() else { continue };
-
-        let status = process.status().ok();
         let io = process.io().ok();
         let proc_dir = Path::new("/proc").join(stat.pid.to_string());
         let status_path = proc_dir.join("status");
-
+        let status = process.status().ok();
         out.push(ProcessSnapshot {
             pid: stat.pid,
             ppid: stat.ppid,
@@ -696,13 +636,13 @@ fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
             cancelled_write_bytes: io.as_ref().map(|v| u64_to_i64(v.cancelled_write_bytes)),
             vm_size_kib: status.as_ref().and_then(|s| s.vmsize),
             vm_rss_kib: status.as_ref().and_then(|s| s.vmrss),
-            vm_data_kib: parse_status_kib(&status_path, "VmData"),
-            vm_stack_kib: parse_status_kib(&status_path, "VmStk"),
-            vm_exe_kib: parse_status_kib(&status_path, "VmExe"),
-            vm_lib_kib: parse_status_kib(&status_path, "VmLib"),
-            vm_swap_kib: parse_status_kib(&status_path, "VmSwap"),
-            vm_pte_kib: parse_status_kib(&status_path, "VmPTE"),
-            vm_hwm_kib: parse_status_kib(&status_path, "VmHWM"),
+            vm_data_kib: parse_status_u64(&status_path, "VmData"),
+            vm_stack_kib: parse_status_u64(&status_path, "VmStk"),
+            vm_exe_kib: parse_status_u64(&status_path, "VmExe"),
+            vm_lib_kib: parse_status_u64(&status_path, "VmLib"),
+            vm_swap_kib: parse_status_u64(&status_path, "VmSwap"),
+            vm_pte_kib: parse_status_u64(&status_path, "VmPTE"),
+            vm_hwm_kib: parse_status_u64(&status_path, "VmHWM"),
             voluntary_ctxt_switches: parse_status_u64(&status_path, "voluntary_ctxt_switches"),
             nonvoluntary_ctxt_switches: parse_status_u64(
                 &status_path,
@@ -710,6 +650,5 @@ fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
             ),
         });
     }
-
     Ok(out)
 }

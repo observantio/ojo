@@ -3541,14 +3541,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_io_bytes_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_io_bytes_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Io",
+        "title": "System Disk Io Rate",
         "type": "timeseries"
       },
       {
@@ -3704,7 +3704,7 @@
                 }
               ]
             },
-            "unit": "percentunit"
+            "unit": "ms"
           },
           "overrides": []
         },
@@ -3737,14 +3737,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_io_time_seconds_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "1000 * clamp_min(rate(system_disk_io_time_seconds_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Io Time",
+        "title": "System Disk Io Time Rate",
         "type": "timeseries"
       },
       {
@@ -3900,7 +3900,7 @@
                 }
               ]
             },
-            "unit": "s"
+            "unit": "ms"
           },
           "overrides": []
         },
@@ -3933,14 +3933,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_operation_time_seconds_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "1000 * clamp_min(rate(system_disk_operation_time_seconds_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Operation Time",
+        "title": "System Disk Operation Time Rate",
         "type": "timeseries"
       },
       {
@@ -4031,14 +4031,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_operations_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_operations_total{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}} {{direction}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Operations",
+        "title": "System Disk Operations Rate",
         "type": "timeseries"
       },
       {
@@ -4913,14 +4913,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Time In Progress",
+        "title": "System Disk Time In Progress Rate",
         "type": "timeseries"
       },
       {
@@ -5011,14 +5011,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_reading_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_time_reading_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Time Reading",
+        "title": "System Disk Time Reading Rate",
         "type": "timeseries"
       },
       {
@@ -5109,14 +5109,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_time_writing_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_time_writing_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Time Writing",
+        "title": "System Disk Time Writing Rate",
         "type": "timeseries"
       },
       {
@@ -5403,14 +5403,14 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_disk_weighted_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}",
+            "expr": "clamp_min(rate(system_disk_weighted_time_in_progress_milliseconds{job=~\"$job\",instance=~\"$instance\",device=~\"$device\"}[$__rate_interval]), 0)",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
             "refId": "A"
           }
         ],
-        "title": "System Disk Weighted Time In Progress",
+        "title": "System Disk Weighted Time In Progress Rate",
         "type": "timeseries"
       },
       {

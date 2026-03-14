@@ -10,30 +10,48 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub struct MetricFilter {
-    include: Arc<Vec<String>>,
-    exclude: Arc<Vec<String>>,
+    include: Arc<[String]>,
+    exclude: Arc<[String]>,
 }
 
 impl MetricFilter {
     pub fn new(include: Vec<String>, exclude: Vec<String>) -> Self {
         Self {
-            include: Arc::new(include),
-            exclude: Arc::new(exclude),
+            include: include.into(),
+            exclude: exclude.into(),
         }
     }
 
-    pub fn enabled(&self, name: &str) -> bool {
-        let included = self.include.is_empty()
-            || self
-                .include
-                .iter()
-                .any(|p| name == p || name.starts_with(p.as_str()));
-        let excluded = self
-            .exclude
+    #[inline]
+    fn matches(patterns: &[String], name: &str) -> bool {
+        patterns
             .iter()
-            .any(|p| name == p || name.starts_with(p.as_str()));
-        included && !excluded
+            .any(|p| name == p.as_str() || name.starts_with(p))
     }
+
+    #[inline]
+    pub fn enabled(&self, name: &str) -> bool {
+        let included = self.include.is_empty() || Self::matches(&self.include, name);
+        included && !Self::matches(&self.exclude, name)
+    }
+}
+
+#[inline]
+fn non_negative_u64<T>(value: T) -> u64
+where
+    T: TryInto<u64>,
+{
+    value.try_into().unwrap_or(0)
+}
+
+#[inline]
+fn pages_to_bytes_4k(pages: i64) -> u64 {
+    non_negative_u64(pages).saturating_mul(4096)
+}
+
+#[inline]
+fn kib_to_bytes(kib: u64) -> u64 {
+    kib.saturating_mul(1024)
 }
 
 pub struct ProcMetrics {
@@ -122,7 +140,6 @@ pub struct ProcMetrics {
     pub swap_outs_per_sec: Gauge<f64>,
 
     pub boot_time_epoch_secs: Gauge<u64>,
-    pub ctxt_total: Gauge<u64>,
     pub forks_total: Gauge<u64>,
     pub procs_running: Gauge<u64>,
     pub procs_blocked: Gauge<u64>,
@@ -350,7 +367,7 @@ impl ProcMetrics {
             otel_process_cpu_time: meter
                 .f64_counter("process.cpu.time")
                 .with_unit("s")
-                .with_description("Process CPU time by state.")
+                .with_description("Process CPU time by CPU mode.")
                 .build(),
             otel_process_io: meter
                 .u64_counter("process.disk.io")
@@ -412,6 +429,7 @@ impl ProcMetrics {
                 .with_unit("1")
                 .with_description("Linux scheduler metadata per process.")
                 .build(),
+
             cpu_utilization: meter.f64_gauge("system.cpu.utilization").build(),
             load_1m: meter.f64_gauge("system.cpu.load_average.1m").build(),
             load_5m: meter.f64_gauge("system.cpu.load_average.5m").build(),
@@ -419,14 +437,9 @@ impl ProcMetrics {
             load_runnable: meter.u64_gauge("system.linux.load.runnable").build(),
             load_entities: meter.u64_gauge("system.linux.load.entities").build(),
             load_latest_pid: meter.u64_gauge("system.linux.load.latest_pid").build(),
-            mem_total_bytes: meter
-                .u64_gauge("system.memory.total")
-                .with_unit("By")
-                .build(),
-            mem_free_bytes: meter
-                .u64_gauge("system.memory.free")
-                .with_unit("By")
-                .build(),
+
+            mem_total_bytes: meter.u64_gauge("system.memory.total").with_unit("By").build(),
+            mem_free_bytes: meter.u64_gauge("system.memory.free").with_unit("By").build(),
             mem_available_bytes: meter
                 .u64_gauge("system.memory.available")
                 .with_unit("By")
@@ -447,10 +460,7 @@ impl ProcMetrics {
                 .u64_gauge("system.memory.inactive")
                 .with_unit("By")
                 .build(),
-            mem_anon_bytes: meter
-                .u64_gauge("system.memory.anon")
-                .with_unit("By")
-                .build(),
+            mem_anon_bytes: meter.u64_gauge("system.memory.anon").with_unit("By").build(),
             mem_mapped_bytes: meter
                 .u64_gauge("system.memory.mapped")
                 .with_unit("By")
@@ -473,10 +483,7 @@ impl ProcMetrics {
                 .u64_gauge("system.memory.writeback")
                 .with_unit("By")
                 .build(),
-            mem_slab_bytes: meter
-                .u64_gauge("system.memory.slab")
-                .with_unit("By")
-                .build(),
+            mem_slab_bytes: meter.u64_gauge("system.memory.slab").with_unit("By").build(),
             mem_sreclaimable_bytes: meter
                 .u64_gauge("system.memory.sreclaimable")
                 .with_unit("By")
@@ -524,8 +531,8 @@ impl ProcMetrics {
             page_outs_per_sec: meter.f64_gauge("system.paging.page_outs_per_sec").build(),
             swap_ins_per_sec: meter.f64_gauge("system.swap.ins_per_sec").build(),
             swap_outs_per_sec: meter.f64_gauge("system.swap.outs_per_sec").build(),
+
             boot_time_epoch_secs: meter.u64_gauge("system.boot.time").with_unit("s").build(),
-            ctxt_total: meter.u64_gauge("system.context_switches").build(),
             forks_total: meter.u64_gauge("system.processes.forks").build(),
             procs_running: meter.u64_gauge("system.processes.running").build(),
             procs_blocked: meter.u64_gauge("system.processes.blocked").build(),
@@ -591,6 +598,7 @@ impl ProcMetrics {
             softnet_cpu_time_squeezed: meter
                 .u64_gauge("system.linux.net.softnet.cpu.time_squeezed")
                 .build(),
+
             disk_read_bps: meter.f64_gauge("system.disk.read_bytes_per_sec").build(),
             disk_write_bps: meter.f64_gauge("system.disk.write_bytes_per_sec").build(),
             disk_total_bps: meter.f64_gauge("system.disk.total_bytes_per_sec").build(),
@@ -641,6 +649,7 @@ impl ProcMetrics {
                 .u64_gauge("system.disk.weighted_time_in_progress")
                 .with_unit("ms")
                 .build(),
+
             net_rx_bps: meter.f64_gauge("system.network.rx_bytes_per_sec").build(),
             net_tx_bps: meter.f64_gauge("system.network.tx_bytes_per_sec").build(),
             net_total_bps: meter
@@ -672,11 +681,9 @@ impl ProcMetrics {
             net_tx_colls: meter.u64_gauge("system.network.tx_collisions").build(),
             net_tx_carrier: meter.u64_gauge("system.network.tx_carrier").build(),
             net_tx_compressed: meter.u64_gauge("system.network.tx_compressed").build(),
+
             process_cpu_ratio: meter.f64_gauge("process.cpu.utilization").build(),
-            process_rss_bytes: meter
-                .u64_gauge("process.memory.rss")
-                .with_unit("By")
-                .build(),
+            process_rss_bytes: meter.u64_gauge("process.memory.rss").with_unit("By").build(),
             process_ppid: meter.i64_gauge("process.parent_pid").build(),
             process_num_threads: meter.i64_gauge("process.thread.count").build(),
             process_priority: meter.i64_gauge("process.linux.priority").build(),
@@ -703,7 +710,7 @@ impl ProcMetrics {
 
     #[inline]
     fn record_f64(&self, name: &str, gauge: &Gauge<f64>, value: f64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) {
+        if self.filter.enabled(name) && value.is_finite() {
             gauge.record(value, attrs);
         }
     }
@@ -724,7 +731,7 @@ impl ProcMetrics {
 
     #[inline]
     fn add_f64(&self, name: &str, counter: &Counter<f64>, value: f64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) && value > 0.0 {
+        if self.filter.enabled(name) && value.is_finite() && value > 0.0 {
             counter.add(value, attrs);
         }
     }
@@ -759,6 +766,7 @@ impl ProcMetrics {
             snap.system.uptime_secs,
             &[],
         );
+
         self.record_u64(
             "system.processes.count",
             &self.otel_system_processes,
@@ -768,15 +776,16 @@ impl ProcMetrics {
         self.record_u64(
             "system.processes.count",
             &self.otel_system_processes,
-            snap.system.procs_running as u64,
+            non_negative_u64(snap.system.procs_running),
             &[KeyValue::new("state", "running")],
         );
         self.record_u64(
             "system.processes.count",
             &self.otel_system_processes,
-            snap.system.procs_blocked as u64,
+            non_negative_u64(snap.system.procs_blocked),
             &[KeyValue::new("state", "blocked")],
         );
+
         self.record_u64(
             "system.linux.pid.max",
             &self.otel_system_pid_max,
@@ -795,6 +804,7 @@ impl ProcMetrics {
             snap.system.entropy_pool_size_bits,
             &[KeyValue::new("state", "pool_size")],
         );
+
         self.add_u64(
             "system.cpu.interrupts",
             &self.otel_system_interrupts,
@@ -819,6 +829,7 @@ impl ProcMetrics {
             derived.forks_delta,
             &[],
         );
+
         for (state, value) in &derived.cpu_time_delta_secs {
             self.add_f64(
                 "system.cpu.time",
@@ -827,6 +838,7 @@ impl ProcMetrics {
                 &[KeyValue::new("state", (*state).to_string())],
             );
         }
+
         self.add_u64(
             "system.paging.faults",
             &self.otel_system_paging_faults,
@@ -863,12 +875,14 @@ impl ProcMetrics {
             derived.swap_outs_delta,
             &[KeyValue::new("direction", "out")],
         );
+
         self.record_f64(
             "system.cpu.utilization",
             &self.cpu_utilization,
             derived.cpu_utilization_ratio,
             &[],
         );
+
         for (cpu, ratio) in &derived.per_cpu_utilization_ratio {
             self.record_f64(
                 "system.cpu.core.utilization",
@@ -896,18 +910,8 @@ impl ProcMetrics {
     }
 
     fn record_load(&self, snap: &Snapshot) {
-        self.record_f64(
-            "system.cpu.load_average.1m",
-            &self.load_1m,
-            snap.load.one,
-            &[],
-        );
-        self.record_f64(
-            "system.cpu.load_average.5m",
-            &self.load_5m,
-            snap.load.five,
-            &[],
-        );
+        self.record_f64("system.cpu.load_average.1m", &self.load_1m, snap.load.one, &[]);
+        self.record_f64("system.cpu.load_average.5m", &self.load_5m, snap.load.five, &[]);
         self.record_f64(
             "system.cpu.load_average.15m",
             &self.load_15m,
@@ -917,37 +921,28 @@ impl ProcMetrics {
         self.record_u64(
             "system.linux.load.runnable",
             &self.load_runnable,
-            snap.load.runnable as u64,
+            non_negative_u64(snap.load.runnable),
             &[],
         );
         self.record_u64(
             "system.linux.load.entities",
             &self.load_entities,
-            snap.load.entities as u64,
+            non_negative_u64(snap.load.entities),
             &[],
         );
         self.record_u64(
             "system.linux.load.latest_pid",
             &self.load_latest_pid,
-            snap.load.latest_pid as u64,
+            non_negative_u64(snap.load.latest_pid),
             &[],
         );
     }
 
     fn record_memory(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         let m = &snap.memory;
-        self.record_u64(
-            "system.memory.total",
-            &self.mem_total_bytes,
-            m.mem_total_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.memory.free",
-            &self.mem_free_bytes,
-            m.mem_free_bytes,
-            &[],
-        );
+
+        self.record_u64("system.memory.total", &self.mem_total_bytes, m.mem_total_bytes, &[]);
+        self.record_u64("system.memory.free", &self.mem_free_bytes, m.mem_free_bytes, &[]);
         self.record_u64(
             "system.memory.available",
             &self.mem_available_bytes,
@@ -996,42 +991,22 @@ impl ProcMetrics {
             m.shmem_bytes,
             &[],
         );
-        self.record_u64(
-            "system.swap.total",
-            &self.swap_total_bytes,
-            m.swap_total_bytes,
-            &[],
-        );
-        self.record_u64(
-            "system.swap.free",
-            &self.swap_free_bytes,
-            m.swap_free_bytes,
-            &[],
-        );
+        self.record_u64("system.swap.total", &self.swap_total_bytes, m.swap_total_bytes, &[]);
+        self.record_u64("system.swap.free", &self.swap_free_bytes, m.swap_free_bytes, &[]);
         self.record_u64(
             "system.swap.cached",
             &self.swap_cached_bytes,
             m.swap_cached_bytes,
             &[],
         );
-        self.record_u64(
-            "system.memory.dirty",
-            &self.mem_dirty_bytes,
-            m.dirty_bytes,
-            &[],
-        );
+        self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, m.dirty_bytes, &[]);
         self.record_u64(
             "system.memory.writeback",
             &self.mem_writeback_bytes,
             m.writeback_bytes,
             &[],
         );
-        self.record_u64(
-            "system.memory.slab",
-            &self.mem_slab_bytes,
-            m.slab_bytes,
-            &[],
-        );
+        self.record_u64("system.memory.slab", &self.mem_slab_bytes, m.slab_bytes, &[]);
         self.record_u64(
             "system.memory.sreclaimable",
             &self.mem_sreclaimable_bytes,
@@ -1092,6 +1067,7 @@ impl ProcMetrics {
             m.hugepage_size_bytes,
             &[],
         );
+
         self.record_f64(
             "system.memory.used_ratio",
             &self.mem_used_ratio,
@@ -1156,13 +1132,9 @@ impl ProcMetrics {
             let Some(attrs) = pressure_attrs(key) else {
                 continue;
             };
-            self.record_f64(
-                "system.linux.pressure",
-                &self.otel_system_pressure,
-                *value,
-                &attrs,
-            );
+            self.record_f64("system.linux.pressure", &self.otel_system_pressure, *value, &attrs);
         }
+
         for (key, value) in &derived.pressure_total_delta_secs {
             let Some(attrs) = pressure_stall_time_attrs(key) else {
                 continue;
@@ -1184,12 +1156,6 @@ impl ProcMetrics {
             &[],
         );
         self.record_u64(
-            "system.context_switches",
-            &self.ctxt_total,
-            snap.system.context_switches,
-            &[],
-        );
-        self.record_u64(
             "system.processes.forks",
             &self.forks_total,
             snap.system.forks_since_boot,
@@ -1198,13 +1164,13 @@ impl ProcMetrics {
         self.record_u64(
             "system.processes.running",
             &self.procs_running,
-            snap.system.procs_running as u64,
+            non_negative_u64(snap.system.procs_running),
             &[],
         );
         self.record_u64(
             "system.processes.blocked",
             &self.procs_blocked,
-            snap.system.procs_blocked as u64,
+            non_negative_u64(snap.system.procs_blocked),
             &[],
         );
 
@@ -1231,23 +1197,14 @@ impl ProcMetrics {
             let Some(attrs) = interrupts_attrs(key) else {
                 continue;
             };
-            self.add_u64(
-                "system.linux.interrupts",
-                &self.otel_linux_interrupts,
-                *value,
-                &attrs,
-            );
+            self.add_u64("system.linux.interrupts", &self.otel_linux_interrupts, *value, &attrs);
         }
+
         for (key, value) in &derived.linux_softirqs_delta {
             let Some(attrs) = softirqs_attrs(key) else {
                 continue;
             };
-            self.add_u64(
-                "system.linux.softirqs",
-                &self.otel_linux_softirqs,
-                *value,
-                &attrs,
-            );
+            self.add_u64("system.linux.softirqs", &self.otel_linux_softirqs, *value, &attrs);
         }
 
         for swap in &snap.swaps {
@@ -1292,6 +1249,7 @@ impl ProcMetrics {
 
         for cpu in &snap.cpuinfo {
             let cpu_attr = [KeyValue::new("cpu", cpu.cpu.to_string())];
+
             if let Some(value) = cpu.mhz {
                 self.record_f64(
                     "system.cpu.frequency",
@@ -1301,12 +1259,7 @@ impl ProcMetrics {
                 );
             }
             if let Some(value) = cpu.cache_size_bytes {
-                self.record_u64(
-                    "system.cpu.cache.size",
-                    &self.cpu_cache_size,
-                    value,
-                    &cpu_attr,
-                );
+                self.record_u64("system.cpu.cache.size", &self.cpu_cache_size, value, &cpu_attr);
             }
 
             let mut attrs = vec![KeyValue::new("cpu", cpu.cpu.to_string())];
@@ -1323,24 +1276,14 @@ impl ProcMetrics {
             let Some(attrs) = zoneinfo_attrs(key) else {
                 continue;
             };
-            self.record_u64(
-                "system.linux.zoneinfo",
-                &self.zoneinfo_value,
-                *value,
-                &attrs,
-            );
+            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
         }
 
         for (key, value) in &snap.buddyinfo {
             let Some(attrs) = buddyinfo_attrs(key) else {
                 continue;
             };
-            self.record_u64(
-                "system.linux.buddy.blocks",
-                &self.buddyinfo_blocks,
-                *value,
-                &attrs,
-            );
+            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
         }
     }
 
@@ -1399,6 +1342,7 @@ impl ProcMetrics {
             derived.softnet_drop_ratio,
             &[],
         );
+
         for cpu in &snap.softnet {
             let attrs = [KeyValue::new("cpu", cpu.cpu.to_string())];
             self.record_u64(
@@ -1424,24 +1368,20 @@ impl ProcMetrics {
 
     fn record_disks(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         for disk in &snap.disks {
-            let dev = disk.name.clone();
-            let attrs = [KeyValue::new("device", dev.clone())];
+            let device = disk.name.clone();
+
+            let attrs = [KeyValue::new("device", device.clone())];
             let read_attrs = [
-                KeyValue::new("device", dev.clone()),
+                KeyValue::new("device", device.clone()),
                 KeyValue::new("direction", "read"),
             ];
             let write_attrs = [
-                KeyValue::new("device", dev.clone()),
+                KeyValue::new("device", device.clone()),
                 KeyValue::new("direction", "write"),
             ];
 
             if let Some(v) = derived.disk_read_bytes_per_sec.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.read_bytes_per_sec",
-                    &self.disk_read_bps,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.read_bytes_per_sec", &self.disk_read_bps, *v, &attrs);
             }
             if let Some(v) = derived.disk_write_bytes_per_sec.get(&disk.name) {
                 self.record_f64(
@@ -1460,12 +1400,7 @@ impl ProcMetrics {
                 );
             }
             if let Some(v) = derived.disk_reads_per_sec.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.read_ops_per_sec",
-                    &self.disk_reads_per_sec,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.read_ops_per_sec", &self.disk_reads_per_sec, *v, &attrs);
             }
             if let Some(v) = derived.disk_writes_per_sec.get(&disk.name) {
                 self.record_f64(
@@ -1479,20 +1414,10 @@ impl ProcMetrics {
                 self.record_f64("system.disk.ops_per_sec", &self.disk_total_iops, *v, &attrs);
             }
             if let Some(v) = derived.disk_read_await_ms.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.read_await",
-                    &self.disk_read_await_ms,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.read_await", &self.disk_read_await_ms, *v, &attrs);
             }
             if let Some(v) = derived.disk_write_await_ms.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.write_await",
-                    &self.disk_write_await_ms,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.write_await", &self.disk_write_await_ms, *v, &attrs);
             }
             if let Some(v) = derived.disk_avg_read_size_bytes.get(&disk.name) {
                 self.record_f64(
@@ -1511,21 +1436,12 @@ impl ProcMetrics {
                 );
             }
             if let Some(v) = derived.disk_utilization_ratio.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.utilization",
-                    &self.disk_utilization,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.utilization", &self.disk_utilization, *v, &attrs);
             }
             if let Some(v) = derived.disk_queue_depth.get(&disk.name) {
-                self.record_f64(
-                    "system.disk.queue_depth",
-                    &self.disk_queue_depth,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.disk.queue_depth", &self.disk_queue_depth, *v, &attrs);
             }
+
             if let Some(v) = derived.disk_read_bytes_delta.get(&disk.name) {
                 self.add_u64("system.disk.io", &self.otel_disk_io, *v, &read_attrs);
             }
@@ -1567,6 +1483,7 @@ impl ProcMetrics {
             if let Some(v) = derived.disk_io_time_delta_secs.get(&disk.name) {
                 self.add_f64("system.disk.io_time", &self.otel_disk_io_time, *v, &attrs);
             }
+
             if let Some(v) = disk.logical_block_size {
                 self.record_u64(
                     "system.disk.logical_block_size",
@@ -1591,6 +1508,7 @@ impl ProcMetrics {
                     &attrs,
                 );
             }
+
             self.record_u64(
                 "system.disk.io_in_progress",
                 &self.disk_in_progress,
@@ -1632,32 +1550,23 @@ impl ProcMetrics {
 
     fn record_network_interfaces(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         for net in &snap.net {
-            let dev = net.name.clone();
-            let attrs = [KeyValue::new("device", dev.clone())];
+            let device = net.name.clone();
+
+            let attrs = [KeyValue::new("device", device.clone())];
             let rx_attrs = [
-                KeyValue::new("device", dev.clone()),
+                KeyValue::new("device", device.clone()),
                 KeyValue::new("direction", "receive"),
             ];
             let tx_attrs = [
-                KeyValue::new("device", dev.clone()),
+                KeyValue::new("device", device.clone()),
                 KeyValue::new("direction", "transmit"),
             ];
 
             if let Some(v) = derived.net_rx_bytes_per_sec.get(&net.name) {
-                self.record_f64(
-                    "system.network.rx_bytes_per_sec",
-                    &self.net_rx_bps,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.network.rx_bytes_per_sec", &self.net_rx_bps, *v, &attrs);
             }
             if let Some(v) = derived.net_tx_bytes_per_sec.get(&net.name) {
-                self.record_f64(
-                    "system.network.tx_bytes_per_sec",
-                    &self.net_tx_bps,
-                    *v,
-                    &attrs,
-                );
+                self.record_f64("system.network.tx_bytes_per_sec", &self.net_tx_bps, *v, &attrs);
             }
             if let Some(v) = derived.net_total_bytes_per_sec.get(&net.name) {
                 self.record_f64(
@@ -1731,6 +1640,7 @@ impl ProcMetrics {
                     &attrs,
                 );
             }
+
             if let Some(v) = derived.net_rx_bytes_delta.get(&net.name) {
                 self.add_u64("system.network.io", &self.otel_network_io, *v, &rx_attrs);
             }
@@ -1785,6 +1695,7 @@ impl ProcMetrics {
                     &tx_attrs,
                 );
             }
+
             if let Some(v) = net.mtu {
                 self.record_u64("system.network.mtu", &self.net_mtu, v, &attrs);
             }
@@ -1792,12 +1703,7 @@ impl ProcMetrics {
                 self.record_u64("system.network.speed_mbps", &self.net_speed_mbps, v, &attrs);
             }
             if let Some(v) = net.tx_queue_len {
-                self.record_u64(
-                    "system.network.tx_queue_len",
-                    &self.net_tx_queue_len,
-                    v,
-                    &attrs,
-                );
+                self.record_u64("system.network.tx_queue_len", &self.net_tx_queue_len, v, &attrs);
             }
             if let Some(v) = net.carrier_up {
                 self.record_u64(
@@ -1807,6 +1713,7 @@ impl ProcMetrics {
                     &attrs,
                 );
             }
+
             self.record_u64(
                 "system.network.rx_packets",
                 &self.net_rx_packets,
@@ -1825,18 +1732,8 @@ impl ProcMetrics {
                 net.rx_drop,
                 &attrs,
             );
-            self.record_u64(
-                "system.network.rx_fifo",
-                &self.net_rx_fifo,
-                net.rx_fifo,
-                &attrs,
-            );
-            self.record_u64(
-                "system.network.rx_frame",
-                &self.net_rx_frame,
-                net.rx_frame,
-                &attrs,
-            );
+            self.record_u64("system.network.rx_fifo", &self.net_rx_fifo, net.rx_fifo, &attrs);
+            self.record_u64("system.network.rx_frame", &self.net_rx_frame, net.rx_frame, &attrs);
             self.record_u64(
                 "system.network.rx_compressed",
                 &self.net_rx_compressed,
@@ -1867,12 +1764,7 @@ impl ProcMetrics {
                 net.tx_drop,
                 &attrs,
             );
-            self.record_u64(
-                "system.network.tx_fifo",
-                &self.net_tx_fifo,
-                net.tx_fifo,
-                &attrs,
-            );
+            self.record_u64("system.network.tx_fifo", &self.net_tx_fifo, net.tx_fifo, &attrs);
             self.record_u64(
                 "system.network.tx_collisions",
                 &self.net_tx_colls,
@@ -1902,50 +1794,50 @@ impl ProcMetrics {
 
             let pid = proc.pid.to_string();
             let comm = proc.comm.clone();
-            let state = proc.state.clone();
 
-            let attrs = [
-                KeyValue::new("pid", pid.clone()),
-                KeyValue::new("comm", comm.clone()),
-                KeyValue::new("state", state),
-            ];
+            let pid_kv = KeyValue::new("pid", pid.clone());
+            let comm_kv = KeyValue::new("comm", comm.clone());
+            let proc_state_kv = KeyValue::new("state", proc.state.clone());
+
+            let base_attrs = [pid_kv.clone(), comm_kv.clone(), proc_state_kv];
 
             if let Some(cpu) = derived.process_cpu_ratio.get(&proc.pid) {
-                self.record_f64(
-                    "process.cpu.utilization",
-                    &self.process_cpu_ratio,
-                    *cpu,
-                    &attrs,
+                self.record_f64("process.cpu.utilization", &self.process_cpu_ratio, *cpu, &base_attrs);
+            }
+
+            if proc.rss_pages >= 0 {
+                self.record_u64(
+                    "process.memory.rss",
+                    &self.process_rss_bytes,
+                    pages_to_bytes_4k(proc.rss_pages),
+                    &base_attrs,
                 );
             }
-            if proc.rss_pages >= 0 {
-                let rss = (proc.rss_pages as u64).saturating_mul(4096);
-                self.record_u64("process.memory.rss", &self.process_rss_bytes, rss, &attrs);
-            }
+
             self.record_i64(
                 "process.parent_pid",
                 &self.process_ppid,
                 proc.ppid as i64,
-                &attrs,
+                &base_attrs,
             );
             self.record_i64(
                 "process.thread.count",
                 &self.process_num_threads,
                 proc.num_threads,
-                &attrs,
+                &base_attrs,
             );
             self.record_i64(
                 "process.linux.priority",
                 &self.process_priority,
                 proc.priority,
-                &attrs,
+                &base_attrs,
             );
-            self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &attrs);
+            self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &base_attrs);
             self.record_u64(
                 "process.linux.memory.vsize",
                 &self.process_vsize_bytes,
                 proc.vsize_bytes,
-                &attrs,
+                &base_attrs,
             );
 
             if let Some(value) = proc.read_bytes {
@@ -1953,7 +1845,7 @@ impl ProcMetrics {
                     "process.linux.io.read_bytes",
                     &self.process_read_bytes,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.write_bytes {
@@ -1961,7 +1853,7 @@ impl ProcMetrics {
                     "process.linux.io.write_bytes",
                     &self.process_write_bytes,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.cancelled_write_bytes {
@@ -1969,23 +1861,23 @@ impl ProcMetrics {
                     "process.linux.io.cancelled_write_bytes",
                     &self.process_cancelled_write_bytes,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.vm_size_kib {
                 self.record_u64(
                     "process.linux.memory.vm_size",
                     &self.process_vm_size_bytes,
-                    value.saturating_mul(1024),
-                    &attrs,
+                    kib_to_bytes(value),
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.vm_rss_kib {
                 self.record_u64(
                     "process.linux.memory.vm_rss",
                     &self.process_vm_rss_bytes,
-                    value.saturating_mul(1024),
-                    &attrs,
+                    kib_to_bytes(value),
+                    &base_attrs,
                 );
             }
 
@@ -1995,9 +1887,9 @@ impl ProcMetrics {
                     &self.otel_process_cpu_time,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
-                        KeyValue::new("state", "user"),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
+                        KeyValue::new("cpu_mode", "user"),
                     ],
                 );
             }
@@ -2007,9 +1899,9 @@ impl ProcMetrics {
                     &self.otel_process_cpu_time,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
-                        KeyValue::new("state", "system"),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
+                        KeyValue::new("cpu_mode", "system"),
                     ],
                 );
             }
@@ -2019,8 +1911,8 @@ impl ProcMetrics {
                     &self.otel_process_io,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "read"),
                     ],
                 );
@@ -2031,8 +1923,8 @@ impl ProcMetrics {
                     &self.otel_process_io,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "write"),
                     ],
                 );
@@ -2043,8 +1935,8 @@ impl ProcMetrics {
                     &self.otel_process_io_chars,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "read"),
                     ],
                 );
@@ -2055,8 +1947,8 @@ impl ProcMetrics {
                     &self.otel_process_io_chars,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "write"),
                     ],
                 );
@@ -2067,8 +1959,8 @@ impl ProcMetrics {
                     &self.otel_process_io_syscalls,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "read"),
                     ],
                 );
@@ -2079,8 +1971,8 @@ impl ProcMetrics {
                     &self.otel_process_io_syscalls,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("direction", "write"),
                     ],
                 );
@@ -2091,8 +1983,8 @@ impl ProcMetrics {
                     &self.otel_process_context_switches,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("type", "voluntary"),
                     ],
                 );
@@ -2103,8 +1995,8 @@ impl ProcMetrics {
                     &self.otel_process_context_switches,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("type", "involuntary"),
                     ],
                 );
@@ -2115,8 +2007,8 @@ impl ProcMetrics {
                     &self.otel_process_page_faults,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("type", "minor"),
                     ],
                 );
@@ -2127,18 +2019,19 @@ impl ProcMetrics {
                     &self.otel_process_page_faults,
                     *value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("type", "major"),
                     ],
                 );
             }
+
             if let Some(value) = proc.fd_count {
                 self.record_u64(
                     "process.open_file_descriptors",
                     &self.otel_process_open_fds,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.oom_score {
@@ -2146,7 +2039,7 @@ impl ProcMetrics {
                     "process.linux.oom_score",
                     &self.otel_process_oom_score,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
             if let Some(value) = proc.processor {
@@ -2154,22 +2047,24 @@ impl ProcMetrics {
                     "process.linux.processor",
                     &self.otel_process_processor,
                     value,
-                    &attrs,
+                    &base_attrs,
                 );
             }
+
             let start_time_unix = snap.system.boot_time_epoch_secs as f64
                 + (proc.start_time_ticks as f64 / snap.system.ticks_per_second.max(1) as f64);
+
             self.record_f64(
                 "process.start_time",
                 &self.otel_process_start_time,
                 start_time_unix,
-                &attrs,
+                &base_attrs,
             );
             self.record_u64(
                 "process.linux.start_time",
                 &self.otel_process_start_time_ticks,
                 proc.start_time_ticks,
-                &attrs,
+                &base_attrs,
             );
 
             if let Some(value) = proc.rt_priority {
@@ -2178,8 +2073,8 @@ impl ProcMetrics {
                     &self.otel_process_sched_priority,
                     value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("field", "rt_priority"),
                     ],
                 );
@@ -2190,34 +2085,37 @@ impl ProcMetrics {
                     &self.otel_process_sched_priority,
                     value,
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("field", "policy"),
                     ],
                 );
             }
+
             if proc.rss_pages >= 0 {
                 self.record_u64(
                     "process.memory.usage",
                     &self.otel_process_memory_usage,
-                    (proc.rss_pages as u64).saturating_mul(4096),
+                    pages_to_bytes_4k(proc.rss_pages),
                     &[
-                        KeyValue::new("pid", pid.clone()),
-                        KeyValue::new("comm", comm.clone()),
+                        pid_kv.clone(),
+                        comm_kv.clone(),
                         KeyValue::new("type", "rss"),
                     ],
                 );
             }
+
             self.record_u64(
                 "process.memory.usage",
                 &self.otel_process_memory_usage,
                 proc.vsize_bytes,
                 &[
-                    KeyValue::new("pid", pid.clone()),
-                    KeyValue::new("comm", comm.clone()),
+                    pid_kv.clone(),
+                    comm_kv.clone(),
                     KeyValue::new("type", "virtual"),
                 ],
             );
+
             for (kind, maybe_value) in [
                 ("vm_size", proc.vm_size_kib),
                 ("vm_rss", proc.vm_rss_kib),
@@ -2233,10 +2131,10 @@ impl ProcMetrics {
                     self.record_u64(
                         "process.memory.usage",
                         &self.otel_process_memory_usage,
-                        value.saturating_mul(1024),
+                        kib_to_bytes(value),
                         &[
-                            KeyValue::new("pid", pid.clone()),
-                            KeyValue::new("comm", comm.clone()),
+                            pid_kv.clone(),
+                            comm_kv.clone(),
                             KeyValue::new("type", kind),
                         ],
                     );
