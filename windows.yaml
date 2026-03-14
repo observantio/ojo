@@ -10,7 +10,6 @@ export:
   otlp:
     endpoint: "http://192.168.0.143:4355/v1/metrics"
     protocol: http/protobuf
-    compression: gzip
     timeout_secs: 10
   batch:
     interval_secs: 5

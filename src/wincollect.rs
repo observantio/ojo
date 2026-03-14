@@ -8,6 +8,8 @@ use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::null_mut;
 use std::slice;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use tracing::debug;
 
 use windows::core::{PCWSTR, PWSTR};
@@ -39,9 +41,9 @@ use windows::Win32::System::SystemInformation::{
 };
 
 use windows::Win32::System::Threading::{
-    GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, IO_COUNTERS,
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_ACCESS_RIGHTS, PROCESS_NAME_FORMAT,
-    PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, GetSystemTimes,
+    IO_COUNTERS, OpenProcess, QueryFullProcessImageNameW, PROCESS_ACCESS_RIGHTS,
+    PROCESS_NAME_FORMAT, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 
 #[link(name = "ntdll")]
@@ -57,7 +59,6 @@ unsafe extern "system" {
 const STATUS_INFO_LENGTH_MISMATCH: i32 = -1073741820i32;
 const SYSTEM_PERFORMANCE_INFORMATION_CLASS: u32 = 2;
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
-const SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS: u32 = 8;
 const DRIVE_FIXED_VALUE: u32 = 3;
 const IOCTL_DISK_PERFORMANCE: u32 = 0x0007_0020;
 const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
@@ -125,16 +126,6 @@ struct SystemProcessInformation {
     other_transfer_count: LargeInteger,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct SystemProcessorPerformanceInformation {
-    idle_time: LargeInteger,
-    kernel_time: LargeInteger,
-    user_time: LargeInteger,
-    dpc_time: LargeInteger,
-    interrupt_time: LargeInteger,
-    interrupt_count: u32,
-}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -273,6 +264,18 @@ fn cpu_count() -> usize {
         info.dwNumberOfProcessors as usize
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+struct LoadAvgState {
+    one: f64,
+    five: f64,
+    fifteen: f64,
+    prev_busy: u64,
+    prev_total: u64,
+    last: Instant,
+}
+
+static LOAD_AVG_STATE: OnceLock<Mutex<Option<LoadAvgState>>> = OnceLock::new();
 
 fn current_uptime_secs() -> f64 {
     unsafe { GetTickCount64() as f64 / 1000.0 }
@@ -431,108 +434,66 @@ fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
     }
 }
 
-fn collect_per_cpu_times() -> Result<(Vec<CpuTimes>, u64)> {
-    debug!("wincollect: collect_per_cpu_times start");
-    let mut per_cpu = Vec::new();
-    let mut interrupt_total = 0u64;
-
-    if let Ok(buf) = query_system_information(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS) {
-        let size = size_of::<SystemProcessorPerformanceInformation>();
-        if size > 0 && buf.len() >= size {
-            let count = buf.len() / size;
-            let infos = unsafe {
-                slice::from_raw_parts(
-                    buf.as_ptr() as *const SystemProcessorPerformanceInformation,
-                    count,
-                )
-            };
-
-            for info in infos {
-                let idle = nt_time_100ns(info.idle_time.quad_part);
-                let kernel_total = nt_time_100ns(info.kernel_time.quad_part);
-                let user = nt_time_100ns(info.user_time.quad_part);
-                let irq = nt_time_100ns(info.interrupt_time.quad_part);
-                let softirq = nt_time_100ns(info.dpc_time.quad_part);
-                let system = kernel_total
-                    .saturating_sub(idle)
-                    .saturating_sub(irq)
-                    .saturating_sub(softirq);
-
-                per_cpu.push(CpuTimes {
-                    user,
-                    nice: 0,
-                    system,
-                    idle,
-                    iowait: 0,
-                    irq,
-                    softirq,
-                    steal: 0,
-                    guest: 0,
-                    guest_nice: 0,
-                });
-                interrupt_total = interrupt_total.saturating_add(info.interrupt_count as u64);
-            }
-        }
+fn cpu_times_from_system() -> Result<(CpuTimes, Vec<CpuTimes>)> {
+    let mut idle = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    unsafe {
+        GetSystemTimes(
+            Some(&mut idle as *mut FILETIME),
+            Some(&mut kernel as *mut FILETIME),
+            Some(&mut user as *mut FILETIME),
+        )
+        .ok()
+        .context("GetSystemTimes failed")?;
     }
 
-    if !per_cpu.is_empty() {
-        return Ok((per_cpu, interrupt_total));
-    }
+    let idle_100ns = filetime_to_u64(idle);
+    let kernel_100ns = filetime_to_u64(kernel);
+    let user_100ns = filetime_to_u64(user);
+    let system_100ns = kernel_100ns.saturating_sub(idle_100ns);
 
-    let idle_100ns = (current_uptime_secs() * 10_000_000.0) as u64;
-    Ok((
-        vec![CpuTimes {
-            user: 0,
+    let total = CpuTimes {
+        user: user_100ns,
+        nice: 0,
+        system: system_100ns,
+        idle: idle_100ns,
+        iowait: 0,
+        irq: 0,
+        softirq: 0,
+        steal: 0,
+        guest: 0,
+        guest_nice: 0,
+    };
+
+    let cores = cpu_count().max(1) as u64;
+    let per_core_user = user_100ns / cores;
+    let per_core_system = system_100ns / cores;
+    let per_core_idle = idle_100ns / cores;
+    let per_cpu = (0..cores)
+        .map(|_| CpuTimes {
+            user: per_core_user,
             nice: 0,
-            system: 0,
-            idle: idle_100ns,
+            system: per_core_system,
+            idle: per_core_idle,
             iowait: 0,
             irq: 0,
             softirq: 0,
             steal: 0,
             guest: 0,
             guest_nice: 0,
-        }],
-        0,
-    ))
-}
+        })
+        .collect::<Vec<_>>();
 
-fn sum_cpu_times(per_cpu: &[CpuTimes]) -> CpuTimes {
-    per_cpu.iter().fold(
-        CpuTimes {
-            user: 0,
-            nice: 0,
-            system: 0,
-            idle: 0,
-            iowait: 0,
-            irq: 0,
-            softirq: 0,
-            steal: 0,
-            guest: 0,
-            guest_nice: 0,
-        },
-        |mut acc, cpu| {
-            acc.user = acc.user.saturating_add(cpu.user);
-            acc.nice = acc.nice.saturating_add(cpu.nice);
-            acc.system = acc.system.saturating_add(cpu.system);
-            acc.idle = acc.idle.saturating_add(cpu.idle);
-            acc.iowait = acc.iowait.saturating_add(cpu.iowait);
-            acc.irq = acc.irq.saturating_add(cpu.irq);
-            acc.softirq = acc.softirq.saturating_add(cpu.softirq);
-            acc.steal = acc.steal.saturating_add(cpu.steal);
-            acc.guest = acc.guest.saturating_add(cpu.guest);
-            acc.guest_nice = acc.guest_nice.saturating_add(cpu.guest_nice);
-            acc
-        },
-    )
+    Ok((total, per_cpu))
 }
 
 pub fn collect_system() -> Result<SystemSnapshot> {
     debug!("wincollect: collect_system start");
-    let (per_cpu, total_interrupt_count) = collect_per_cpu_times()?;
-    debug!("wincollect: collect_system per_cpu done");
-    let cpu_total = sum_cpu_times(&per_cpu);
+    let uptime_secs = current_uptime_secs();
     let processes = collect_process_summaries(false)?;
+    let (cpu_total, per_cpu) = cpu_times_from_system()?;
+    debug!("wincollect: collect_system per_cpu done");
     let process_count = processes.len() as u64;
     let perf = system_performance_info();
     let procs_running = processes.iter().filter(|proc| proc.pid > 0).count() as u32;
@@ -542,10 +503,10 @@ pub fn collect_system() -> Result<SystemSnapshot> {
     Ok(SystemSnapshot {
         ticks_per_second: 10_000_000,
         boot_time_epoch_secs: filetime_100ns_to_unix_secs(boot_filetime),
-        uptime_secs: current_uptime_secs(),
+        uptime_secs,
         context_switches: perf.map(|p| p.context_switches as u64).unwrap_or(0),
         forks_since_boot: 0,
-        interrupts_total: total_interrupt_count,
+        interrupts_total: 0,
         softirqs_total: 0,
         process_count,
         pid_max: 0,
@@ -609,13 +570,66 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
     }
 }
 
-pub fn collect_load() -> Result<LoadSnapshot> {
+pub fn collect_load(cpu_total: &CpuTimes) -> Result<LoadSnapshot> {
+    let entities = cpu_count().max(1) as u32;
+    let current_busy = cpu_total.busy();
+    let current_total = cpu_total.total();
+    let now = Instant::now();
+    let state = LOAD_AVG_STATE.get_or_init(|| Mutex::new(None));
+    let mut guard = state.lock().expect("load avg mutex poisoned");
+
+    let (one, five, fifteen) = match *guard {
+        None => {
+            let instant_util = if current_total > 0 {
+                current_busy as f64 / current_total as f64
+            } else {
+                0.0
+            };
+            let instant_load = (instant_util * entities as f64).clamp(0.0, entities as f64);
+            *guard = Some(LoadAvgState {
+                one: instant_load,
+                five: instant_load,
+                fifteen: instant_load,
+                prev_busy: current_busy,
+                prev_total: current_total,
+                last: now,
+            });
+            (instant_load, instant_load, instant_load)
+        }
+        Some(prev) => {
+            let delta_total = current_total.saturating_sub(prev.prev_total);
+            let delta_busy = current_busy.saturating_sub(prev.prev_busy);
+            let instant_util = if delta_total > 0 {
+                delta_busy as f64 / delta_total as f64
+            } else {
+                0.0
+            };
+            let instant_load = (instant_util * entities as f64).clamp(0.0, entities as f64);
+            let dt = now.duration_since(prev.last).as_secs_f64().max(0.001);
+            let alpha1 = (-dt / 60.0).exp();
+            let alpha5 = (-dt / 300.0).exp();
+            let alpha15 = (-dt / 900.0).exp();
+            let one = prev.one * alpha1 + instant_load * (1.0 - alpha1);
+            let five = prev.five * alpha5 + instant_load * (1.0 - alpha5);
+            let fifteen = prev.fifteen * alpha15 + instant_load * (1.0 - alpha15);
+            *guard = Some(LoadAvgState {
+                one,
+                five,
+                fifteen,
+                prev_busy: current_busy,
+                prev_total: current_total,
+                last: now,
+            });
+            (one, five, fifteen)
+        }
+    };
+
     Ok(LoadSnapshot {
-        one: 0.0,
-        five: 0.0,
-        fifteen: 0.0,
-        runnable: 0,
-        entities: cpu_count() as u32,
+        one,
+        five,
+        fifteen,
+        runnable: one.round() as u32,
+        entities,
         latest_pid: 0,
     })
 }
@@ -1043,7 +1057,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_system done");
     let memory = collect_memory()?;
     debug!("wincollect: collect_memory done");
-    let load = collect_load()?;
+    let load = collect_load(&system.cpu_total)?;
     debug!("wincollect: collect_load done");
     let disks = collect_disks()?;
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
