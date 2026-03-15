@@ -227,18 +227,13 @@ pub struct ProcMetrics {
     pub process_ppid: Gauge<i64>,
     pub process_num_threads: Gauge<i64>,
     pub process_priority: Gauge<i64>,
-    pub process_windows_priority: Gauge<i64>,
     pub process_nice: Gauge<i64>,
     pub process_vsize_bytes: Gauge<u64>,
     pub process_read_bytes: Gauge<u64>,
-    pub process_windows_read_bytes: Gauge<u64>,
     pub process_write_bytes: Gauge<u64>,
-    pub process_windows_write_bytes: Gauge<u64>,
     pub process_cancelled_write_bytes: Gauge<i64>,
     pub process_vm_size_bytes: Gauge<u64>,
-    pub process_windows_vm_size_bytes: Gauge<u64>,
     pub process_vm_rss_bytes: Gauge<u64>,
-    pub process_windows_vm_rss_bytes: Gauge<u64>,
 }
 
 impl ProcMetrics {
@@ -411,14 +406,14 @@ impl ProcMetrics {
                 .with_description("Open file descriptors per process.")
                 .build(),
             otel_process_oom_score: meter
-                .i64_gauge("process.linux.oom_score")
+                .i64_gauge("process.oom_score")
                 .with_unit("1")
                 .with_description("Linux OOM score per process.")
                 .build(),
             otel_process_processor: meter
-                .i64_gauge("process.linux.processor")
+                .i64_gauge("process.cpu.last_id")
                 .with_unit("{cpu}")
-                .with_description("Last CPU a process ran on.")
+                .with_description("Last CPU core a process ran on.")
                 .build(),
             otel_process_start_time: meter
                 .f64_gauge("process.start_time")
@@ -671,7 +666,7 @@ impl ProcMetrics {
             net_rx_loss_ratio: meter.f64_gauge("system.network.rx_loss_ratio").build(),
             net_tx_loss_ratio: meter.f64_gauge("system.network.tx_loss_ratio").build(),
             net_mtu: meter.u64_gauge("system.network.mtu").build(),
-            net_speed_mbps: meter.u64_gauge("system.network.speed_mbps").build(),
+            net_speed_mbps: meter.u64_gauge("system.network.speed").build(),
             net_tx_queue_len: meter.u64_gauge("system.network.tx_queue_len").build(),
             net_carrier_up: meter.u64_gauge("system.network.carrier_up").build(),
             net_rx_packets: meter.u64_gauge("system.network.rx_packets").build(),
@@ -693,34 +688,23 @@ impl ProcMetrics {
             process_rss_bytes: meter.u64_gauge("process.memory.rss").with_unit("By").build(),
             process_ppid: meter.i64_gauge("process.parent_pid").build(),
             process_num_threads: meter.i64_gauge("process.thread.count").build(),
-            process_priority: meter.i64_gauge("process.linux.priority").build(),
-            process_windows_priority: meter.i64_gauge("process.windows.priority").build(),
+            process_priority: meter.i64_gauge("process.priority").build(),
             process_nice: meter.i64_gauge("process.linux.nice").build(),
             process_vsize_bytes: meter
-                .u64_gauge("process.linux.memory.vsize")
+                .u64_gauge("process.memory.virtual")
                 .with_unit("By")
                 .build(),
-            process_read_bytes: meter.u64_gauge("process.linux.io.read_bytes").build(),
-            process_windows_read_bytes: meter.u64_gauge("process.windows.io.read_bytes").build(),
-            process_write_bytes: meter.u64_gauge("process.linux.io.write_bytes").build(),
-            process_windows_write_bytes: meter.u64_gauge("process.windows.io.write_bytes").build(),
+            process_read_bytes: meter.u64_gauge("process.io.read_bytes").build(),
+            process_write_bytes: meter.u64_gauge("process.io.write_bytes").build(),
             process_cancelled_write_bytes: meter
                 .i64_gauge("process.linux.io.cancelled_write_bytes")
                 .build(),
             process_vm_size_bytes: meter
-                .u64_gauge("process.linux.memory.vm_size")
-                .with_unit("By")
-                .build(),
-            process_windows_vm_size_bytes: meter
-                .u64_gauge("process.windows.memory.vm_size")
+                .u64_gauge("process.memory.vm_size")
                 .with_unit("By")
                 .build(),
             process_vm_rss_bytes: meter
-                .u64_gauge("process.linux.memory.vm_rss")
-                .with_unit("By")
-                .build(),
-            process_windows_vm_rss_bytes: meter
-                .u64_gauge("process.windows.memory.vm_rss")
+                .u64_gauge("process.memory.vm_rss")
                 .with_unit("By")
                 .build(),
         }
@@ -1755,7 +1739,7 @@ impl ProcMetrics {
                 self.record_u64("system.network.mtu", &self.net_mtu, v, &attrs);
             }
             if let Some(v) = net.speed_mbps {
-                self.record_u64("system.network.speed_mbps", &self.net_speed_mbps, v, &attrs);
+                self.record_u64("system.network.speed", &self.net_speed_mbps, v, &attrs);
             }
             if let Some(v) = net.tx_queue_len {
                 self.record_u64("system.network.tx_queue_len", &self.net_tx_queue_len, v, &attrs);
@@ -1884,61 +1868,14 @@ impl ProcMetrics {
             );
             if is_windows {
                 self.record_i64(
-                    "process.windows.priority",
-                    &self.process_windows_priority,
-                    proc.priority,
-                    &base_attrs,
-                );
-                if let Some(value) = proc.read_bytes {
-                    self.record_u64(
-                        "process.windows.io.read_bytes",
-                        &self.process_windows_read_bytes,
-                        value,
-                        &base_attrs,
-                    );
-                }
-                if let Some(value) = proc.write_bytes {
-                    self.record_u64(
-                        "process.windows.io.write_bytes",
-                        &self.process_windows_write_bytes,
-                        value,
-                        &base_attrs,
-                    );
-                }
-                if let Some(value) = proc.vm_size_kib {
-                    self.record_u64(
-                        "process.windows.memory.vm_size",
-                        &self.process_windows_vm_size_bytes,
-                        kib_to_bytes(value),
-                        &base_attrs,
-                    );
-                }
-                if let Some(value) = proc.vm_rss_kib {
-                    self.record_u64(
-                        "process.windows.memory.vm_rss",
-                        &self.process_windows_vm_rss_bytes,
-                        kib_to_bytes(value),
-                        &base_attrs,
-                    );
-                }
-            } else {
-                self.record_i64(
-                    "process.linux.priority",
+                    "process.priority",
                     &self.process_priority,
                     proc.priority,
                     &base_attrs,
                 );
-                self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &base_attrs);
-                self.record_u64(
-                    "process.linux.memory.vsize",
-                    &self.process_vsize_bytes,
-                    proc.vsize_bytes,
-                    &base_attrs,
-                );
-
                 if let Some(value) = proc.read_bytes {
                     self.record_u64(
-                        "process.linux.io.read_bytes",
+                        "process.io.read_bytes",
                         &self.process_read_bytes,
                         value,
                         &base_attrs,
@@ -1946,7 +1883,54 @@ impl ProcMetrics {
                 }
                 if let Some(value) = proc.write_bytes {
                     self.record_u64(
-                        "process.linux.io.write_bytes",
+                        "process.io.write_bytes",
+                        &self.process_write_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_size_kib {
+                    self.record_u64(
+                        "process.memory.vm_size",
+                        &self.process_vm_size_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.vm_rss_kib {
+                    self.record_u64(
+                        "process.memory.vm_rss",
+                        &self.process_vm_rss_bytes,
+                        kib_to_bytes(value),
+                        &base_attrs,
+                    );
+                }
+            } else {
+                self.record_i64(
+                    "process.priority",
+                    &self.process_priority,
+                    proc.priority,
+                    &base_attrs,
+                );
+                self.record_i64("process.linux.nice", &self.process_nice, proc.nice, &base_attrs);
+                self.record_u64(
+                    "process.memory.virtual",
+                    &self.process_vsize_bytes,
+                    proc.vsize_bytes,
+                    &base_attrs,
+                );
+
+                if let Some(value) = proc.read_bytes {
+                    self.record_u64(
+                        "process.io.read_bytes",
+                        &self.process_read_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.write_bytes {
+                    self.record_u64(
+                        "process.io.write_bytes",
                         &self.process_write_bytes,
                         value,
                         &base_attrs,
@@ -1962,7 +1946,7 @@ impl ProcMetrics {
                 }
                 if let Some(value) = proc.vm_size_kib {
                     self.record_u64(
-                        "process.linux.memory.vm_size",
+                        "process.memory.vm_size",
                         &self.process_vm_size_bytes,
                         kib_to_bytes(value),
                         &base_attrs,
@@ -1970,7 +1954,7 @@ impl ProcMetrics {
                 }
                 if let Some(value) = proc.vm_rss_kib {
                     self.record_u64(
-                        "process.linux.memory.vm_rss",
+                        "process.memory.vm_rss",
                         &self.process_vm_rss_bytes,
                         kib_to_bytes(value),
                         &base_attrs,
@@ -2134,7 +2118,7 @@ impl ProcMetrics {
             if !is_windows {
                 if let Some(value) = proc.oom_score {
                     self.record_i64(
-                        "process.linux.oom_score",
+                        "process.oom_score",
                         &self.otel_process_oom_score,
                         value,
                         &base_attrs,
@@ -2142,7 +2126,7 @@ impl ProcMetrics {
                 }
                 if let Some(value) = proc.processor {
                     self.record_i64(
-                        "process.linux.processor",
+                        "process.cpu.last_id",
                         &self.otel_process_processor,
                         value,
                         &base_attrs,

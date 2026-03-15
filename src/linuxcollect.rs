@@ -567,6 +567,7 @@ fn collect_disks() -> Result<Vec<DiskSnapshot>> {
     Ok(stats
         .0
         .into_iter()
+        .filter(|d| Path::new("/sys/block").join(&d.name).exists())
         .map(|d| {
             let base = Path::new("/sys/block").join(&d.name).join("queue");
             DiskSnapshot {

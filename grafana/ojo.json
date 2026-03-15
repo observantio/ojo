@@ -699,7 +699,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_linux_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -895,7 +895,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_linux_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -993,7 +993,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_oom_score{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_oom_score{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1091,7 +1091,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_processor{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_cpu_last_id{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1483,7 +1483,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_memory_vm_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_vm_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1581,7 +1581,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_memory_vm_size_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_vm_size_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -1679,7 +1679,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_memory_vsize_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_virtual_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -2169,7 +2169,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_linux_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -11871,7 +11871,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "system_network_speed_mbps{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
+            "expr": "system_network_speed{job=~\"$job\",instance=~\"$instance\",device=~\"$net_device\"}",
             "instant": false,
             "legendFormat": "device={{device}}",
             "range": true,
@@ -16477,7 +16477,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_windows_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_io_read_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -16575,7 +16575,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "clamp_min(deriv(process_windows_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
+            "expr": "clamp_min(deriv(process_io_write_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}[5m]), 0)",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -16673,7 +16673,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_windows_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_priority{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -16771,7 +16771,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_windows_memory_vm_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_vm_rss_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
@@ -16869,7 +16869,7 @@
               "uid": "${datasource}"
             },
             "editorMode": "code",
-            "expr": "process_windows_memory_vm_size_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
+            "expr": "process_memory_vm_size_bytes{job=~\"$job\",instance=~\"$instance\",pid=~\"$pid\",comm=~\"$comm\"}",
             "instant": false,
             "legendFormat": "pid={{pid}} comm={{comm}}",
             "range": true,
