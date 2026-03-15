@@ -314,6 +314,8 @@ struct ProcessThreadSummary {
     last_cpu: Option<i64>,
 }
 
+static DISK_COUNTER_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
+
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -859,22 +861,48 @@ fn query_storage_alignment(drive_letter: char) -> (Option<u64>, Option<u64>, Opt
     }
 }
 
-fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> {
-    let path = format!(r"\\.\{}:", drive_letter);
-    let path_w = wide_z(&path);
+fn open_storage_query_handle(path: &str) -> Option<HANDLE> {
+    let path_w = wide_z(path);
     unsafe {
-        let handle = CreateFileW(
-            PCWSTR(path_w.as_ptr()),
-            FILE_GENERIC_READ.0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAG_NO_BUFFERING,
-            None,
-        )
-        .ok()?;
+        let attempts = [
+            (0u32, FILE_ATTRIBUTE_NORMAL),
+            (FILE_GENERIC_READ.0, FILE_ATTRIBUTE_NORMAL),
+            (FILE_GENERIC_READ.0, FILE_FLAG_NO_BUFFERING),
+        ];
+        for (desired_access, flags) in attempts {
+            if let Ok(handle) = CreateFileW(
+                PCWSTR(path_w.as_ptr()),
+                desired_access,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                flags,
+                None,
+            ) {
+                return Some(handle);
+            }
+        }
+    }
+    None
+}
 
-        let try_ioctl_perf = |h: HANDLE| -> Option<DiskPerformance> {
+fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> {
+    let volume_path = format!(r"\\.\{}:", drive_letter);
+    unsafe {
+        let handle = match open_storage_query_handle(&volume_path) {
+            Some(h) => h,
+            None => {
+                warn!(
+                    drive = %drive_letter,
+                    path = %volume_path,
+                    win32_error = GetLastError().0,
+                    "wincollect: failed to open volume for disk performance counters"
+                );
+                return None;
+            }
+        };
+
+        let try_ioctl_perf = |h: HANDLE, source_path: &str| -> Option<DiskPerformance> {
             let mut perf = DiskPerformance::default();
             let mut returned = 0u32;
             let ok = DeviceIoControl(
@@ -888,10 +916,20 @@ fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> 
                 None,
             )
             .is_ok();
-            if ok && returned >= size_of::<DiskPerformance>() as u32 { Some(perf) } else { None }
+            if ok && returned >= size_of::<DiskPerformance>() as u32 {
+                Some(perf)
+            } else {
+                warn!(
+                    drive = %drive_letter,
+                    path = %source_path,
+                    win32_error = GetLastError().0,
+                    "wincollect: IOCTL_DISK_PERFORMANCE failed"
+                );
+                None
+            }
         };
 
-        let raw = if let Some(p) = try_ioctl_perf(handle) {
+        let raw = if let Some(p) = try_ioctl_perf(handle, &volume_path) {
             let _ = CloseHandle(handle);
             p
         } else {
@@ -912,18 +950,19 @@ fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> 
             let _ = CloseHandle(handle);
             if got_dev {
                 let phys_path = format!(r"\\.\PhysicalDrive{}", dev_num.DeviceNumber);
-                let phys_w = wide_z(&phys_path);
-                let phys_handle = CreateFileW(
-                    PCWSTR(phys_w.as_ptr()),
-                    FILE_GENERIC_READ.0,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,
-                    None,
-                    OPEN_EXISTING,
-                    FILE_FLAG_NO_BUFFERING,
-                    None,
-                )
-                .ok()?;
-                let p = try_ioctl_perf(phys_handle);
+                let phys_handle = match open_storage_query_handle(&phys_path) {
+                    Some(h) => h,
+                    None => {
+                        warn!(
+                            drive = %drive_letter,
+                            path = %phys_path,
+                            win32_error = GetLastError().0,
+                            "wincollect: failed to open physical drive for disk performance counters"
+                        );
+                        return None;
+                    }
+                };
+                let p = try_ioctl_perf(phys_handle, &phys_path);
                 let _ = CloseHandle(phys_handle);
                 p?
             } else {
@@ -1300,6 +1339,17 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
         }
         let (logical, physical, rotational) = query_storage_alignment(drive_letter);
         let perf = query_disk_performance_for_drive(drive_letter);
+        if perf.is_none() {
+            let warning_once = DISK_COUNTER_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
+            let mut guard = warning_once.lock().expect("disk warning mutex poisoned");
+            if !*guard {
+                warn!(
+                    "wincollect: disk throughput/IOPS counters unavailable (IOCTL_DISK_PERFORMANCE failed). \
+common causes are missing privileges or disabled Windows disk performance counters; try running elevated and `diskperf -y`."
+                );
+                *guard = true;
+            }
+        }
         let name = drive.trim_end_matches('\\').to_string();
         out.push(DiskSnapshot {
             name,
