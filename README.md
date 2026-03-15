@@ -2,7 +2,7 @@
 
 Ojo is a small Rust-based system metrics agent that collects host and process telemetry and exports it using OpenTelemetry OTLP.
 
-![Demo Ojo](assets/OJO.gif)
+![Demo Ojo](assets/QUICK.gif)
 
 It supports Linux and Windows, with platform-specific collectors under the hood, and can send metrics to any OTLP-compatible receiver (for example, OpenTelemetry Collector).
 
