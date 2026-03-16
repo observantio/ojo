@@ -1603,7 +1603,7 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             let name = if !alias.is_empty() { alias } else { desc };
             let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
             let interface_guid = guid_to_string(row.InterfaceGuid);
-            let interface_luid = unsafe { row.InterfaceLuid.Value };
+            let interface_luid = row.InterfaceLuid.Value;
             out.push(NetDevSnapshot {
                 name,
                 stable_id: Some(format!("guid:{interface_guid}")),
@@ -1850,12 +1850,7 @@ fn query_volume_guid_for_mount(mountpoint: &str) -> Option<String> {
     let mount_w = wide_z(&mount_root);
     let mut buf = vec![0u16; 512];
     unsafe {
-        GetVolumeNameForVolumeMountPointW(
-            PCWSTR(mount_w.as_ptr()),
-            PWSTR(buf.as_mut_ptr()),
-            buf.len() as u32,
-        )
-        .ok()?;
+        GetVolumeNameForVolumeMountPointW(PCWSTR(mount_w.as_ptr()), &mut buf).ok()?;
     }
     let value = utf16z_to_string(&buf);
     if value.is_empty() { None } else { Some(value) }
@@ -1866,11 +1861,7 @@ fn query_nt_device_for_mount(mountpoint: &str) -> Option<String> {
     let drive_w = wide_z(drive);
     let mut buf = vec![0u16; 1024];
     unsafe {
-        let len = QueryDosDeviceW(
-            PCWSTR(drive_w.as_ptr()),
-            Some(PWSTR(buf.as_mut_ptr())),
-            buf.len() as u32,
-        );
+        let len = QueryDosDeviceW(PCWSTR(drive_w.as_ptr()), Some(&mut buf));
         if len == 0 {
             return None;
         }
