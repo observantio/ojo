@@ -1,6 +1,6 @@
 use crate::model::{
     CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
-    MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
+    LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
     SwapDeviceSnapshot, SystemSnapshot, WindowsCommitSnapshot, WindowsLoadSnapshot,
     WindowsMemoryPoolsSnapshot, WindowsMemoryPressureSnapshot, WindowsMemorySnapshot,
     WindowsPagefileSnapshot, WindowsSnapshot, WindowsSyntheticLoadSnapshot,
@@ -2281,11 +2281,19 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     );
     let windows_commit = collect_windows_commit(&memory);
     let windows_pools = collect_windows_memory_pools(perf.as_ref());
+    let load = LoadSnapshot {
+        one: synthetic_load.one,
+        five: synthetic_load.five,
+        fifteen: synthetic_load.fifteen,
+        runnable: synthetic_load.runnable_threads,
+        entities: synthetic_load.entities,
+        latest_pid: 0,
+    };
 
     Ok(Snapshot {
         system,
         memory,
-        load: None,
+        load: Some(load),
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
         vmstat: vmstat_generic,

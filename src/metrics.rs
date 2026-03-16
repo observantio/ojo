@@ -819,6 +819,7 @@ impl ProcMetrics {
         self.record_paging(derived);
         self.record_pressure(snap, derived);
         self.record_stat(snap);
+        self.record_cpu_inventory(snap);
         self.record_linux_proc(snap, derived);
         self.record_net_kernel(snap, derived);
         self.record_disks(snap, derived);
@@ -1456,6 +1457,22 @@ impl ProcMetrics {
             );
         }
 
+        for (key, value) in &snap.zoneinfo {
+            let Some(attrs) = zoneinfo_attrs(key) else {
+                continue;
+            };
+            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
+        }
+
+        for (key, value) in &snap.buddyinfo {
+            let Some(attrs) = buddyinfo_attrs(key) else {
+                continue;
+            };
+            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
+        }
+    }
+
+    fn record_cpu_inventory(&self, snap: &Snapshot) {
         for cpu in &snap.cpuinfo {
             let cpu_attr = [KeyValue::new("cpu", cpu.cpu.to_string())];
 
@@ -1479,20 +1496,6 @@ impl ProcMetrics {
                 attrs.push(KeyValue::new("model_name", model_name.clone()));
             }
             self.record_u64("system.cpu.info", &self.cpu_info_state, 1, &attrs);
-        }
-
-        for (key, value) in &snap.zoneinfo {
-            let Some(attrs) = zoneinfo_attrs(key) else {
-                continue;
-            };
-            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
-        }
-
-        for (key, value) in &snap.buddyinfo {
-            let Some(attrs) = buddyinfo_attrs(key) else {
-                continue;
-            };
-            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
         }
     }
 
