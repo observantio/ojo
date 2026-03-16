@@ -1432,7 +1432,7 @@ pub fn collect_load(cpu_total: &CpuTimes) -> Result<LoadSnapshot> {
     let mut guard = warning_once.lock().expect("load warning mutex poisoned");
     if !*guard {
         warn!(
-            "wincollect: load.{one,five,fifteen} on Windows is synthesized from CPU busy-time EMA and is not Linux loadavg-equivalent."
+            "wincollect: load.{{one,five,fifteen}} on Windows is synthesized from CPU busy-time EMA and is not Linux loadavg-equivalent."
         );
         *guard = true;
     }
