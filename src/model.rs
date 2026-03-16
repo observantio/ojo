@@ -93,12 +93,20 @@ pub struct WindowsMemoryPressureSnapshot {
     pub commit_utilization_pct: f64,
     pub available_memory_pct: f64,
     pub pagefile_utilization_pct: f64,
-    pub hard_fault_rate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hard_fault_rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_reads_per_sec: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_writes_per_sec: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampled_interval_secs: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct WindowsMemorySnapshot {
     pub commit: WindowsCommitSnapshot,
+    pub pools: WindowsMemoryPoolsSnapshot,
     pub pressure: WindowsMemoryPressureSnapshot,
 }
 
@@ -109,6 +117,13 @@ pub struct WindowsCommitSnapshot {
     pub available_bytes: u64,
     pub reserve_bytes: u64,
     pub utilization_pct: f64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsMemoryPoolsSnapshot {
+    pub paged_pool_bytes: u64,
+    pub nonpaged_pool_bytes: u64,
+    pub system_cache_bytes: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

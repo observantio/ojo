@@ -232,6 +232,10 @@ Ojo intentionally avoids forcing fake values for unsupported metrics.
 - Windows paging is split into two native models:
   - pagefile objects in `swaps[]` with `swap_type=windows_pagefile`
   - commit accounting in `windows.memory.commit.*` (charge/limit/available/reserve/utilization)
+- Windows native memory families also include `windows.memory.pools.*`
+  (`paged_pool_bytes`, `nonpaged_pool_bytes`, `system_cache_bytes`).
+- `windows.memory.pressure.hard_fault_rate/page_reads_per_sec/page_writes_per_sec` are sampled
+  delta rates and are emitted after at least two samples (first sample may be omitted).
 - Windows disk collection is physical-disk-first (`PhysicalDriveN`) rather than drive-letter volume-first.
 
 This helps dashboards distinguish "real zero" from "metric not available on this platform".

@@ -1,9 +1,9 @@
 use crate::model::{
     CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
-    LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
+    MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
     SwapDeviceSnapshot, SystemSnapshot, WindowsCommitSnapshot, WindowsLoadSnapshot,
-    WindowsMemoryPressureSnapshot, WindowsMemorySnapshot, WindowsPagefileSnapshot,
-    WindowsSnapshot, WindowsSyntheticLoadSnapshot,
+    WindowsMemoryPoolsSnapshot, WindowsMemoryPressureSnapshot, WindowsMemorySnapshot,
+    WindowsPagefileSnapshot, WindowsSnapshot, WindowsSyntheticLoadSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -329,7 +329,15 @@ struct ProcessThreadSummary {
 
 static DISK_COUNTER_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
 static LOAD_SYNTH_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
-static HARD_FAULT_RATE_STATE: OnceLock<Mutex<Option<(u64, Instant)>>> = OnceLock::new();
+#[derive(Clone, Copy)]
+struct WindowsPagingRateState {
+    hard_fault_total: u64,
+    page_reads_total: u64,
+    page_writes_total: u64,
+    last: Instant,
+}
+
+static WINDOWS_PAGING_RATE_STATE: OnceLock<Mutex<Option<WindowsPagingRateState>>> = OnceLock::new();
 
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -2003,22 +2011,37 @@ fn collect_disk_volume_correlation(mounts: &[MountSnapshot]) -> Vec<DiskVolumeCo
     out
 }
 
-fn compute_windows_hard_fault_rate(hard_fault_total: u64) -> f64 {
+fn compute_windows_paging_rates(
+    hard_fault_total: u64,
+    page_reads_total: u64,
+    page_writes_total: u64,
+) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     let now = Instant::now();
-    let state = HARD_FAULT_RATE_STATE.get_or_init(|| Mutex::new(None));
-    let mut guard = state.lock().expect("hard fault state mutex poisoned");
-    let rate = if let Some((prev_total, prev_time)) = *guard {
-        let dt = now.duration_since(prev_time).as_secs_f64();
+    let state = WINDOWS_PAGING_RATE_STATE.get_or_init(|| Mutex::new(None));
+    let mut guard = state.lock().expect("windows paging rate state mutex poisoned");
+
+    let result = if let Some(prev) = *guard {
+        let dt = now.duration_since(prev.last).as_secs_f64();
         if dt > 0.0 {
-            hard_fault_total.saturating_sub(prev_total) as f64 / dt
+            (
+                Some(hard_fault_total.saturating_sub(prev.hard_fault_total) as f64 / dt),
+                Some(page_reads_total.saturating_sub(prev.page_reads_total) as f64 / dt),
+                Some(page_writes_total.saturating_sub(prev.page_writes_total) as f64 / dt),
+                Some(dt),
+            )
         } else {
-            0.0
+            (None, None, None, None)
         }
     } else {
-        0.0
+        (None, None, None, None)
     };
-    *guard = Some((hard_fault_total, now));
-    rate
+    *guard = Some(WindowsPagingRateState {
+        hard_fault_total,
+        page_reads_total,
+        page_writes_total,
+        last: now,
+    });
+    result
 }
 
 fn collect_windows_pagefiles(memory: &MemorySnapshot) -> Vec<WindowsPagefileSnapshot> {
@@ -2039,6 +2062,8 @@ fn collect_windows_pagefiles(memory: &MemorySnapshot) -> Vec<WindowsPagefileSnap
 fn collect_windows_memory_pressure(
     memory: &MemorySnapshot,
     hard_fault_total: u64,
+    page_reads_total: u64,
+    page_writes_total: u64,
 ) -> WindowsMemoryPressureSnapshot {
     let commit_utilization_pct = if memory.commit_limit_bytes > 0 {
         (memory.committed_as_bytes as f64 * 100.0) / memory.commit_limit_bytes as f64
@@ -2056,11 +2081,16 @@ fn collect_windows_memory_pressure(
     } else {
         0.0
     };
+    let (hard_fault_rate, page_reads_per_sec, page_writes_per_sec, sampled_interval_secs) =
+        compute_windows_paging_rates(hard_fault_total, page_reads_total, page_writes_total);
     WindowsMemoryPressureSnapshot {
         commit_utilization_pct,
         available_memory_pct,
         pagefile_utilization_pct,
-        hard_fault_rate: compute_windows_hard_fault_rate(hard_fault_total),
+        hard_fault_rate,
+        page_reads_per_sec,
+        page_writes_per_sec,
+        sampled_interval_secs,
     }
 }
 
@@ -2083,6 +2113,18 @@ fn collect_windows_commit(memory: &MemorySnapshot) -> WindowsCommitSnapshot {
     }
 }
 
+fn collect_windows_memory_pools(perf: Option<&SystemPerformanceInformation>) -> WindowsMemoryPoolsSnapshot {
+    let page = page_size_from_nt().max(1);
+    let paged_pool_pages = perf.map(|p| p.paged_pool_pages as u64).unwrap_or(0);
+    let nonpaged_pool_pages = perf.map(|p| p.non_paged_pool_pages as u64).unwrap_or(0);
+    let system_cache_pages = perf.map(|p| p.resident_system_cache_page as u64).unwrap_or(0);
+    WindowsMemoryPoolsSnapshot {
+        paged_pool_bytes: paged_pool_pages.saturating_mul(page),
+        nonpaged_pool_bytes: nonpaged_pool_pages.saturating_mul(page),
+        system_cache_bytes: system_cache_pages.saturating_mul(page),
+    }
+}
+
 fn windows_support_state() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     out.insert("memory.inactive_bytes".to_string(), "unsupported".to_string());
@@ -2099,6 +2141,14 @@ fn windows_support_state() -> BTreeMap<String, String> {
     out.insert(
         "system.softirqs_total".to_string(),
         "windows_dpc_equivalent".to_string(),
+    );
+    out.insert(
+        "process.vsize_bytes".to_string(),
+        "compat_alias_use_process.virtual_size_bytes_on_windows".to_string(),
+    );
+    out.insert(
+        "process.rss_pages".to_string(),
+        "compat_alias_use_process.resident_bytes_on_windows".to_string(),
     );
     out.insert("section.pressure".to_string(), "unsupported".to_string());
     out.insert("section.pressure_totals_us".to_string(), "unsupported".to_string());
@@ -2145,7 +2195,10 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("windows.load.synthetic.*".to_string(), "synthetic".to_string());
     out.insert("windows.pagefiles.*".to_string(), "native".to_string());
     out.insert("windows.memory.commit.*".to_string(), "native".to_string());
+    out.insert("windows.memory.pools.*".to_string(), "native".to_string());
     out.insert("windows.memory.pressure.*".to_string(), "derived".to_string());
+    out.insert("process.vsize_bytes".to_string(), "compatibility_alias".to_string());
+    out.insert("process.rss_pages".to_string(), "compatibility_alias".to_string());
     out
 }
 
@@ -2214,9 +2267,20 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     let isr_total_time_seconds = system.cpu_total.irq as f64 / 10_000_000.0;
     let dpc_total_time_seconds = system.cpu_total.softirq as f64 / 10_000_000.0;
     let hard_fault_total = perf.as_ref().map(|p| p.page_read_count as u64).unwrap_or(0);
+    let page_reads_total = perf.as_ref().map(|p| p.page_read_io_count as u64).unwrap_or(0);
+    let page_writes_total = perf
+        .as_ref()
+        .map(|p| p.dirty_write_io_count as u64 + p.mapped_write_io_count as u64)
+        .unwrap_or(0);
     let windows_pagefiles = collect_windows_pagefiles(&memory);
-    let windows_memory_pressure = collect_windows_memory_pressure(&memory, hard_fault_total);
+    let windows_memory_pressure = collect_windows_memory_pressure(
+        &memory,
+        hard_fault_total,
+        page_reads_total,
+        page_writes_total,
+    );
     let windows_commit = collect_windows_commit(&memory);
+    let windows_pools = collect_windows_memory_pools(perf.as_ref());
 
     Ok(Snapshot {
         system,
@@ -2252,6 +2316,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
             pagefiles: windows_pagefiles,
             memory: WindowsMemorySnapshot {
                 commit: windows_commit,
+                pools: windows_pools,
                 pressure: windows_memory_pressure,
             },
             disk_volume_correlation,
