@@ -18,10 +18,13 @@ processors:
     timeout: 10s
 
 exporters:
+  debug:
+    verbosity: detailed
+
   prometheusremotewrite/mimir:
     endpoint: "http://localhost:4320/mimir/api/v1/push"
     headers:
-      x-otlp-token: "bo_T3_zE4pR_TH9pLIY_cClhJZkXr4LKWn82c3_Hwmpp_w"
+      x-otlp-token: "bo_-jbqByyziOxjMlhX70ZqaRQqwOyzqGRr-anqV1141_A"
     tls:
       insecure: true
     retry_on_failure:

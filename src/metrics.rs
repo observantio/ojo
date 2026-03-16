@@ -25,10 +25,14 @@ impl MetricFilter {
     #[inline]
     fn matches(patterns: &[String], name: &str) -> bool {
         patterns.iter().any(|p| {
-            if name == p.as_str() {
+            let pat = p.trim();
+            if name == pat {
                 return true;
             }
-            if let Some(rem) = name.strip_prefix(p) {
+            if let Some(prefix) = pat.strip_suffix('.') {
+                return name.starts_with(pat) || name == prefix;
+            }
+            if let Some(rem) = name.strip_prefix(pat) {
                 return rem.starts_with('.');
             }
             false

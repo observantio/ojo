@@ -45,9 +45,16 @@ fn main() -> Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("ojo=debug,opentelemetry=info")),
         )
         .init();
+
+    info!(
+        endpoint = cfg.otlp_endpoint.as_str(),
+        protocol = cfg.otlp_protocol.as_str(),
+        "OTLP export configured"
+    );
 
     let provider = otel::init_meter_provider(&cfg)?;
     let meter = global::meter("procfs");
@@ -64,7 +71,6 @@ fn main() -> Result<()> {
 
     let mut prev = PrevState::default();
     let mut export_state = ExportState::Pending;
-
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         debug!("poll tick start");
@@ -92,13 +98,11 @@ fn main() -> Result<()> {
                     elapsed_ms = started_at.elapsed().as_millis(),
                     "force_flush ok"
                 );
-
                 match export_state {
                     ExportState::Pending => info!("Connected Successfully"),
                     ExportState::Reconnecting => info!("Reconnected Successfully"),
                     ExportState::Connected => {}
                 }
-
                 export_state = ExportState::Connected;
             }
             Err(err) => {

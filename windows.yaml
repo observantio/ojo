@@ -14,8 +14,3 @@ export:
   batch:
     interval_secs: 5
     timeout_secs: 10
-
-metrics:
-  include:
-    - system.
-    - process.
