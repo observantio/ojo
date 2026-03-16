@@ -1,6 +1,6 @@
 use crate::model::{
-    CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, NetDevSnapshot, ProcessSnapshot,
-    Snapshot, SystemSnapshot,
+    CpuInfoSnapshot, CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
+    NetDevSnapshot, ProcessSnapshot, Snapshot, SwapDeviceSnapshot, SystemSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -24,8 +24,10 @@ use windows::Win32::NetworkManagement::IpHelper::{
     MIB_TCP_STATE_TIME_WAIT, MIB_UDPSTATS, MIB_UDPTABLE,
 };
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, FILE_ATTRIBUTE_NORMAL,
-    FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
+    FILE_ATTRIBUTE_NORMAL, FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING, DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_CDROM, DRIVE_REMOTE,
+    DRIVE_RAMDISK,
 };
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
@@ -38,7 +40,8 @@ use windows::Win32::System::ProcessStatus::{
 };
 use windows::Win32::System::SystemInformation::{
     GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
-    SYSTEM_INFO,
+    SYSTEM_INFO, PROCESSOR_ARCHITECTURE_INTEL, PROCESSOR_ARCHITECTURE_AMD64,
+    PROCESSOR_ARCHITECTURE_ARM64,
 };
 use windows::Win32::System::Threading::{
     GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, GetSystemTimes,
@@ -62,7 +65,7 @@ const SYSTEM_PERFORMANCE_INFORMATION_CLASS: u32 = 2;
 const SYSTEM_TIME_OF_DAY_INFORMATION_CLASS: u32 = 3;
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
 const SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_CLASS: u32 = 8;
-const DRIVE_FIXED_VALUE: u32 = 3;
+const SYSTEM_INTERRUPT_INFORMATION_CLASS: u32 = 23;
 const IOCTL_DISK_PERFORMANCE: u32 = 0x0007_0020;
 const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
 const SECTOR_SIZE: u64 = 512;
@@ -580,11 +583,6 @@ fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<Strin
         "pgpgout".to_string(),
         (p.dirty_pages_write_count as i64).saturating_add(p.mapped_pages_write_count as i64),
     );
-    out.insert("pswpin".to_string(), p.page_read_count as i64);
-    out.insert(
-        "pswpout".to_string(),
-        (p.dirty_pages_write_count as i64).saturating_add(p.mapped_pages_write_count as i64),
-    );
     out.insert("paged_pool_pages".to_string(), p.paged_pool_pages as i64);
     out.insert("non_paged_pool_pages".to_string(), p.non_paged_pool_pages as i64);
     out.insert("system_calls".to_string(), p.system_calls as i64);
@@ -709,8 +707,26 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
     out
 }
 
-fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessThreadSummary>) {
+fn collect_interrupts_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
+    let _ = SYSTEM_INTERRUPT_INFORMATION_CLASS;
+    let mut out = BTreeMap::new();
+    for (cpu, times) in per_cpu.iter().enumerate() {
+        out.insert(format!("total|{cpu}"), times.irq);
+    }
+    out
+}
+
+fn collect_softirqs_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
+    let mut out = BTreeMap::new();
+    for (cpu, times) in per_cpu.iter().enumerate() {
+        out.insert(format!("total|{cpu}"), times.softirq);
+    }
+    out
+}
+
+fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, ProcessThreadSummary>) {
     let mut count = 0u64;
+    let mut procs_blocked = 0u32;
     let mut summaries: BTreeMap<i32, ProcessThreadSummary> = BTreeMap::new();
     let mut offset = 0usize;
     let spi_size = size_of::<SystemProcessInformation>();
@@ -729,7 +745,7 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessTh
         let mut any_running = false;
         let mut any_ready = false;
         let mut all_waiting = thread_count > 0;
-        let mut last_cpu: Option<i64> = None;
+        let mut any_blocked = false;
 
         for t in 0..thread_count {
             let t_off = threads_base + t * sti_size;
@@ -737,7 +753,6 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessTh
                 break;
             }
             let ti = unsafe { &*(buf.as_ptr().add(t_off) as *const SystemThreadInformation) };
-            last_cpu = Some(ti.client_id.unique_thread.0 as usize as i64);
             match ti.thread_state {
                 THREAD_STATE_RUNNING => {
                     any_running = true;
@@ -747,11 +762,19 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessTh
                     any_ready = true;
                     all_waiting = false;
                 }
-                THREAD_STATE_WAIT => {}
+                THREAD_STATE_WAIT => {
+                    if ti.wait_reason == 0 || ti.wait_reason == 14 {
+                        any_blocked = true;
+                    }
+                }
                 _ => {
                     all_waiting = false;
                 }
             }
+        }
+
+        if any_blocked && !any_running && !any_ready {
+            procs_blocked += 1;
         }
 
         let state = if any_running || any_ready {
@@ -762,7 +785,7 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessTh
             "unknown".to_string()
         };
 
-        summaries.insert(pid, ProcessThreadSummary { state, last_cpu });
+        summaries.insert(pid, ProcessThreadSummary { state, last_cpu: None });
 
         if spi.next_entry_offset == 0 {
             break;
@@ -770,7 +793,7 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, BTreeMap<i32, ProcessTh
         offset += spi.next_entry_offset as usize;
     }
 
-    (count.saturating_sub(1), summaries)
+    (count.saturating_sub(1), procs_blocked, summaries)
 }
 
 fn query_seek_penalty(drive_letter: char) -> Option<bool> {
@@ -1175,17 +1198,24 @@ fn compute_load_averages(cpu_total: &CpuTimes, entities: u32) -> (f64, f64, f64)
     }
 }
 
-pub fn collect_system() -> Result<SystemSnapshot> {
+pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapshot> {
     debug!("wincollect: collect_system start");
     let uptime_secs = current_uptime_secs();
     let (cpu_total, per_cpu, interrupts_total) = cpu_times_from_nt()?;
     debug!("wincollect: cpu times done");
     let perf = system_performance_info();
     let boot_epoch = boot_time_epoch_secs();
-    let proc_buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS).unwrap_or_default();
-    let (process_count, _) = extract_process_thread_summaries(&proc_buf);
-    let procs_running = process_count as u32;
+    let owned_buf;
+    let proc_buf = if let Some(buf) = process_info_buffer {
+        buf
+    } else {
+        owned_buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS).unwrap_or_default();
+        owned_buf.as_slice()
+    };
+    let (process_count, procs_blocked, summaries) = extract_process_thread_summaries(&proc_buf);
+    let procs_running = summaries.values().filter(|s| s.state == "R").count() as u32;
     let context_switches = perf.as_ref().map(|p| p.context_switches as u64).unwrap_or(0);
+    let softirqs_total = per_cpu.iter().map(|c| c.softirq).fold(0u64, u64::saturating_add);
     debug!("wincollect: collect_system done");
     Ok(SystemSnapshot {
         is_windows: true,
@@ -1195,13 +1225,13 @@ pub fn collect_system() -> Result<SystemSnapshot> {
         context_switches,
         forks_since_boot: 0,
         interrupts_total,
-        softirqs_total: 0,
+        softirqs_total,
         process_count,
         pid_max: 0,
         entropy_available_bits: 0,
         entropy_pool_size_bits: 0,
         procs_running,
-        procs_blocked: 0,
+        procs_blocked,
         cpu_total,
         per_cpu,
         cpu_cycle_utilization: None,
@@ -1333,7 +1363,7 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
         };
         let drive_w = wide_z(&drive);
         unsafe {
-            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED_VALUE {
+            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED.0 {
                 continue;
             }
         }
@@ -1426,9 +1456,18 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
     }
 }
 
-fn collect_processes_from_nt(open_handles: bool) -> Result<Vec<ProcessSnapshot>> {
-    let buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?;
-    let (_, summaries) = extract_process_thread_summaries(&buf);
+fn collect_processes_from_nt(
+    open_handles: bool,
+    process_info_buffer: Option<&[u8]>,
+) -> Result<Vec<ProcessSnapshot>> {
+    let owned_buf;
+    let buf = if let Some(buffer) = process_info_buffer {
+        buffer
+    } else {
+        owned_buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?;
+        owned_buf.as_slice()
+    };
+    let (_, _, summaries) = extract_process_thread_summaries(&buf);
     let mut out = Vec::new();
     let mut offset = 0usize;
     let page = page_size_from_nt().max(1);
@@ -1548,13 +1587,102 @@ fn collect_processes_from_nt(open_handles: bool) -> Result<Vec<ProcessSnapshot>>
     Ok(out)
 }
 
+pub fn collect_cpuinfo() -> Vec<CpuInfoSnapshot> {
+    let ncpu = cpu_count_from_nt();
+    let mut sysinfo = SYSTEM_INFO::default();
+    unsafe { GetSystemInfo(&mut sysinfo) };
+    let arch = sysinfo.Anonymous.Anonymous.wProcessorArchitecture;
+    let vendor_id = match arch.0 {
+        v if v == PROCESSOR_ARCHITECTURE_INTEL.0 => Some("GenuineIntel".to_string()),
+        v if v == PROCESSOR_ARCHITECTURE_AMD64.0 => None,
+        v if v == PROCESSOR_ARCHITECTURE_ARM64.0 => Some("ARM".to_string()),
+        _ => None,
+    };
+    (0..ncpu)
+        .map(|cpu| CpuInfoSnapshot {
+            cpu,
+            vendor_id: vendor_id.clone(),
+            model_name: None,
+            mhz: None,
+            cache_size_bytes: None,
+        })
+        .collect()
+}
+
+pub fn collect_mounts() -> Vec<MountSnapshot> {
+    let Ok(drives) = drive_strings() else { return Vec::new() };
+    let mut out = Vec::new();
+    for drive in drives {
+        let drive_w = wide_z(&drive);
+        let drive_type = unsafe { GetDriveTypeW(PCWSTR(drive_w.as_ptr())) };
+        let mut fs_buf = vec![0u16; 64];
+        let mut flags = 0u32;
+        let ok = unsafe {
+            GetVolumeInformationW(
+                PCWSTR(drive_w.as_ptr()),
+                None,
+                None,
+                None,
+                Some(&mut flags),
+                Some(&mut fs_buf),
+            )
+            .is_ok()
+        };
+        let fs_type = if ok {
+            let len = fs_buf.iter().position(|c| *c == 0).unwrap_or(fs_buf.len());
+            String::from_utf16_lossy(&fs_buf[..len])
+        } else {
+            String::new()
+        };
+        let read_only = ok && (flags & 0x00080000 != 0);
+        let drive_type_str = match drive_type {
+            t if t == DRIVE_FIXED.0 => "fixed",
+            t if t == DRIVE_REMOVABLE.0 => "removable",
+            t if t == DRIVE_CDROM.0 => "cdrom",
+            t if t == DRIVE_REMOTE.0 => "remote",
+            t if t == DRIVE_RAMDISK.0 => "ramdisk",
+            _ => "unknown",
+        };
+        out.push(MountSnapshot {
+            device: drive.trim_end_matches('\\').to_string(),
+            mountpoint: drive.trim_end_matches('\\').to_string(),
+            fs_type: if fs_type.is_empty() {
+                drive_type_str.to_string()
+            } else {
+                fs_type
+            },
+            read_only,
+        });
+    }
+    out
+}
+
+pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
+    if memory.swap_total_bytes == 0 {
+        return Vec::new();
+    }
+    vec![SwapDeviceSnapshot {
+        device: "pagefile".to_string(),
+        swap_type: "partition".to_string(),
+        size_bytes: memory.swap_total_bytes,
+        used_bytes: memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes),
+        priority: -1,
+    }]
+}
+
 pub fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
-    collect_processes_from_nt(true)
+    collect_processes_from_nt(true, None)
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_snapshot start");
-    let system = collect_system()?;
+    let process_info_buf = if include_process_metrics {
+        Some(query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?)
+    } else {
+        None
+    };
+
+    let system = collect_system(process_info_buf.as_deref())?;
     debug!("wincollect: collect_system done");
     let memory = collect_memory()?;
     debug!("wincollect: collect_memory done");
@@ -1571,8 +1699,13 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!(snmp_keys = net_snmp.len(), "wincollect: collect_net_snmp done");
     let sockets = collect_socket_counts();
     debug!(socket_keys = sockets.len(), "wincollect: collect_sockets done");
+    let interrupts = collect_interrupts_detail(&system.per_cpu);
+    let softirqs = collect_softirqs_detail(&system.per_cpu);
+    let cpuinfo = collect_cpuinfo();
+    let mounts = collect_mounts();
+    let swaps = collect_swaps(&memory);
     let processes = if include_process_metrics {
-        let p = collect_processes()?;
+        let p = collect_processes_from_nt(true, process_info_buf.as_deref())?;
         debug!(process_count = p.len(), "wincollect: collect_processes done");
         p
     } else {
@@ -1585,14 +1718,14 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
         vmstat,
-        interrupts: BTreeMap::new(),
-        softirqs: BTreeMap::new(),
+        interrupts,
+        softirqs,
         net_snmp,
         sockets,
         softnet: Vec::new(),
-        swaps: Vec::new(),
-        mounts: Vec::new(),
-        cpuinfo: Vec::new(),
+        swaps,
+        mounts,
+        cpuinfo,
         zoneinfo: BTreeMap::new(),
         buddyinfo: BTreeMap::new(),
         disks,

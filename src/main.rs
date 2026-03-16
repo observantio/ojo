@@ -15,6 +15,7 @@ use config::Config;
 use delta::PrevState;
 use metrics::{MetricFilter, ProcMetrics};
 use opentelemetry::global;
+use serde_json::to_string_pretty;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -33,6 +34,13 @@ enum ExportState {
 
 fn main() -> Result<()> {
     let cfg = Config::load()?;
+
+    if cfg.dump_snapshot {
+        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        println!("{}", to_string_pretty(&snap)?);
+        return Ok(());
+    }
+
     cfg.apply_otel_env();
 
     tracing_subscriber::fmt()
@@ -84,26 +92,32 @@ fn main() -> Result<()> {
                     elapsed_ms = started_at.elapsed().as_millis(),
                     "force_flush ok"
                 );
+
                 match export_state {
                     ExportState::Pending => info!("Connected Successfully"),
                     ExportState::Reconnecting => info!("Reconnected Successfully"),
                     ExportState::Connected => {}
                 }
+
                 export_state = ExportState::Connected;
             }
             Err(err) => {
+                let err_msg = err.to_string();
+
                 debug!(
                     elapsed_ms = started_at.elapsed().as_millis(),
                     "force_flush err"
                 );
+
                 match export_state {
                     ExportState::Connected => {
-                        warn!(error = %err, "Exporter flush failed; reconnecting")
+                        warn!(err = err_msg.as_str(), "Exporter flush failed; reconnecting");
                     }
                     ExportState::Pending | ExportState::Reconnecting => {
-                        warn!(error = %err, "Exporter still unavailable")
+                        warn!(err = err_msg.as_str(), "Exporter still unavailable");
                     }
                 }
+
                 export_state = ExportState::Reconnecting;
             }
         }
@@ -117,7 +131,12 @@ fn main() -> Result<()> {
     }
 
     if let Err(err) = provider.shutdown() {
-        warn!(error = %err, "Ojo provider shutdown encountered an error");
+        let err_msg = err.to_string();
+        warn!(
+            err = err_msg.as_str(),
+            "Ojo provider shutdown encountered an error"
+        );
     }
+
     Ok(())
 }

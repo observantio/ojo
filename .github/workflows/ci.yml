@@ -1,0 +1,35 @@
+name: Windows Artifact
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-windows:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2019]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Dump snapshot JSON
+        run: cargo run --release -- --dump-snapshot > snapshot-${{ matrix.os }}.json
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-${{ matrix.os }}
+          path: snapshot-${{ matrix.os }}.json

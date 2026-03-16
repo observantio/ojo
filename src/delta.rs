@@ -1,4 +1,4 @@
-use crate::model::Snapshot;
+use crate::model::{DiskSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -106,6 +106,14 @@ fn ratio(part: u64, total: u64) -> f64 {
     if total > 0 { part as f64 / total as f64 } else { 0.0 }
 }
 
+#[inline]
+fn non_negative_i64_delta(cur: Option<i64>, prev: Option<i64>) -> u64 {
+    match (cur, prev) {
+        (Some(cur), Some(prev)) if cur >= 0 && prev >= 0 => cur.saturating_sub(prev) as u64,
+        _ => 0,
+    }
+}
+
 impl PrevState {
     pub fn derive(&mut self, current: &Snapshot, elapsed: Duration) -> DerivedMetrics {
         let mut out = DerivedMetrics::default();
@@ -203,13 +211,7 @@ impl PrevState {
         }
 
         let vmstat_delta = |key: &str| -> u64 {
-            current
-                .vmstat
-                .get(key)
-                .copied()
-                .unwrap_or_default()
-                .saturating_sub(prev.vmstat.get(key).copied().unwrap_or_default())
-                as u64
+            non_negative_i64_delta(current.vmstat.get(key).copied(), prev.vmstat.get(key).copied())
         };
         out.page_faults_delta = vmstat_delta("pgfault");
         out.page_faults_per_sec = out.page_faults_delta as f64 / secs;
@@ -250,11 +252,14 @@ impl PrevState {
         out.kernel_udp_in_errors_per_sec = per_sec(snmp_delta("Udp.InErrors"), secs);
         out.kernel_udp_rcvbuf_errors_per_sec = per_sec(snmp_delta("Udp.RcvbufErrors"), secs);
 
+        let prev_softnet_by_cpu: HashMap<usize, &SoftnetCpuSnapshot> =
+            prev.softnet.iter().map(|cpu| (cpu.cpu, cpu)).collect();
+
         let mut softnet_processed = 0u64;
         let mut softnet_dropped = 0u64;
         let mut softnet_time_squeezed = 0u64;
         for cur in &current.softnet {
-            if let Some(prv) = prev.softnet.iter().find(|cpu| cpu.cpu == cur.cpu) {
+            if let Some(prv) = prev_softnet_by_cpu.get(&cur.cpu) {
                 softnet_processed += cur.processed.saturating_sub(prv.processed);
                 softnet_dropped += cur.dropped.saturating_sub(prv.dropped);
                 softnet_time_squeezed += cur.time_squeezed.saturating_sub(prv.time_squeezed);
@@ -288,12 +293,14 @@ impl PrevState {
             ));
         }
 
-        let sector_bytes = 512.0_f64;
+        let prev_disks_by_name: HashMap<&str, &DiskSnapshot> =
+            prev.disks.iter().map(|d| (d.name.as_str(), d)).collect();
         for cur in &current.disks {
-            if let Some(prv) = prev.disks.iter().find(|d| d.name == cur.name) {
+            if let Some(prv) = prev_disks_by_name.get(cur.name.as_str()) {
                 if !cur.has_counters || !prv.has_counters {
                     continue;
                 }
+                let sector_bytes = cur.logical_block_size.unwrap_or(512) as f64;
                 let read_sectors = cur.sectors_read.saturating_sub(prv.sectors_read);
                 let write_sectors = cur.sectors_written.saturating_sub(prv.sectors_written);
                 let read_bytes = read_sectors as f64 * sector_bytes;
@@ -354,8 +361,10 @@ impl PrevState {
             }
         }
 
+        let prev_net_by_name: HashMap<&str, &NetDevSnapshot> =
+            prev.net.iter().map(|n| (n.name.as_str(), n)).collect();
         for cur in &current.net {
-            if let Some(prv) = prev.net.iter().find(|n| n.name == cur.name) {
+            if let Some(prv) = prev_net_by_name.get(cur.name.as_str()) {
                 let rx_bytes = cur.rx_bytes.saturating_sub(prv.rx_bytes);
                 let tx_bytes = cur.tx_bytes.saturating_sub(prv.tx_bytes);
                 let rx_packets = cur.rx_packets.saturating_sub(prv.rx_packets);
@@ -408,8 +417,10 @@ impl PrevState {
 
         let cpu_count = current.system.per_cpu.len().max(1) as f64;
 
+        let prev_processes_by_pid: HashMap<i32, &ProcessSnapshot> =
+            prev.processes.iter().map(|p| (p.pid, p)).collect();
         for cur in &current.processes {
-            if let Some(prv) = prev.processes.iter().find(|p| p.pid == cur.pid) {
+            if let Some(prv) = prev_processes_by_pid.get(&cur.pid) {
                 let cur_total = cur.utime_ticks + cur.stime_ticks;
                 let prv_total = prv.utime_ticks + prv.stime_ticks;
                 let dticks = cur_total.saturating_sub(prv_total) as f64;

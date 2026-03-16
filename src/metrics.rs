@@ -3,7 +3,7 @@ use crate::catalog::{
     softirqs_attrs, vmstat_attrs, zoneinfo_attrs,
 };
 use crate::delta::DerivedMetrics;
-use crate::model::Snapshot;
+use crate::model::{ProcessSnapshot, Snapshot};
 use opentelemetry::metrics::{Counter, Gauge, Meter};
 use opentelemetry::KeyValue;
 use std::sync::Arc;
@@ -24,9 +24,15 @@ impl MetricFilter {
 
     #[inline]
     fn matches(patterns: &[String], name: &str) -> bool {
-        patterns
-            .iter()
-            .any(|p| name == p.as_str() || name.starts_with(p))
+        patterns.iter().any(|p| {
+            if name == p.as_str() {
+                return true;
+            }
+            if let Some(rem) = name.strip_prefix(p) {
+                return rem.starts_with('.');
+            }
+            false
+        })
     }
 
     #[inline]
@@ -47,6 +53,20 @@ where
 #[inline]
 fn pages_to_bytes_4k(pages: i64) -> u64 {
     non_negative_u64(pages).saturating_mul(4096)
+}
+
+#[inline]
+fn process_rss_bytes(proc: &ProcessSnapshot, is_windows: bool) -> Option<u64> {
+    if is_windows {
+        if let Some(vm_rss_kib) = proc.vm_rss_kib {
+            return Some(kib_to_bytes(vm_rss_kib));
+        }
+    }
+    if proc.rss_pages >= 0 {
+        Some(pages_to_bytes_4k(proc.rss_pages))
+    } else {
+        None
+    }
 }
 
 #[inline]
@@ -1845,11 +1865,11 @@ impl ProcMetrics {
                 self.record_f64("process.cpu.utilization", &self.process_cpu_ratio, *cpu, &base_attrs);
             }
 
-            if proc.rss_pages >= 0 {
+            if let Some(rss_bytes) = process_rss_bytes(proc, is_windows) {
                 self.record_u64(
                     "process.memory.rss",
                     &self.process_rss_bytes,
-                    pages_to_bytes_4k(proc.rss_pages),
+                    rss_bytes,
                     &base_attrs,
                 );
             }
@@ -2179,11 +2199,11 @@ impl ProcMetrics {
                 }
             }
 
-            if proc.rss_pages >= 0 {
+            if let Some(rss_bytes) = process_rss_bytes(proc, is_windows) {
                 self.record_u64(
                     "process.memory.usage",
                     &self.otel_process_memory_usage,
-                    pages_to_bytes_4k(proc.rss_pages),
+                    rss_bytes,
                     &[
                         pid_kv.clone(),
                         comm_kv.clone(),

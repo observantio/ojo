@@ -1,0 +1,127 @@
+services:
+  qa-ubuntu-2204:
+    build:
+      context: ..
+      dockerfile: docker.dev/ubuntu-2204.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "ubuntu-2204", "/workspace"]
+
+  qa-ubuntu-2004:
+    build:
+      context: ..
+      dockerfile: docker.dev/ubuntu-2004.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "ubuntu-2004", "/workspace"]
+  
+  qa-ubuntu-2404:
+    build:
+      context: ..
+      dockerfile: docker.dev/ubuntu-2404.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "ubuntu-2404", "/workspace"]
+
+  qa-rocky-8:
+    build:
+      context: ..
+      dockerfile: docker.dev/rocky-8.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "rocky-8", "/workspace"]
+
+  qa-centos-7:
+    build:
+      context: ..
+      dockerfile: docker.dev/centos-7.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "centos-7", "/workspace"]
+
+  qa-centos-9:
+    build:
+      context: ..
+      dockerfile: docker.dev/centos-9.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "centos-9", "/workspace"]
+
+  qa-almalinux-7:
+    build:
+      context: ..
+      dockerfile: docker.dev/almalinux-7.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "almalinux-7", "/workspace"]
+
+  qa-almalinux-6:
+    build:
+      context: ..
+      dockerfile: docker.dev/almalinux-6.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "almalinux-6", "/workspace"]
+
+  qa-fedora-36:
+    build:
+      context: ..
+      dockerfile: docker.dev/fedora-36.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "fedora-36", "/workspace"]
+
+  qa-ubuntu-1804:
+    build:
+      context: ..
+      dockerfile: docker.dev/ubuntu-1804.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "ubuntu-1804", "/workspace"]
+
+  qa-centos-8:
+    build:
+      context: ..
+      dockerfile: docker.dev/centos-8.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "centos-8", "/workspace"]
+  
+  qa-rocky-9:
+    build:
+      context: ..
+      dockerfile: docker.dev/rocky-9.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "rocky-9", "/workspace"]
+
+
+  qa-almalinux-8:
+    build:
+      context: ..
+      dockerfile: docker.dev/almalinux-8.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "almalinux-8", "/workspace"]
+
+  qa-almalinux-9:
+    build:
+      context: ..
+      dockerfile: docker.dev/almalinux-9.Dockerfile
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    command: ["bash", "tests/scripts/run_container_qa.sh", "almalinux-9", "/workspace"]

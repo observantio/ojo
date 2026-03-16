@@ -11,16 +11,26 @@ use reqwest::blocking::Client;
 
 pub fn init_meter_provider(cfg: &Config) -> Result<SdkMeterProvider> {
     let exporter = match cfg.otlp_protocol.as_str() {
-        "http/protobuf" => opentelemetry_otlp::MetricExporter::builder()
-            .with_http()
-            .with_http_client(Client::new())
-            .with_protocol(Protocol::HttpBinary)
-            .with_endpoint(cfg.otlp_endpoint.clone())
-            .build()?,
-        _ => opentelemetry_otlp::MetricExporter::builder()
-            .with_tonic()
-            .with_endpoint(cfg.otlp_endpoint.clone())
-            .build()?,
+        "http/protobuf" => {
+            let mut builder = opentelemetry_otlp::MetricExporter::builder()
+                .with_http()
+                .with_http_client(Client::new())
+                .with_protocol(Protocol::HttpBinary)
+                .with_endpoint(cfg.otlp_endpoint.clone());
+            if let Some(timeout) = cfg.export_timeout {
+                builder = builder.with_timeout(timeout);
+            }
+            builder.build()?
+        }
+        _ => {
+            let mut builder = opentelemetry_otlp::MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(cfg.otlp_endpoint.clone());
+            if let Some(timeout) = cfg.export_timeout {
+                builder = builder.with_timeout(timeout);
+            }
+            builder.build()?
+        }
     };
 
     let mut reader_builder = PeriodicReader::builder(exporter);

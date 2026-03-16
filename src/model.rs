@@ -1,6 +1,7 @@
+use serde::Serialize;
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Snapshot {
     pub system: SystemSnapshot,
     pub memory: MemorySnapshot,
@@ -23,7 +24,7 @@ pub struct Snapshot {
     pub processes: Vec<ProcessSnapshot>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct SoftnetCpuSnapshot {
     pub cpu: usize,
     pub processed: u64,
@@ -31,7 +32,7 @@ pub struct SoftnetCpuSnapshot {
     pub time_squeezed: u64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct SystemSnapshot {
     pub is_windows: bool,
     pub ticks_per_second: u64,
@@ -52,7 +53,7 @@ pub struct SystemSnapshot {
     pub per_cpu: Vec<CpuTimes>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct CpuTimes {
     pub user: u64,
     pub nice: u64,
@@ -85,7 +86,7 @@ impl CpuTimes {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct MemorySnapshot {
     pub mem_total_bytes: u64,
     pub mem_free_bytes: u64,
@@ -115,7 +116,7 @@ pub struct MemorySnapshot {
     pub anon_hugepages_bytes: u64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct LoadSnapshot {
     pub one: f64,
     pub five: f64,
@@ -125,7 +126,7 @@ pub struct LoadSnapshot {
     pub latest_pid: u32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct SwapDeviceSnapshot {
     pub device: String,
     pub swap_type: String,
@@ -134,7 +135,7 @@ pub struct SwapDeviceSnapshot {
     pub priority: i64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct MountSnapshot {
     pub device: String,
     pub mountpoint: String,
@@ -142,7 +143,7 @@ pub struct MountSnapshot {
     pub read_only: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct CpuInfoSnapshot {
     pub cpu: usize,
     pub vendor_id: Option<String>,
@@ -151,7 +152,7 @@ pub struct CpuInfoSnapshot {
     pub cache_size_bytes: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct DiskSnapshot {
     pub name: String,
     pub has_counters: bool,
@@ -169,7 +170,7 @@ pub struct DiskSnapshot {
     pub rotational: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct NetDevSnapshot {
     pub name: String,
     pub mtu: Option<u64>,
@@ -194,7 +195,7 @@ pub struct NetDevSnapshot {
     pub tx_compressed: u64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct ProcessSnapshot {
     pub pid: i32,
     pub ppid: i32,

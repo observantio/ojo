@@ -46,8 +46,16 @@ fn read_cpu_frequency_mhz(cpu: usize) -> Option<f64> {
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
+    let (processes, process_count_hint) = if include_process_metrics {
+        let processes = collect_processes()?;
+        let count = processes.len() as u64;
+        (processes, Some(count))
+    } else {
+        (Vec::new(), None)
+    };
+
     Ok(Snapshot {
-        system: collect_system()?,
+        system: collect_system(process_count_hint)?,
         memory: collect_memory()?,
         load: collect_load()?,
         pressure: collect_pressure()?,
@@ -65,11 +73,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         buddyinfo: collect_buddyinfo()?,
         disks: collect_disks()?,
         net: collect_net()?,
-        processes: if include_process_metrics {
-            collect_processes()?
-        } else {
-            Vec::new()
-        },
+        processes,
     })
 }
 
@@ -266,8 +270,8 @@ fn collect_interrupts() -> Result<BTreeMap<String, u64>> {
         };
         let irq = irq_raw.trim();
         let cols = rest.split_whitespace().collect::<Vec<_>>();
-        for cpu in 0..cpus.min(cols.len()) {
-            if let Ok(value) = cols[cpu].parse::<u64>() {
+        for (cpu, value) in cols.iter().take(cpus.min(cols.len())).enumerate() {
+            if let Ok(value) = value.parse::<u64>() {
                 out.insert(format!("{irq}|{cpu}"), value);
             }
         }
@@ -296,8 +300,8 @@ fn collect_softirqs() -> Result<BTreeMap<String, u64>> {
         };
         let kind = kind_raw.trim();
         let cols = rest.split_whitespace().collect::<Vec<_>>();
-        for cpu in 0..cpus.min(cols.len()) {
-            if let Ok(value) = cols[cpu].parse::<u64>() {
+        for (cpu, value) in cols.iter().take(cpus.min(cols.len())).enumerate() {
+            if let Ok(value) = value.parse::<u64>() {
                 out.insert(format!("{kind}|{cpu}"), value);
             }
         }
@@ -465,7 +469,7 @@ fn collect_buddyinfo() -> Result<BTreeMap<String, u64>> {
     Ok(out)
 }
 
-fn collect_system() -> Result<SystemSnapshot> {
+fn collect_system(process_count: Option<u64>) -> Result<SystemSnapshot> {
     let stat = procfs::KernelStats::current()?;
     let (interrupts_total, softirqs_total) = collect_proc_stat_totals()?;
     let uptime_secs = collect_uptime_secs()?;
@@ -487,7 +491,7 @@ fn collect_system() -> Result<SystemSnapshot> {
         .collect();
     Ok(SystemSnapshot {
         is_windows: false,
-        ticks_per_second: procfs::ticks_per_second() as u64,
+        ticks_per_second: procfs::ticks_per_second(),
         cpu_cycle_utilization: None,
         boot_time_epoch_secs: stat.btime,
         uptime_secs,
@@ -495,7 +499,7 @@ fn collect_system() -> Result<SystemSnapshot> {
         forks_since_boot: stat.processes,
         interrupts_total,
         softirqs_total,
-        process_count: all_processes()?.count() as u64,
+        process_count: process_count.unwrap_or_else(|| all_processes().map(|p| p.count() as u64).unwrap_or(0)),
         pid_max: read_proc_u64("/proc/sys/kernel/pid_max").unwrap_or(0),
         entropy_available_bits: read_proc_u64("/proc/sys/kernel/random/entropy_avail")
             .unwrap_or(0),
@@ -556,9 +560,9 @@ fn collect_load() -> Result<LoadSnapshot> {
         one: load.one as f64,
         five: load.five as f64,
         fifteen: load.fifteen as f64,
-        runnable: load.cur as u32,
-        entities: load.max as u32,
-        latest_pid: load.latest_pid as u32,
+        runnable: load.cur,
+        entities: load.max,
+        latest_pid: load.latest_pid,
     })
 }
 

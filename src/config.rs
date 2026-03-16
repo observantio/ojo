@@ -11,6 +11,7 @@ pub struct Config {
     pub instance_id: String,
     pub poll_interval: Duration,
     pub include_process_metrics: bool,
+    pub dump_snapshot: bool,
     pub otlp_endpoint: String,
     pub otlp_protocol: String,
     pub otlp_headers: BTreeMap<String, String>,
@@ -74,6 +75,11 @@ struct MetricSection {
 impl Config {
     pub fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
+        let dump_snapshot = args.contains(&"--dump-snapshot".to_string())
+            || env::var("PROC_DUMP_SNAPSHOT")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -142,6 +148,7 @@ impl Config {
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 })
                 .unwrap_or(false),
+            dump_snapshot,
             otlp_endpoint,
             otlp_protocol,
             otlp_headers,
@@ -172,8 +179,8 @@ impl Config {
     }
 
     pub fn apply_otel_env(&self) {
-        env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", &self.otlp_endpoint);
-        env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", &self.otlp_protocol);
+        set_otel_env_var("OTEL_EXPORTER_OTLP_ENDPOINT", &self.otlp_endpoint);
+        set_otel_env_var("OTEL_EXPORTER_OTLP_PROTOCOL", &self.otlp_protocol);
 
         if !self.otlp_headers.is_empty() {
             let headers = self
@@ -182,28 +189,37 @@ impl Config {
                 .map(|(key, value)| format!("{key}={value}"))
                 .collect::<Vec<_>>()
                 .join(",");
-            env::set_var("OTEL_EXPORTER_OTLP_HEADERS", headers);
+            set_otel_env_var("OTEL_EXPORTER_OTLP_HEADERS", headers);
         }
 
         if let Some(compression) = &self.otlp_compression {
-            env::set_var("OTEL_EXPORTER_OTLP_COMPRESSION", compression);
+            set_otel_env_var("OTEL_EXPORTER_OTLP_COMPRESSION", compression);
         }
         if let Some(timeout) = self.otlp_timeout {
-            env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", timeout.as_secs().to_string());
+            set_otel_env_var("OTEL_EXPORTER_OTLP_TIMEOUT", timeout.as_secs().to_string());
         }
         if let Some(interval) = self.export_interval {
-            env::set_var(
+            set_otel_env_var(
                 "OTEL_METRIC_EXPORT_INTERVAL",
                 interval.as_millis().to_string(),
             );
         }
         if let Some(timeout) = self.export_timeout {
-            env::set_var(
+            set_otel_env_var(
                 "OTEL_METRIC_EXPORT_TIMEOUT",
                 timeout.as_millis().to_string(),
             );
         }
     }
+}
+
+#[inline]
+fn set_otel_env_var<K, V>(key: K, value: V)
+where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+{
+    unsafe { env::set_var(key, value) }
 }
 
 fn hostname_fallback() -> String {
