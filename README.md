@@ -226,6 +226,8 @@ Ojo intentionally avoids forcing fake values for unsupported metrics.
 - Linux-only metrics are emitted on Linux.
 - On Windows, unsupported Linux-specific fields are omitted (no data) rather than emitted as `0`.
 - If Windows disk performance counters are unavailable for a disk, disk rate/pending/time metrics for that disk are omitted.
+- Windows `load.one/five/fifteen` is synthesized from CPU busy-time EMA and is not Linux loadavg-equivalent.
+- Windows disk collection is physical-disk-first (`PhysicalDriveN`) rather than drive-letter volume-first.
 
 This helps dashboards distinguish "real zero" from "metric not available on this platform".
 

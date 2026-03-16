@@ -40,13 +40,17 @@ pub struct SystemSnapshot {
     pub boot_time_epoch_secs: u64,
     pub uptime_secs: f64,
     pub context_switches: u64,
-    pub forks_since_boot: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forks_since_boot: Option<u64>,
     pub interrupts_total: u64,
     pub softirqs_total: u64,
     pub process_count: u64,
-    pub pid_max: u64,
-    pub entropy_available_bits: u64,
-    pub entropy_pool_size_bits: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid_max: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entropy_available_bits: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entropy_pool_size_bits: Option<u64>,
     pub procs_running: u32,
     pub procs_blocked: u32,
     pub cpu_total: CpuTimes,

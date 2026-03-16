@@ -496,14 +496,13 @@ fn collect_system(process_count: Option<u64>) -> Result<SystemSnapshot> {
         boot_time_epoch_secs: stat.btime,
         uptime_secs,
         context_switches: stat.ctxt,
-        forks_since_boot: stat.processes,
+        forks_since_boot: Some(stat.processes),
         interrupts_total,
         softirqs_total,
         process_count: process_count.unwrap_or_else(|| all_processes().map(|p| p.count() as u64).unwrap_or(0)),
-        pid_max: read_proc_u64("/proc/sys/kernel/pid_max").unwrap_or(0),
-        entropy_available_bits: read_proc_u64("/proc/sys/kernel/random/entropy_avail")
-            .unwrap_or(0),
-        entropy_pool_size_bits: read_proc_u64("/proc/sys/kernel/random/poolsize").unwrap_or(0),
+        pid_max: read_proc_u64("/proc/sys/kernel/pid_max"),
+        entropy_available_bits: read_proc_u64("/proc/sys/kernel/random/entropy_avail"),
+        entropy_pool_size_bits: read_proc_u64("/proc/sys/kernel/random/poolsize"),
         procs_running: stat.procs_running.unwrap_or(0),
         procs_blocked: stat.procs_blocked.unwrap_or(0),
         cpu_total: CpuTimes {

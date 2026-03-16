@@ -173,7 +173,8 @@ impl PrevState {
         out.forks_delta = current
             .system
             .forks_since_boot
-            .saturating_sub(prev.system.forks_since_boot);
+            .unwrap_or(0)
+            .saturating_sub(prev.system.forks_since_boot.unwrap_or(0));
 
         for (key, value) in &current.interrupts {
             let prev_value = prev.interrupts.get(key).copied().unwrap_or_default();

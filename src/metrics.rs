@@ -815,19 +815,19 @@ impl ProcMetrics {
             self.record_u64(
                 "system.linux.pid.max",
                 &self.otel_system_pid_max,
-                snap.system.pid_max,
+                snap.system.pid_max.unwrap_or(0),
                 &[],
             );
             self.record_u64(
                 "system.linux.entropy",
                 &self.otel_system_entropy,
-                snap.system.entropy_available_bits,
+                snap.system.entropy_available_bits.unwrap_or(0),
                 &[KeyValue::new("state", "available")],
             );
             self.record_u64(
                 "system.linux.entropy",
                 &self.otel_system_entropy,
-                snap.system.entropy_pool_size_bits,
+                snap.system.entropy_pool_size_bits.unwrap_or(0),
                 &[KeyValue::new("state", "pool_size")],
             );
         }
@@ -1204,7 +1204,7 @@ impl ProcMetrics {
             self.record_u64(
                 "system.processes.forks",
                 &self.forks_total,
-                snap.system.forks_since_boot,
+                snap.system.forks_since_boot.unwrap_or(0),
                 &[],
             );
         }

@@ -17,7 +17,7 @@ use windows::Win32::Foundation::{CloseHandle, GetLastError, FILETIME, HANDLE, NT
 use windows::Win32::NetworkManagement::IpHelper::{
     FreeMibTable, GetIfTable2, GetIpStatistics, GetTcpStatistics, GetTcpTable2, GetUdpStatistics,
     GetUdpTable, MIB_IF_TABLE2, MIB_IPSTATS_LH, MIB_TCP_STATE, MIB_TCPROW2, MIB_TCPSTATS_LH,
-    MIB_TCPTABLE2,
+    MIB_IF_TYPE_LOOPBACK, MIB_TCPTABLE2,
     MIB_TCP_STATE_CLOSE_WAIT, MIB_TCP_STATE_CLOSING, MIB_TCP_STATE_ESTAB,
     MIB_TCP_STATE_FIN_WAIT1, MIB_TCP_STATE_FIN_WAIT2, MIB_TCP_STATE_LAST_ACK,
     MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_RCVD, MIB_TCP_STATE_SYN_SENT,
@@ -29,18 +29,22 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{
-    IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
-    STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_DEVICE_NUMBER, STORAGE_PROPERTY_ID,
+    IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_PROPERTY_ID,
     STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
 };
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::ProcessStatus::{
     GetPerformanceInfo, GetProcessMemoryInfo, PERFORMANCE_INFORMATION, PROCESS_MEMORY_COUNTERS_EX,
 };
+use windows::Win32::System::Registry::{
+    RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_DWORD,
+    REG_SZ,
+};
 use windows::Win32::System::SystemInformation::{
-    GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
-    SYSTEM_INFO, PROCESSOR_ARCHITECTURE_INTEL, PROCESSOR_ARCHITECTURE_AMD64,
-    PROCESSOR_ARCHITECTURE_ARM64,
+    GetLogicalProcessorInformationEx, GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64,
+    GlobalMemoryStatusEx, LOGICAL_PROCESSOR_RELATIONSHIP, MEMORYSTATUSEX,
+    PROCESSOR_ARCHITECTURE_AMD64, PROCESSOR_ARCHITECTURE_ARM64, PROCESSOR_ARCHITECTURE_INTEL,
+    RelationCache, SYSTEM_INFO, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::WindowsProgramming::{
     DRIVE_CDROM, DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE,
@@ -320,6 +324,7 @@ struct ProcessThreadSummary {
 }
 
 static DISK_COUNTER_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
+static LOAD_SYNTH_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
 
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -439,6 +444,142 @@ fn boot_time_filetime_100ns() -> u64 {
 
 fn process_basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
+}
+
+fn reg_query_string(hkey: HKEY, value_name: &str) -> Option<String> {
+    let value_w = wide_z(value_name);
+    unsafe {
+        let mut value_type = REG_SZ;
+        let mut size = 0u32;
+        if RegQueryValueExW(
+            hkey,
+            PCWSTR(value_w.as_ptr()),
+            None,
+            Some(&mut value_type),
+            None,
+            Some(&mut size),
+        )
+        .0
+            != 0
+            || size < 2
+            || value_type != REG_SZ
+        {
+            return None;
+        }
+        let mut data = vec![0u8; size as usize];
+        if RegQueryValueExW(
+            hkey,
+            PCWSTR(value_w.as_ptr()),
+            None,
+            Some(&mut value_type),
+            Some(data.as_mut_ptr()),
+            Some(&mut size),
+        )
+        .0
+            != 0
+            || value_type != REG_SZ
+            || size < 2
+        {
+            return None;
+        }
+        let wlen = (size as usize / 2).saturating_sub(1);
+        let slice = slice::from_raw_parts(data.as_ptr() as *const u16, wlen);
+        Some(String::from_utf16_lossy(slice).trim().to_string())
+    }
+}
+
+fn reg_query_dword(hkey: HKEY, value_name: &str) -> Option<u32> {
+    let value_w = wide_z(value_name);
+    unsafe {
+        let mut value_type = REG_DWORD;
+        let mut data = 0u32;
+        let mut size = size_of::<u32>() as u32;
+        if RegQueryValueExW(
+            hkey,
+            PCWSTR(value_w.as_ptr()),
+            None,
+            Some(&mut value_type),
+            Some((&mut data as *mut u32).cast::<u8>()),
+            Some(&mut size),
+        )
+        .0
+            == 0
+            && value_type == REG_DWORD
+            && size == size_of::<u32>() as u32
+        {
+            Some(data)
+        } else {
+            None
+        }
+    }
+}
+
+fn cpu_metadata_from_registry() -> (Option<String>, Option<String>, Option<f64>) {
+    let key_path = wide_z(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
+    let mut key = HKEY::default();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(key_path.as_ptr()),
+            Some(0),
+            KEY_READ,
+            &mut key,
+        )
+        .0
+            == 0
+    };
+    if !opened {
+        return (None, None, None);
+    }
+
+    let vendor = reg_query_string(key, "VendorIdentifier");
+    let model = reg_query_string(key, "ProcessorNameString");
+    let mhz = reg_query_dword(key, "~MHz").map(|v| v as f64);
+
+    let _ = unsafe { RegCloseKey(key) };
+    (vendor, model, mhz)
+}
+
+fn cpu_cache_size_bytes() -> Option<u64> {
+    let mut required = 0u32;
+    let _ = unsafe {
+        GetLogicalProcessorInformationEx(
+            LOGICAL_PROCESSOR_RELATIONSHIP(RelationCache.0),
+            None,
+            &mut required,
+        )
+    };
+    if required == 0 {
+        return None;
+    }
+
+    let mut buf = vec![0u8; required as usize];
+    unsafe {
+        GetLogicalProcessorInformationEx(
+            LOGICAL_PROCESSOR_RELATIONSHIP(RelationCache.0),
+            Some(buf.as_mut_ptr() as *mut SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX),
+            &mut required,
+        )
+        .ok()?;
+    }
+
+    let mut max_cache = 0u64;
+    let mut offset = 0usize;
+    while offset + size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= required as usize {
+        let info = unsafe {
+            &*(buf.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)
+        };
+        if info.Relationship == LOGICAL_PROCESSOR_RELATIONSHIP(RelationCache.0) {
+            let cache = unsafe { info.Anonymous.Cache };
+            max_cache = max_cache.max(cache.CacheSize as u64);
+        }
+        if info.Size == 0 {
+            break;
+        }
+        offset = offset.saturating_add(info.Size as usize);
+    }
+
+    if max_cache > 0 { Some(max_cache) } else { None }
 }
 
 fn open_process_limited(pid: u32) -> Option<HANDLE> {
@@ -798,9 +939,8 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, Proc
     (count.saturating_sub(1), procs_blocked, summaries)
 }
 
-fn query_seek_penalty(drive_letter: char) -> Option<bool> {
-    let path = format!(r"\\.\{}:", drive_letter);
-    let path_w = wide_z(&path);
+fn query_seek_penalty(device_path: &str) -> Option<bool> {
+    let path_w = wide_z(device_path);
     unsafe {
         let handle = CreateFileW(
             PCWSTR(path_w.as_ptr()),
@@ -839,10 +979,9 @@ fn query_seek_penalty(drive_letter: char) -> Option<bool> {
     }
 }
 
-fn query_storage_alignment(drive_letter: char) -> (Option<u64>, Option<u64>, Option<bool>) {
-    let rotational = query_seek_penalty(drive_letter);
-    let path = format!(r"\\.\{}:", drive_letter);
-    let path_w = wide_z(&path);
+fn query_storage_alignment(device_path: &str) -> (Option<u64>, Option<u64>, Option<bool>) {
+    let rotational = query_seek_penalty(device_path);
+    let path_w = wide_z(device_path);
     unsafe {
         let handle = match CreateFileW(
             PCWSTR(path_w.as_ptr()),
@@ -911,23 +1050,21 @@ fn open_storage_query_handle(path: &str) -> Option<HANDLE> {
     None
 }
 
-fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> {
-    let volume_path = format!(r"\\.\{}:", drive_letter);
+fn query_disk_performance_for_path(path: &str) -> Option<DiskPerfData> {
     unsafe {
-        let handle = match open_storage_query_handle(&volume_path) {
+        let handle = match open_storage_query_handle(path) {
             Some(h) => h,
             None => {
                 warn!(
-                    drive = %drive_letter,
-                    path = %volume_path,
+                    path = %path,
                     win32_error = GetLastError().0,
-                    "wincollect: failed to open volume for disk performance counters"
+                    "wincollect: failed to open disk for performance counters"
                 );
                 return None;
             }
         };
 
-        let try_ioctl_perf = |h: HANDLE, source_path: &str| -> Option<DiskPerformance> {
+        let try_ioctl_perf = |h: HANDLE| -> Option<DiskPerformance> {
             let mut perf = DiskPerformance::default();
             let mut returned = 0u32;
             let ok = DeviceIoControl(
@@ -945,8 +1082,7 @@ fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> 
                 Some(perf)
             } else {
                 warn!(
-                    drive = %drive_letter,
-                    path = %source_path,
+                    path = %path,
                     win32_error = GetLastError().0,
                     "wincollect: IOCTL_DISK_PERFORMANCE failed"
                 );
@@ -954,46 +1090,8 @@ fn query_disk_performance_for_drive(drive_letter: char) -> Option<DiskPerfData> 
             }
         };
 
-        let raw = if let Some(p) = try_ioctl_perf(handle, &volume_path) {
-            let _ = CloseHandle(handle);
-            p
-        } else {
-            let mut dev_num = STORAGE_DEVICE_NUMBER::default();
-            let mut returned = 0u32;
-            let got_dev = DeviceIoControl(
-                handle,
-                IOCTL_STORAGE_GET_DEVICE_NUMBER,
-                None,
-                0,
-                Some(&mut dev_num as *mut _ as *mut c_void),
-                size_of::<STORAGE_DEVICE_NUMBER>() as u32,
-                Some(&mut returned),
-                None,
-            )
-            .is_ok()
-                && returned >= size_of::<STORAGE_DEVICE_NUMBER>() as u32;
-            let _ = CloseHandle(handle);
-            if got_dev {
-                let phys_path = format!(r"\\.\PhysicalDrive{}", dev_num.DeviceNumber);
-                let phys_handle = match open_storage_query_handle(&phys_path) {
-                    Some(h) => h,
-                    None => {
-                        warn!(
-                            drive = %drive_letter,
-                            path = %phys_path,
-                            win32_error = GetLastError().0,
-                            "wincollect: failed to open physical drive for disk performance counters"
-                        );
-                        return None;
-                    }
-                };
-                let p = try_ioctl_perf(phys_handle, &phys_path);
-                let _ = CloseHandle(phys_handle);
-                p?
-            } else {
-                return None;
-            }
-        };
+        let raw = try_ioctl_perf(handle)?;
+        let _ = CloseHandle(handle);
 
         let boot_100ns = boot_time_filetime_100ns();
         let query_100ns = nt_time_100ns(raw.query_time.quad_part);
@@ -1225,13 +1323,13 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
         boot_time_epoch_secs: boot_epoch,
         uptime_secs,
         context_switches,
-        forks_since_boot: 0,
+        forks_since_boot: None,
         interrupts_total,
         softirqs_total,
         process_count,
-        pid_max: 0,
-        entropy_available_bits: 0,
-        entropy_pool_size_bits: 0,
+        pid_max: None,
+        entropy_available_bits: None,
+        entropy_pool_size_bits: None,
         procs_running,
         procs_blocked,
         cpu_total,
@@ -1252,7 +1350,7 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
         let total_pagefile = mem.ullTotalPageFile;
         let avail_pagefile = mem.ullAvailPageFile;
 
-        let (cached_bytes, commit_total, commit_limit, non_paged_pool, paged_pool) =
+        let (cached_bytes, commit_total, commit_limit, non_paged_pool, paged_pool, perf_avail_bytes) =
             match system_performance_info() {
                 Some(p) => (
                     (p.resident_system_cache_page as u64).saturating_mul(page),
@@ -1260,6 +1358,7 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
                     (p.commit_limit as u64).saturating_mul(page),
                     (p.non_paged_pool_pages as u64).saturating_mul(page),
                     (p.paged_pool_pages as u64).saturating_mul(page),
+                    (p.available_pages as u64).saturating_mul(page),
                 ),
                 None => {
                     let mut perf = PERFORMANCE_INFORMATION::default();
@@ -1271,21 +1370,36 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
                             (perf.CommitLimit as u64).saturating_mul(page),
                             0,
                             0,
+                            (perf.PhysicalAvailable as u64).saturating_mul(page),
                         )
                     } else {
-                        (0, 0, 0, 0, 0)
+                        (0, 0, 0, 0, 0, avail_phys)
                     }
                 }
             };
 
         let used_phys = total_phys.saturating_sub(avail_phys);
-        let swap_total = total_pagefile.saturating_sub(total_phys);
-        let swap_avail = avail_pagefile.saturating_sub(avail_phys.min(avail_pagefile));
+
+        // On Windows, commit accounting is the best approximation for pagefile-backed swap.
+        let mut swap_total = commit_limit.saturating_sub(total_phys);
+        if swap_total == 0 {
+            // Fallback for environments where commit limit isn't available.
+            swap_total = total_pagefile.saturating_sub(total_phys);
+        }
+
+        let mut swap_used = commit_total.saturating_sub(total_phys);
+        if swap_used == 0 && swap_total > 0 {
+            // Heuristic fallback when commit counters are unavailable.
+            let committed = total_pagefile.saturating_sub(avail_pagefile);
+            let resident = total_phys.saturating_sub(avail_phys);
+            swap_used = committed.saturating_sub(resident).min(swap_total);
+        }
+        let swap_avail = swap_total.saturating_sub(swap_used);
 
         Ok(MemorySnapshot {
             mem_total_bytes: total_phys,
             mem_free_bytes: avail_phys,
-            mem_available_bytes: avail_phys,
+            mem_available_bytes: perf_avail_bytes.min(total_phys),
             buffers_bytes: 0,
             cached_bytes,
             active_bytes: used_phys.saturating_sub(cached_bytes),
@@ -1314,13 +1428,22 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
 }
 
 pub fn collect_load(cpu_total: &CpuTimes) -> Result<LoadSnapshot> {
+    let warning_once = LOAD_SYNTH_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
+    let mut guard = warning_once.lock().expect("load warning mutex poisoned");
+    if !*guard {
+        warn!(
+            "wincollect: load.{one,five,fifteen} on Windows is synthesized from CPU busy-time EMA and is not Linux loadavg-equivalent."
+        );
+        *guard = true;
+    }
+    drop(guard);
     let entities = cpu_count_from_nt().max(1) as u32;
     let (one, five, fifteen) = compute_load_averages(cpu_total, entities);
     Ok(LoadSnapshot {
         one,
         five,
         fifteen,
-        runnable: one.round() as u32,
+        runnable: 0,
         entities,
         latest_pid: 0,
     })
@@ -1356,21 +1479,17 @@ fn drive_strings() -> Result<Vec<String>> {
 }
 
 pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
-    let drives = drive_strings()?;
     let mut out = Vec::new();
-    for drive in drives {
-        let drive_letter = match drive.chars().next() {
-            Some(c) => c,
+    for idx in 0u32..64 {
+        let device_path = format!(r"\\.\PhysicalDrive{idx}");
+        let handle = match open_storage_query_handle(&device_path) {
+            Some(h) => h,
             None => continue,
         };
-        let drive_w = wide_z(&drive);
-        unsafe {
-            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED {
-                continue;
-            }
-        }
-        let (logical, physical, rotational) = query_storage_alignment(drive_letter);
-        let perf = query_disk_performance_for_drive(drive_letter);
+        let _ = unsafe { CloseHandle(handle) };
+
+        let (logical, physical, rotational) = query_storage_alignment(&device_path);
+        let perf = query_disk_performance_for_path(&device_path);
         if perf.is_none() {
             let warning_once = DISK_COUNTER_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
             let mut guard = warning_once.lock().expect("disk warning mutex poisoned");
@@ -1382,7 +1501,7 @@ common causes are missing privileges or disabled Windows disk performance counte
                 *guard = true;
             }
         }
-        let name = drive.trim_end_matches('\\').to_string();
+        let name = format!("PhysicalDrive{idx}");
         out.push(DiskSnapshot {
             name,
             has_counters: perf.is_some(),
@@ -1427,6 +1546,23 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
         for row in rows {
             let alias = wchar_array_to_string(&row.Alias);
             let desc = wchar_array_to_string(&row.Description);
+            let name_lc = format!("{} {}", alias, desc).to_ascii_lowercase();
+            // Skip filter/binding adapters that duplicate real NIC stats.
+            if name_lc.contains("lightweight filter")
+                || name_lc.contains("wfp ")
+                || name_lc.contains("qos packet scheduler")
+            {
+                continue;
+            }
+            let is_up = row.OperStatus.0 == 1;
+            let has_traffic = row.InOctets > 0
+                || row.OutOctets > 0
+                || row.InUcastPkts > 0
+                || row.OutUcastPkts > 0;
+            let is_loopback = row.Type == MIB_IF_TYPE_LOOPBACK;
+            if !is_up && !has_traffic && !is_loopback {
+                continue;
+            }
             let name = if !alias.is_empty() { alias } else { desc };
             let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
             out.push(NetDevSnapshot {
@@ -1591,22 +1727,25 @@ fn collect_processes_from_nt(
 
 pub fn collect_cpuinfo() -> Vec<CpuInfoSnapshot> {
     let ncpu = cpu_count_from_nt();
+    let (reg_vendor, reg_model, reg_mhz) = cpu_metadata_from_registry();
+    let cache_size_bytes = cpu_cache_size_bytes();
     let mut sysinfo = SYSTEM_INFO::default();
     unsafe { GetSystemInfo(&mut sysinfo) };
     let arch = unsafe { sysinfo.Anonymous.Anonymous.wProcessorArchitecture };
-    let vendor_id = match arch.0 {
-        v if v == PROCESSOR_ARCHITECTURE_INTEL.0 => Some("GenuineIntel".to_string()),
-        v if v == PROCESSOR_ARCHITECTURE_AMD64.0 => None,
-        v if v == PROCESSOR_ARCHITECTURE_ARM64.0 => Some("ARM".to_string()),
+    let vendor_id = match (reg_vendor, arch.0) {
+        (Some(v), _) if !v.is_empty() => Some(v),
+        (_, v) if v == PROCESSOR_ARCHITECTURE_INTEL.0 => Some("GenuineIntel".to_string()),
+        (_, v) if v == PROCESSOR_ARCHITECTURE_AMD64.0 => None,
+        (_, v) if v == PROCESSOR_ARCHITECTURE_ARM64.0 => Some("ARM".to_string()),
         _ => None,
     };
     (0..ncpu)
         .map(|cpu| CpuInfoSnapshot {
             cpu,
             vendor_id: vendor_id.clone(),
-            model_name: None,
-            mhz: None,
-            cache_size_bytes: None,
+            model_name: reg_model.clone(),
+            mhz: reg_mhz,
+            cache_size_bytes,
         })
         .collect()
 }
@@ -1672,10 +1811,6 @@ pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
     }]
 }
 
-pub fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
-    collect_processes_from_nt(true, None)
-}
-
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_snapshot start");
     let process_info_buf = if include_process_metrics {
@@ -1688,7 +1823,13 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_system done");
     let memory = collect_memory()?;
     debug!("wincollect: collect_memory done");
-    let load = collect_load(&system.cpu_total)?;
+    let mut load = collect_load(&system.cpu_total)?;
+    load.runnable = system.procs_running;
+    load.entities = if system.process_count > u32::MAX as u64 {
+        u32::MAX
+    } else {
+        system.process_count as u32
+    };
     debug!("wincollect: collect_load done");
     let disks = collect_disks()?;
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
