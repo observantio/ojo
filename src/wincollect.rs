@@ -1,8 +1,9 @@
 use crate::model::{
     CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
     LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
-    SwapDeviceSnapshot, SystemSnapshot, WindowsMemoryPressureSnapshot, WindowsPagefileSnapshot,
-    WindowsSnapshot,
+    SwapDeviceSnapshot, SystemSnapshot, WindowsCommitSnapshot, WindowsLoadSnapshot,
+    WindowsMemoryPressureSnapshot, WindowsMemorySnapshot, WindowsPagefileSnapshot,
+    WindowsSnapshot, WindowsSyntheticLoadSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -1484,25 +1485,28 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
     }
 }
 
-pub fn collect_load(cpu_total: &CpuTimes) -> Result<LoadSnapshot> {
+pub fn collect_synthetic_load(
+    cpu_total: &CpuTimes,
+    runnable_threads: u32,
+) -> Result<WindowsSyntheticLoadSnapshot> {
     let warning_once = LOAD_SYNTH_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
     let mut guard = warning_once.lock().expect("load warning mutex poisoned");
     if !*guard {
         warn!(
-            "wincollect: load.{{one,five,fifteen}} on Windows is synthesized from CPU busy-time EMA and is not Linux loadavg-equivalent."
+            "wincollect: windows.load.synthetic is derived from CPU busy-time EMA scaled by logical CPU entities; it is not Linux loadavg-equivalent."
         );
         *guard = true;
     }
     drop(guard);
     let entities = cpu_count_from_nt().max(1) as u32;
     let (one, five, fifteen) = compute_load_averages(cpu_total, entities);
-    Ok(LoadSnapshot {
+    Ok(WindowsSyntheticLoadSnapshot {
         one,
         five,
         fifteen,
-        runnable: 0,
         entities,
-        latest_pid: 0,
+        runnable_threads,
+        source: "ema(cpu_busy_ratio * logical_cpu_entities)".to_string(),
     })
 }
 
@@ -2060,6 +2064,25 @@ fn collect_windows_memory_pressure(
     }
 }
 
+fn collect_windows_commit(memory: &MemorySnapshot) -> WindowsCommitSnapshot {
+    let charge = memory.committed_as_bytes;
+    let limit = memory.commit_limit_bytes;
+    let available = limit.saturating_sub(charge);
+    let reserve = available;
+    let utilization_pct = if limit > 0 {
+        (charge as f64 * 100.0) / limit as f64
+    } else {
+        0.0
+    };
+    WindowsCommitSnapshot {
+        charge_bytes: charge,
+        limit_bytes: limit,
+        available_bytes: available,
+        reserve_bytes: reserve,
+        utilization_pct,
+    }
+}
+
 fn windows_support_state() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     out.insert("memory.inactive_bytes".to_string(), "unsupported".to_string());
@@ -2079,9 +2102,10 @@ fn windows_support_state() -> BTreeMap<String, String> {
     );
     out.insert("section.pressure".to_string(), "unsupported".to_string());
     out.insert("section.pressure_totals_us".to_string(), "unsupported".to_string());
+    out.insert("section.swaps".to_string(), "windows_pagefile_model".to_string());
     out.insert(
-        "section.swaps".to_string(),
-        "unsupported_on_windows_use_windows.pagefiles".to_string(),
+        "load.shared".to_string(),
+        "unsupported_on_windows_use_windows.load.synthetic".to_string(),
     );
     out.insert("section.softnet".to_string(), "unsupported".to_string());
     out.insert("section.zoneinfo".to_string(), "unsupported".to_string());
@@ -2095,7 +2119,10 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     out.insert("system.cpu.time".to_string(), "derived".to_string());
     out.insert("system.cpu.utilization".to_string(), "derived".to_string());
-    out.insert("system.cpu.load_average.*".to_string(), "synthetic".to_string());
+    out.insert(
+        "system.cpu.load_average.*".to_string(),
+        "unsupported_on_windows".to_string(),
+    );
     out.insert("system.disk.*".to_string(), "native".to_string());
     out.insert("system.network.*".to_string(), "native".to_string());
     out.insert("system.paging.*".to_string(), "derived".to_string());
@@ -2115,14 +2142,24 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("windows.interrupts.*".to_string(), "native".to_string());
     out.insert("windows.dpc.*".to_string(), "native".to_string());
     out.insert("windows.vmstat.*".to_string(), "native".to_string());
+    out.insert("windows.load.synthetic.*".to_string(), "synthetic".to_string());
     out.insert("windows.pagefiles.*".to_string(), "native".to_string());
-    out.insert("windows.memory_pressure.*".to_string(), "derived".to_string());
+    out.insert("windows.memory.commit.*".to_string(), "native".to_string());
+    out.insert("windows.memory.pressure.*".to_string(), "derived".to_string());
     out
 }
 
 pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
-    let _ = memory;
-    Vec::new()
+    if memory.swap_total_bytes == 0 {
+        return Vec::new();
+    }
+    vec![SwapDeviceSnapshot {
+        device: "system_pagefile".to_string(),
+        swap_type: "windows_pagefile".to_string(),
+        size_bytes: memory.swap_total_bytes,
+        used_bytes: memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes),
+        priority: -1,
+    }]
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
@@ -2137,14 +2174,8 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_system done");
     let memory = collect_memory()?;
     debug!("wincollect: collect_memory done");
-    let mut load = collect_load(&system.cpu_total)?;
-    load.runnable = system.procs_running;
-    load.entities = if system.process_count > u32::MAX as u64 {
-        u32::MAX
-    } else {
-        system.process_count as u32
-    };
-    debug!("wincollect: collect_load done");
+    let synthetic_load = collect_synthetic_load(&system.cpu_total, system.procs_running)?;
+    debug!("wincollect: collect_synthetic_load done");
     let disks = collect_disks()?;
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
     let net = collect_net()?;
@@ -2185,11 +2216,12 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     let hard_fault_total = perf.as_ref().map(|p| p.page_read_count as u64).unwrap_or(0);
     let windows_pagefiles = collect_windows_pagefiles(&memory);
     let windows_memory_pressure = collect_windows_memory_pressure(&memory, hard_fault_total);
+    let windows_commit = collect_windows_commit(&memory);
 
     Ok(Snapshot {
         system,
         memory,
-        load,
+        load: None,
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
         vmstat: vmstat_generic,
@@ -2214,8 +2246,14 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
             dpc: windows_dpc,
             isr_total_time_seconds,
             dpc_total_time_seconds,
+            load: Some(WindowsLoadSnapshot {
+                synthetic: synthetic_load,
+            }),
             pagefiles: windows_pagefiles,
-            memory_pressure: windows_memory_pressure,
+            memory: WindowsMemorySnapshot {
+                commit: windows_commit,
+                pressure: windows_memory_pressure,
+            },
             disk_volume_correlation,
         }),
     })

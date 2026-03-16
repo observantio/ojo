@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 pub struct Snapshot {
     pub system: SystemSnapshot,
     pub memory: MemorySnapshot,
-    pub load: LoadSnapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load: Option<LoadSnapshot>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub pressure: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -56,10 +57,27 @@ pub struct WindowsSnapshot {
     pub dpc: BTreeMap<String, u64>,
     pub isr_total_time_seconds: f64,
     pub dpc_total_time_seconds: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load: Option<WindowsLoadSnapshot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pagefiles: Vec<WindowsPagefileSnapshot>,
-    pub memory_pressure: WindowsMemoryPressureSnapshot,
+    pub memory: WindowsMemorySnapshot,
     pub disk_volume_correlation: Vec<DiskVolumeCorrelation>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsLoadSnapshot {
+    pub synthetic: WindowsSyntheticLoadSnapshot,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsSyntheticLoadSnapshot {
+    pub one: f64,
+    pub five: f64,
+    pub fifteen: f64,
+    pub entities: u32,
+    pub runnable_threads: u32,
+    pub source: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -76,6 +94,21 @@ pub struct WindowsMemoryPressureSnapshot {
     pub available_memory_pct: f64,
     pub pagefile_utilization_pct: f64,
     pub hard_fault_rate: f64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsMemorySnapshot {
+    pub commit: WindowsCommitSnapshot,
+    pub pressure: WindowsMemoryPressureSnapshot,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsCommitSnapshot {
+    pub charge_bytes: u64,
+    pub limit_bytes: u64,
+    pub available_bytes: u64,
+    pub reserve_bytes: u64,
+    pub utilization_pct: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

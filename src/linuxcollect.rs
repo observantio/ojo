@@ -75,7 +75,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     Ok(Snapshot {
         system: collect_system(process_count_hint)?,
         memory: collect_memory()?,
-        load: collect_load()?,
+        load: Some(collect_load()?),
         pressure: collect_pressure()?,
         pressure_totals_us: collect_pressure_totals()?,
         vmstat: procfs::vmstat().unwrap_or_default().into_iter().collect(),

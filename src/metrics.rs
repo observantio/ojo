@@ -985,31 +985,27 @@ impl ProcMetrics {
     }
 
     fn record_load(&self, snap: &Snapshot) {
-        self.record_f64("system.cpu.load_average.1m", &self.load_1m, snap.load.one, &[]);
-        self.record_f64("system.cpu.load_average.5m", &self.load_5m, snap.load.five, &[]);
-        self.record_f64(
-            "system.cpu.load_average.15m",
-            &self.load_15m,
-            snap.load.fifteen,
-            &[],
-        );
+        let Some(load) = snap.load.as_ref() else { return };
+        self.record_f64("system.cpu.load_average.1m", &self.load_1m, load.one, &[]);
+        self.record_f64("system.cpu.load_average.5m", &self.load_5m, load.five, &[]);
+        self.record_f64("system.cpu.load_average.15m", &self.load_15m, load.fifteen, &[]);
         if !snap.system.is_windows {
             self.record_u64(
                 "system.linux.load.runnable",
                 &self.load_runnable,
-                non_negative_u64(snap.load.runnable),
+                non_negative_u64(load.runnable),
                 &[],
             );
             self.record_u64(
                 "system.linux.load.entities",
                 &self.load_entities,
-                non_negative_u64(snap.load.entities),
+                non_negative_u64(load.entities),
                 &[],
             );
             self.record_u64(
                 "system.linux.load.latest_pid",
                 &self.load_latest_pid,
-                non_negative_u64(snap.load.latest_pid),
+                non_negative_u64(load.latest_pid),
                 &[],
             );
         }
