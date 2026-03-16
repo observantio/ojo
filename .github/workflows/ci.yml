@@ -22,9 +22,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build --release
-
       - name: Dump snapshot JSON
         run: cargo run --release -- --dump-snapshot > snapshot-${{ matrix.os }}.json
 

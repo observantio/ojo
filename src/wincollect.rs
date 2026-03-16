@@ -26,8 +26,7 @@ use windows::Win32::NetworkManagement::IpHelper::{
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
     FILE_ATTRIBUTE_NORMAL, FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING, DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_CDROM, DRIVE_REMOTE,
-    DRIVE_RAMDISK,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
@@ -42,6 +41,9 @@ use windows::Win32::System::SystemInformation::{
     GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
     SYSTEM_INFO, PROCESSOR_ARCHITECTURE_INTEL, PROCESSOR_ARCHITECTURE_AMD64,
     PROCESSOR_ARCHITECTURE_ARM64,
+};
+use windows::Win32::System::WindowsProgramming::{
+    DRIVE_CDROM, DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE,
 };
 use windows::Win32::System::Threading::{
     GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, GetSystemTimes,
@@ -1363,7 +1365,7 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
         };
         let drive_w = wide_z(&drive);
         unsafe {
-            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED.0 {
+            if GetDriveTypeW(PCWSTR(drive_w.as_ptr())) != DRIVE_FIXED {
                 continue;
             }
         }
@@ -1591,7 +1593,7 @@ pub fn collect_cpuinfo() -> Vec<CpuInfoSnapshot> {
     let ncpu = cpu_count_from_nt();
     let mut sysinfo = SYSTEM_INFO::default();
     unsafe { GetSystemInfo(&mut sysinfo) };
-    let arch = sysinfo.Anonymous.Anonymous.wProcessorArchitecture;
+    let arch = unsafe { sysinfo.Anonymous.Anonymous.wProcessorArchitecture };
     let vendor_id = match arch.0 {
         v if v == PROCESSOR_ARCHITECTURE_INTEL.0 => Some("GenuineIntel".to_string()),
         v if v == PROCESSOR_ARCHITECTURE_AMD64.0 => None,
@@ -1636,11 +1638,11 @@ pub fn collect_mounts() -> Vec<MountSnapshot> {
         };
         let read_only = ok && (flags & 0x00080000 != 0);
         let drive_type_str = match drive_type {
-            t if t == DRIVE_FIXED.0 => "fixed",
-            t if t == DRIVE_REMOVABLE.0 => "removable",
-            t if t == DRIVE_CDROM.0 => "cdrom",
-            t if t == DRIVE_REMOTE.0 => "remote",
-            t if t == DRIVE_RAMDISK.0 => "ramdisk",
+            t if t == DRIVE_FIXED => "fixed",
+            t if t == DRIVE_REMOVABLE => "removable",
+            t if t == DRIVE_CDROM => "cdrom",
+            t if t == DRIVE_REMOTE => "remote",
+            t if t == DRIVE_RAMDISK => "ramdisk",
             _ => "unknown",
         };
         out.push(MountSnapshot {
