@@ -6,23 +6,41 @@ pub struct Snapshot {
     pub system: SystemSnapshot,
     pub memory: MemorySnapshot,
     pub load: LoadSnapshot,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub pressure: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub pressure_totals_us: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub vmstat: BTreeMap<String, i64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub interrupts: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub softirqs: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub net_snmp: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub sockets: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub softnet: Vec<SoftnetCpuSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub swaps: Vec<SwapDeviceSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mounts: Vec<MountSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cpuinfo: Vec<CpuInfoSnapshot>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub zoneinfo: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub buddyinfo: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub disks: Vec<DiskSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub net: Vec<NetDevSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub processes: Vec<ProcessSnapshot>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub support_state: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub metric_classification: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub windows: Option<WindowsSnapshot>,
@@ -30,6 +48,14 @@ pub struct Snapshot {
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct WindowsSnapshot {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub vmstat: BTreeMap<String, i64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub interrupts: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub dpc: BTreeMap<String, u64>,
+    pub isr_total_time_seconds: f64,
+    pub dpc_total_time_seconds: f64,
     pub disk_volume_correlation: Vec<DiskVolumeCorrelation>,
 }
 
@@ -70,7 +96,23 @@ pub struct SystemSnapshot {
     pub procs_running: u32,
     pub procs_blocked: u32,
     pub cpu_total: CpuTimes,
+    pub cpu_total_seconds: CpuTimesSeconds,
     pub per_cpu: Vec<CpuTimes>,
+    pub per_cpu_seconds: Vec<CpuTimesSeconds>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct CpuTimesSeconds {
+    pub user: f64,
+    pub nice: f64,
+    pub system: f64,
+    pub idle: f64,
+    pub iowait: f64,
+    pub irq: f64,
+    pub softirq: f64,
+    pub steal: f64,
+    pub guest: f64,
+    pub guest_nice: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -196,6 +238,10 @@ pub struct NetDevSnapshot {
     pub stable_id: Option<String>,
     pub interface_index: Option<u32>,
     pub interface_luid: Option<u64>,
+    pub is_virtual: Option<bool>,
+    pub is_loopback: Option<bool>,
+    pub is_physical: Option<bool>,
+    pub is_primary: Option<bool>,
     pub mtu: Option<u64>,
     pub speed_mbps: Option<u64>,
     pub tx_queue_len: Option<u64>,

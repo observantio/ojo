@@ -168,6 +168,8 @@ pub struct ProcMetrics {
     pub per_cpu_system: Gauge<f64>,
     pub vmstat_value: Gauge<i64>,
     pub windows_vmstat_value: Gauge<i64>,
+    pub windows_interrupts_value: Gauge<u64>,
+    pub windows_dpc_value: Gauge<u64>,
     pub swap_device_size: Gauge<u64>,
     pub swap_device_used: Gauge<u64>,
     pub swap_device_priority: Gauge<i64>,
@@ -566,6 +568,8 @@ impl ProcMetrics {
             per_cpu_system: meter.f64_gauge("system.cpu.core.system_ratio").build(),
             vmstat_value: meter.i64_gauge("system.linux.vmstat").build(),
             windows_vmstat_value: meter.i64_gauge("system.windows.vmstat").build(),
+            windows_interrupts_value: meter.u64_gauge("system.windows.interrupts").build(),
+            windows_dpc_value: meter.u64_gauge("system.windows.dpc").build(),
             swap_device_size: meter
                 .u64_gauge("system.linux.swap.device.size")
                 .with_unit("By")
@@ -1337,6 +1341,33 @@ impl ProcMetrics {
                 &[KeyValue::new("key", key.clone())],
             );
         }
+
+        if let Some(windows) = &snap.windows {
+            for (key, value) in &windows.vmstat {
+                self.record_i64(
+                    "system.windows.vmstat",
+                    &self.windows_vmstat_value,
+                    *value,
+                    &[KeyValue::new("key", key.clone())],
+                );
+            }
+            for (key, value) in &windows.interrupts {
+                self.record_u64(
+                    "system.windows.interrupts",
+                    &self.windows_interrupts_value,
+                    *value,
+                    &[KeyValue::new("key", key.clone())],
+                );
+            }
+            for (key, value) in &windows.dpc {
+                self.record_u64(
+                    "system.windows.dpc",
+                    &self.windows_dpc_value,
+                    *value,
+                    &[KeyValue::new("key", key.clone())],
+                );
+            }
+        }
     }
 
     fn record_linux_proc(&self, snap: &Snapshot, derived: &DerivedMetrics) {
@@ -1715,6 +1746,18 @@ impl ProcMetrics {
             }
             if let Some(luid) = net.interface_luid {
                 attrs_vec.push(KeyValue::new("if_luid", luid.to_string()));
+            }
+            if let Some(v) = net.is_virtual {
+                attrs_vec.push(KeyValue::new("is_virtual", v.to_string()));
+            }
+            if let Some(v) = net.is_loopback {
+                attrs_vec.push(KeyValue::new("is_loopback", v.to_string()));
+            }
+            if let Some(v) = net.is_physical {
+                attrs_vec.push(KeyValue::new("is_physical", v.to_string()));
+            }
+            if let Some(v) = net.is_primary {
+                attrs_vec.push(KeyValue::new("is_primary", v.to_string()));
             }
 
             let attrs = attrs_vec.clone();

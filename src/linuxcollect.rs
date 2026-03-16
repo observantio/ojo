@@ -1,7 +1,7 @@
 use crate::model::{
-    CpuInfoSnapshot, CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
-    NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot, SwapDeviceSnapshot,
-    SystemSnapshot,
+    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, LoadSnapshot, MemorySnapshot,
+    MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot,
+    SwapDeviceSnapshot, SystemSnapshot,
 };
 use anyhow::Result;
 use procfs::process::all_processes;
@@ -510,6 +510,35 @@ fn collect_system(process_count: Option<u64>) -> Result<SystemSnapshot> {
             guest_nice: opt_u64(cpu.guest_nice),
         })
         .collect();
+    let hz = procfs::ticks_per_second().max(1) as f64;
+    let cpu_total_seconds = CpuTimesSeconds {
+        user: stat.total.user as f64 / hz,
+        nice: stat.total.nice as f64 / hz,
+        system: stat.total.system as f64 / hz,
+        idle: stat.total.idle as f64 / hz,
+        iowait: opt_u64(stat.total.iowait) as f64 / hz,
+        irq: opt_u64(stat.total.irq) as f64 / hz,
+        softirq: opt_u64(stat.total.softirq) as f64 / hz,
+        steal: opt_u64(stat.total.steal) as f64 / hz,
+        guest: opt_u64(stat.total.guest) as f64 / hz,
+        guest_nice: opt_u64(stat.total.guest_nice) as f64 / hz,
+    };
+    let per_cpu_seconds = stat
+        .cpu_time
+        .iter()
+        .map(|cpu| CpuTimesSeconds {
+            user: cpu.user as f64 / hz,
+            nice: cpu.nice as f64 / hz,
+            system: cpu.system as f64 / hz,
+            idle: cpu.idle as f64 / hz,
+            iowait: opt_u64(cpu.iowait) as f64 / hz,
+            irq: opt_u64(cpu.irq) as f64 / hz,
+            softirq: opt_u64(cpu.softirq) as f64 / hz,
+            steal: opt_u64(cpu.steal) as f64 / hz,
+            guest: opt_u64(cpu.guest) as f64 / hz,
+            guest_nice: opt_u64(cpu.guest_nice) as f64 / hz,
+        })
+        .collect();
     Ok(SystemSnapshot {
         is_windows: false,
         ticks_per_second: procfs::ticks_per_second(),
@@ -538,7 +567,9 @@ fn collect_system(process_count: Option<u64>) -> Result<SystemSnapshot> {
             guest: opt_u64(stat.total.guest),
             guest_nice: opt_u64(stat.total.guest_nice),
         },
+        cpu_total_seconds,
         per_cpu,
+        per_cpu_seconds,
     })
 }
 
@@ -629,11 +660,16 @@ fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             continue;
         }
         let sys = Path::new("/sys/class/net").join(&name);
+        let is_loopback = name == "lo";
         out.push(NetDevSnapshot {
             name,
             stable_id: read_sysfs_value(sys.join("ifindex")).map(|v| format!("ifindex:{v}")),
             interface_index: read_sysfs_u64(sys.join("ifindex")).map(|v| v as u32),
             interface_luid: None,
+            is_virtual: None,
+            is_loopback: Some(is_loopback),
+            is_physical: None,
+            is_primary: None,
             mtu: read_sysfs_u64(sys.join("mtu")),
             speed_mbps: read_sysfs_u64(sys.join("speed")),
             tx_queue_len: read_sysfs_u64(sys.join("tx_queue_len")),

@@ -1,7 +1,7 @@
 use crate::model::{
-    CpuInfoSnapshot, CpuTimes, DiskSnapshot, DiskVolumeCorrelation, LoadSnapshot, MemorySnapshot,
-    MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SwapDeviceSnapshot, SystemSnapshot,
-    WindowsSnapshot,
+    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
+    LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
+    SwapDeviceSnapshot, SystemSnapshot, WindowsSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -1197,6 +1197,22 @@ fn cpu_times_aggregate(per_cpu: &[CpuTimes]) -> CpuTimes {
     total
 }
 
+fn cpu_times_seconds(times: &CpuTimes, hz: u64) -> CpuTimesSeconds {
+    let hz = hz.max(1) as f64;
+    CpuTimesSeconds {
+        user: times.user as f64 / hz,
+        nice: times.nice as f64 / hz,
+        system: times.system as f64 / hz,
+        idle: times.idle as f64 / hz,
+        iowait: times.iowait as f64 / hz,
+        irq: times.irq as f64 / hz,
+        softirq: times.softirq as f64 / hz,
+        steal: times.steal as f64 / hz,
+        guest: times.guest as f64 / hz,
+        guest_nice: times.guest_nice as f64 / hz,
+    }
+}
+
 fn cpu_times_from_system_fallback() -> Result<(CpuTimes, Vec<CpuTimes>, u64)> {
     let mut idle = FILETIME::default();
     let mut kernel = FILETIME::default();
@@ -1335,7 +1351,12 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
     let (process_count, procs_blocked, summaries) = extract_process_thread_summaries(&proc_buf);
     let procs_running = summaries.values().filter(|s| s.state == "R").count() as u32;
     let context_switches = perf.as_ref().map(|p| p.context_switches as u64).unwrap_or(0);
-    let softirqs_total = per_cpu.iter().map(|c| c.softirq).fold(0u64, u64::saturating_add);
+    let softirqs_total = 0;
+    let cpu_total_seconds = cpu_times_seconds(&cpu_total, 10_000_000);
+    let per_cpu_seconds = per_cpu
+        .iter()
+        .map(|cpu| cpu_times_seconds(cpu, 10_000_000))
+        .collect();
     debug!("wincollect: collect_system done");
     Ok(SystemSnapshot {
         is_windows: true,
@@ -1353,7 +1374,9 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
         procs_running,
         procs_blocked,
         cpu_total,
+        cpu_total_seconds,
         per_cpu,
+        per_cpu_seconds,
         cpu_cycle_utilization: None,
     })
 }
@@ -1414,12 +1437,21 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
             let resident = total_phys.saturating_sub(avail_phys);
             swap_used = committed.saturating_sub(resident).min(swap_total);
         }
+        let explicit_pagefile_used = total_pagefile
+            .saturating_sub(avail_pagefile)
+            .saturating_sub(total_phys.saturating_sub(avail_phys));
+        swap_used = swap_used.max(explicit_pagefile_used).min(swap_total);
         let swap_avail = swap_total.saturating_sub(swap_used);
+        let reclaimable_hint = cached_bytes.saturating_add(paged_pool);
+        let mem_available = perf_avail_bytes
+            .max(avail_phys)
+            .saturating_add(reclaimable_hint / 8)
+            .min(total_phys);
 
         Ok(MemorySnapshot {
             mem_total_bytes: total_phys,
             mem_free_bytes: avail_phys,
-            mem_available_bytes: perf_avail_bytes.min(total_phys),
+            mem_available_bytes: mem_available,
             buffers_bytes: None,
             cached_bytes,
             active_bytes: Some(used_phys.saturating_sub(cached_bytes)),
@@ -1584,22 +1616,25 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             let alias = wchar_array_to_string(&row.Alias);
             let desc = wchar_array_to_string(&row.Description);
             let name_lc = format!("{} {}", alias, desc).to_ascii_lowercase();
-            // Skip filter/binding adapters that duplicate real NIC stats.
-            if name_lc.contains("lightweight filter")
-                || name_lc.contains("wfp ")
-                || name_lc.contains("qos packet scheduler")
-            {
-                continue;
-            }
             let is_up = row.OperStatus.0 == 1;
             let has_traffic = row.InOctets > 0
                 || row.OutOctets > 0
                 || row.InUcastPkts > 0
                 || row.OutUcastPkts > 0;
             let is_loopback = row.Type == MIB_IF_TYPE_LOOPBACK;
-            if !is_up && !has_traffic && !is_loopback {
+            if !is_up && !has_traffic {
                 continue;
             }
+            let is_virtual = is_loopback
+                || name_lc.contains("hyper-v")
+                || name_lc.contains("vswitch")
+                || name_lc.contains("vethernet")
+                || name_lc.contains("lightweight filter")
+                || name_lc.contains("qos packet scheduler")
+                || name_lc.contains("virtual")
+                || name_lc.contains("loopback")
+                || name_lc.contains("tunnel");
+            let is_physical = !is_virtual;
             let name = if !alias.is_empty() { alias } else { desc };
             let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
             let interface_guid = guid_to_string(row.InterfaceGuid);
@@ -1609,6 +1644,10 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
                 stable_id: Some(format!("guid:{interface_guid}")),
                 interface_index: Some(row.InterfaceIndex),
                 interface_luid: Some(interface_luid),
+                is_virtual: Some(is_virtual),
+                is_loopback: Some(is_loopback),
+                is_physical: Some(is_physical),
+                is_primary: Some(false),
                 mtu: Some(row.Mtu as u64),
                 speed_mbps: if speed_mbps > 0 { Some(speed_mbps) } else { None },
                 tx_queue_len: None,
@@ -1629,6 +1668,29 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
                 tx_colls: 0,
                 tx_carrier: 0,
                 tx_compressed: 0,
+            });
+        }
+
+        let primary_idx = out
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.is_loopback != Some(true))
+            .max_by_key(|(_, n)| n.rx_bytes.saturating_add(n.tx_bytes))
+            .map(|(idx, _)| idx);
+        if let Some(idx) = primary_idx {
+            if let Some(primary) = out.get_mut(idx) {
+                primary.is_primary = Some(true);
+            }
+        }
+
+        let include_virtual = std::env::var("PROC_WINDOWS_INCLUDE_VIRTUAL_INTERFACES")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if !include_virtual {
+            out.retain(|n| {
+                n.is_primary == Some(true)
+                    || n.is_physical == Some(true)
+                    || n.is_loopback == Some(true)
             });
         }
         FreeMibTable(table as _);
@@ -1936,6 +1998,14 @@ fn windows_support_state() -> BTreeMap<String, String> {
     out.insert("system.pid_max".to_string(), "unsupported".to_string());
     out.insert("system.entropy_available_bits".to_string(), "unsupported".to_string());
     out.insert("system.entropy_pool_size_bits".to_string(), "unsupported".to_string());
+    out.insert("system.softirqs_total".to_string(), "unsupported_on_windows".to_string());
+    out.insert("section.pressure".to_string(), "unsupported".to_string());
+    out.insert("section.pressure_totals_us".to_string(), "unsupported".to_string());
+    out.insert("section.softnet".to_string(), "unsupported".to_string());
+    out.insert("section.zoneinfo".to_string(), "unsupported".to_string());
+    out.insert("section.buddyinfo".to_string(), "unsupported".to_string());
+    out.insert("section.linux_softirqs".to_string(), "unsupported".to_string());
+    out.insert("section.linux_interrupts".to_string(), "unsupported".to_string());
     out
 }
 
@@ -1952,6 +2022,13 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("system.memory.anon".to_string(), "unsupported".to_string());
     out.insert("system.memory.mapped".to_string(), "unsupported".to_string());
     out.insert("system.memory.shmem".to_string(), "unsupported".to_string());
+    out.insert("system.socket.*".to_string(), "native".to_string());
+    out.insert("system.filesystem.*".to_string(), "native".to_string());
+    out.insert("system.swap.*".to_string(), "derived".to_string());
+    out.insert("system.cpu.info".to_string(), "native".to_string());
+    out.insert("windows.interrupts.*".to_string(), "native".to_string());
+    out.insert("windows.dpc.*".to_string(), "native".to_string());
+    out.insert("windows.vmstat.*".to_string(), "native".to_string());
     out
 }
 
@@ -1999,8 +2076,10 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!(snmp_keys = net_snmp.len(), "wincollect: collect_net_snmp done");
     let sockets = collect_socket_counts();
     debug!(socket_keys = sockets.len(), "wincollect: collect_sockets done");
-    let interrupts = collect_interrupts_detail(&system.per_cpu);
-    let softirqs = collect_softirqs_detail(&system.per_cpu);
+    let windows_interrupts = collect_interrupts_detail(&system.per_cpu);
+    let windows_dpc = collect_softirqs_detail(&system.per_cpu);
+    let interrupts = BTreeMap::new();
+    let softirqs = BTreeMap::new();
     let cpuinfo = collect_cpuinfo();
     let mounts = collect_mounts();
     let disk_volume_correlation = collect_disk_volume_correlation(&mounts);
@@ -2012,13 +2091,25 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     } else {
         Vec::new()
     };
+    let mut windows_vmstat = BTreeMap::new();
+    let mut vmstat_generic = BTreeMap::new();
+    for (k, v) in vmstat {
+        if let Some(stripped) = k.strip_prefix("windows.") {
+            windows_vmstat.insert(stripped.to_string(), v);
+        } else {
+            vmstat_generic.insert(k, v);
+        }
+    }
+    let isr_total_time_seconds = system.cpu_total.irq as f64 / 10_000_000.0;
+    let dpc_total_time_seconds = system.cpu_total.softirq as f64 / 10_000_000.0;
+
     Ok(Snapshot {
         system,
         memory,
         load,
         pressure: BTreeMap::new(),
         pressure_totals_us: BTreeMap::new(),
-        vmstat,
+        vmstat: vmstat_generic,
         interrupts,
         softirqs,
         net_snmp,
@@ -2034,6 +2125,13 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         processes,
         support_state: windows_support_state(),
         metric_classification: windows_metric_classification(),
-        windows: Some(WindowsSnapshot { disk_volume_correlation }),
+        windows: Some(WindowsSnapshot {
+            vmstat: windows_vmstat,
+            interrupts: windows_interrupts,
+            dpc: windows_dpc,
+            isr_total_time_seconds,
+            dpc_total_time_seconds,
+            disk_volume_correlation,
+        }),
     })
 }

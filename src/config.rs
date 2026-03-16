@@ -147,7 +147,7 @@ impl Config {
                         .ok()
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 })
-                .unwrap_or(false),
+                .unwrap_or(cfg!(target_os = "windows")),
             dump_snapshot,
             otlp_endpoint,
             otlp_protocol,
