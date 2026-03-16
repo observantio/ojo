@@ -267,6 +267,11 @@ pub struct ProcMetrics {
     pub process_cancelled_write_bytes: Gauge<i64>,
     pub process_vm_size_bytes: Gauge<u64>,
     pub process_vm_rss_bytes: Gauge<u64>,
+    pub process_working_set_bytes: Gauge<u64>,
+    pub process_peak_working_set_bytes: Gauge<u64>,
+    pub process_pagefile_usage_bytes: Gauge<u64>,
+    pub process_private_bytes: Gauge<u64>,
+    pub process_commit_charge_bytes: Gauge<u64>,
 }
 
 impl ProcMetrics {
@@ -746,6 +751,26 @@ impl ProcMetrics {
                 .build(),
             process_vm_rss_bytes: meter
                 .u64_gauge("process.memory.vm_rss")
+                .with_unit("By")
+                .build(),
+            process_working_set_bytes: meter
+                .u64_gauge("process.memory.working_set")
+                .with_unit("By")
+                .build(),
+            process_peak_working_set_bytes: meter
+                .u64_gauge("process.memory.peak_working_set")
+                .with_unit("By")
+                .build(),
+            process_pagefile_usage_bytes: meter
+                .u64_gauge("process.memory.pagefile_usage")
+                .with_unit("By")
+                .build(),
+            process_private_bytes: meter
+                .u64_gauge("process.memory.private_bytes")
+                .with_unit("By")
+                .build(),
+            process_commit_charge_bytes: meter
+                .u64_gauge("process.memory.commit_charge")
                 .with_unit("By")
                 .build(),
         }
@@ -2072,7 +2097,7 @@ impl ProcMetrics {
                 if let Some(value) = proc.working_set_bytes {
                     self.record_u64(
                         "process.memory.working_set",
-                        &self.process_vm_rss_bytes,
+                        &self.process_working_set_bytes,
                         value,
                         &base_attrs,
                     );
@@ -2080,7 +2105,7 @@ impl ProcMetrics {
                 if let Some(value) = proc.peak_working_set_bytes {
                     self.record_u64(
                         "process.memory.peak_working_set",
-                        &self.process_vm_rss_bytes,
+                        &self.process_peak_working_set_bytes,
                         value,
                         &base_attrs,
                     );
@@ -2088,7 +2113,7 @@ impl ProcMetrics {
                 if let Some(value) = proc.pagefile_usage_bytes {
                     self.record_u64(
                         "process.memory.pagefile_usage",
-                        &self.process_vm_rss_bytes,
+                        &self.process_pagefile_usage_bytes,
                         value,
                         &base_attrs,
                     );
@@ -2096,7 +2121,7 @@ impl ProcMetrics {
                 if let Some(value) = proc.private_bytes {
                     self.record_u64(
                         "process.memory.private_bytes",
-                        &self.process_vm_rss_bytes,
+                        &self.process_private_bytes,
                         value,
                         &base_attrs,
                     );
@@ -2104,7 +2129,7 @@ impl ProcMetrics {
                 if let Some(value) = proc.commit_charge_bytes {
                     self.record_u64(
                         "process.memory.commit_charge",
-                        &self.process_vm_rss_bytes,
+                        &self.process_commit_charge_bytes,
                         value,
                         &base_attrs,
                     );
