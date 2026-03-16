@@ -22,6 +22,26 @@ pub struct Snapshot {
     pub disks: Vec<DiskSnapshot>,
     pub net: Vec<NetDevSnapshot>,
     pub processes: Vec<ProcessSnapshot>,
+    pub support_state: BTreeMap<String, String>,
+    pub metric_classification: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub windows: Option<WindowsSnapshot>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsSnapshot {
+    pub disk_volume_correlation: Vec<DiskVolumeCorrelation>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct DiskVolumeCorrelation {
+    pub mountpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_guid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nt_device_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_drive: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -40,16 +60,12 @@ pub struct SystemSnapshot {
     pub boot_time_epoch_secs: u64,
     pub uptime_secs: f64,
     pub context_switches: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub forks_since_boot: Option<u64>,
     pub interrupts_total: u64,
     pub softirqs_total: u64,
     pub process_count: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub pid_max: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub entropy_available_bits: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub entropy_pool_size_bits: Option<u64>,
     pub procs_running: u32,
     pub procs_blocked: u32,
@@ -95,29 +111,29 @@ pub struct MemorySnapshot {
     pub mem_total_bytes: u64,
     pub mem_free_bytes: u64,
     pub mem_available_bytes: u64,
-    pub buffers_bytes: u64,
+    pub buffers_bytes: Option<u64>,
     pub cached_bytes: u64,
-    pub active_bytes: u64,
-    pub inactive_bytes: u64,
-    pub anon_pages_bytes: u64,
-    pub mapped_bytes: u64,
-    pub shmem_bytes: u64,
+    pub active_bytes: Option<u64>,
+    pub inactive_bytes: Option<u64>,
+    pub anon_pages_bytes: Option<u64>,
+    pub mapped_bytes: Option<u64>,
+    pub shmem_bytes: Option<u64>,
     pub swap_total_bytes: u64,
     pub swap_free_bytes: u64,
-    pub swap_cached_bytes: u64,
-    pub dirty_bytes: u64,
-    pub writeback_bytes: u64,
-    pub slab_bytes: u64,
-    pub sreclaimable_bytes: u64,
-    pub sunreclaim_bytes: u64,
-    pub page_tables_bytes: u64,
+    pub swap_cached_bytes: Option<u64>,
+    pub dirty_bytes: Option<u64>,
+    pub writeback_bytes: Option<u64>,
+    pub slab_bytes: Option<u64>,
+    pub sreclaimable_bytes: Option<u64>,
+    pub sunreclaim_bytes: Option<u64>,
+    pub page_tables_bytes: Option<u64>,
     pub committed_as_bytes: u64,
     pub commit_limit_bytes: u64,
-    pub kernel_stack_bytes: u64,
-    pub hugepages_total: u64,
-    pub hugepages_free: u64,
-    pub hugepage_size_bytes: u64,
-    pub anon_hugepages_bytes: u64,
+    pub kernel_stack_bytes: Option<u64>,
+    pub hugepages_total: Option<u64>,
+    pub hugepages_free: Option<u64>,
+    pub hugepage_size_bytes: Option<u64>,
+    pub anon_hugepages_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -177,6 +193,9 @@ pub struct DiskSnapshot {
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct NetDevSnapshot {
     pub name: String,
+    pub stable_id: Option<String>,
+    pub interface_index: Option<u32>,
+    pub interface_luid: Option<u64>,
     pub mtu: Option<u64>,
     pub speed_mbps: Option<u64>,
     pub tx_queue_len: Option<u64>,

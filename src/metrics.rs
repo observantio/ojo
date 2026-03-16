@@ -985,12 +985,14 @@ impl ProcMetrics {
             &[],
         );
         if !is_windows {
+            if let Some(value) = m.buffers_bytes {
             self.record_u64(
                 "system.memory.buffers",
                 &self.mem_buffers_bytes,
-                m.buffers_bytes,
+                value,
                 &[],
             );
+            }
         }
         self.record_u64(
             "system.memory.cached",
@@ -999,72 +1001,96 @@ impl ProcMetrics {
             &[],
         );
         if !is_windows {
+            if let Some(value) = m.active_bytes {
             self.record_u64(
                 "system.memory.active",
                 &self.mem_active_bytes,
-                m.active_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.inactive_bytes {
             self.record_u64(
                 "system.memory.inactive",
                 &self.mem_inactive_bytes,
-                m.inactive_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.anon_pages_bytes {
             self.record_u64(
                 "system.memory.anon",
                 &self.mem_anon_bytes,
-                m.anon_pages_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.mapped_bytes {
             self.record_u64(
                 "system.memory.mapped",
                 &self.mem_mapped_bytes,
-                m.mapped_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.shmem_bytes {
             self.record_u64(
                 "system.memory.shmem",
                 &self.mem_shmem_bytes,
-                m.shmem_bytes,
+                value,
                 &[],
             );
+            }
         }
         self.record_u64("system.swap.total", &self.swap_total_bytes, m.swap_total_bytes, &[]);
         self.record_u64("system.swap.free", &self.swap_free_bytes, m.swap_free_bytes, &[]);
         if !is_windows {
+            if let Some(value) = m.swap_cached_bytes {
             self.record_u64(
                 "system.swap.cached",
                 &self.swap_cached_bytes,
-                m.swap_cached_bytes,
+                value,
                 &[],
             );
-            self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, m.dirty_bytes, &[]);
+            }
+            if let Some(value) = m.dirty_bytes {
+                self.record_u64("system.memory.dirty", &self.mem_dirty_bytes, value, &[]);
+            }
+            if let Some(value) = m.writeback_bytes {
             self.record_u64(
                 "system.memory.writeback",
                 &self.mem_writeback_bytes,
-                m.writeback_bytes,
+                value,
                 &[],
             );
-            self.record_u64("system.memory.slab", &self.mem_slab_bytes, m.slab_bytes, &[]);
+            }
+            if let Some(value) = m.slab_bytes {
+                self.record_u64("system.memory.slab", &self.mem_slab_bytes, value, &[]);
+            }
+            if let Some(value) = m.sreclaimable_bytes {
             self.record_u64(
                 "system.memory.sreclaimable",
                 &self.mem_sreclaimable_bytes,
-                m.sreclaimable_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.sunreclaim_bytes {
             self.record_u64(
                 "system.memory.sunreclaim",
                 &self.mem_sunreclaim_bytes,
-                m.sunreclaim_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.page_tables_bytes {
             self.record_u64(
                 "system.memory.page_tables",
                 &self.mem_page_tables_bytes,
-                m.page_tables_bytes,
+                value,
                 &[],
             );
+            }
         }
         self.record_u64(
             "system.memory.commit_limit",
@@ -1079,36 +1105,46 @@ impl ProcMetrics {
             &[],
         );
         if !is_windows {
+            if let Some(value) = m.kernel_stack_bytes {
             self.record_u64(
                 "system.memory.kernel_stack",
                 &self.mem_kernel_stack_bytes,
-                m.kernel_stack_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.anon_hugepages_bytes {
             self.record_u64(
                 "system.memory.anon_hugepages",
                 &self.mem_anon_hugepages_bytes,
-                m.anon_hugepages_bytes,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.hugepages_total {
             self.record_u64(
                 "system.memory.hugepages_total",
                 &self.mem_hugepages_total,
-                m.hugepages_total,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.hugepages_free {
             self.record_u64(
                 "system.memory.hugepages_free",
                 &self.mem_hugepages_free,
-                m.hugepages_free,
+                value,
                 &[],
             );
+            }
+            if let Some(value) = m.hugepage_size_bytes {
             self.record_u64(
                 "system.memory.hugepage_size",
                 &self.mem_hugepage_size_bytes,
-                m.hugepage_size_bytes,
+                value,
                 &[],
             );
+            }
         }
 
         self.record_f64(
@@ -1223,17 +1259,27 @@ impl ProcMetrics {
             );
         }
 
+        let vmstat_name = if snap.system.is_windows {
+            "system.windows.vmstat"
+        } else {
+            "system.linux.vmstat"
+        };
         for (key, value) in &snap.vmstat {
             self.record_i64(
-                "system.linux.vmstat",
+                vmstat_name,
                 &self.vmstat_value,
                 *value,
                 &vmstat_attrs(key),
             );
         }
+        let snmp_name = if snap.system.is_windows {
+            "system.windows.net.snmp"
+        } else {
+            "system.linux.net.snmp"
+        };
         for (key, value) in &snap.net_snmp {
             self.record_u64(
-                "system.linux.net.snmp",
+                snmp_name,
                 &self.net_snmp_value,
                 *value,
                 &net_snmp_attrs(key),
@@ -1250,6 +1296,9 @@ impl ProcMetrics {
     }
 
     fn record_linux_proc(&self, snap: &Snapshot, derived: &DerivedMetrics) {
+        if snap.system.is_windows {
+            return;
+        }
         for (key, value) in &derived.linux_interrupts_delta {
             let Some(attrs) = interrupts_attrs(key) else {
                 continue;
@@ -1345,6 +1394,9 @@ impl ProcMetrics {
     }
 
     fn record_net_kernel(&self, snap: &Snapshot, derived: &DerivedMetrics) {
+        if snap.system.is_windows {
+            return;
+        }
         self.record_f64(
             "system.linux.net.ip.in_discards_per_sec",
             &self.kernel_ip_in_discards_per_sec,
@@ -1610,8 +1662,18 @@ impl ProcMetrics {
     fn record_network_interfaces(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         for net in &snap.net {
             let device = net.name.clone();
+            let mut attrs_vec = vec![KeyValue::new("device", device.clone())];
+            if let Some(stable_id) = &net.stable_id {
+                attrs_vec.push(KeyValue::new("stable_id", stable_id.clone()));
+            }
+            if let Some(index) = net.interface_index {
+                attrs_vec.push(KeyValue::new("if_index", index.to_string()));
+            }
+            if let Some(luid) = net.interface_luid {
+                attrs_vec.push(KeyValue::new("if_luid", luid.to_string()));
+            }
 
-            let attrs = [KeyValue::new("device", device.clone())];
+            let attrs = attrs_vec.clone();
             let rx_attrs = [
                 KeyValue::new("device", device.clone()),
                 KeyValue::new("direction", "receive"),

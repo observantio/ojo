@@ -1,6 +1,7 @@
 use crate::model::{
-    CpuInfoSnapshot, CpuTimes, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
-    NetDevSnapshot, ProcessSnapshot, Snapshot, SwapDeviceSnapshot, SystemSnapshot,
+    CpuInfoSnapshot, CpuTimes, DiskSnapshot, DiskVolumeCorrelation, LoadSnapshot, MemorySnapshot,
+    MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SwapDeviceSnapshot, SystemSnapshot,
+    WindowsSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -25,11 +26,12 @@ use windows::Win32::NetworkManagement::IpHelper::{
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
-    FILE_ATTRIBUTE_NORMAL, FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING,
+    GetVolumeNameForVolumeMountPointW, QueryDosDeviceW, FILE_ATTRIBUTE_NORMAL,
+    FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{
-    IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_PROPERTY_ID,
+    IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
+    STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_DEVICE_NUMBER, STORAGE_PROPERTY_ID,
     STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
 };
 use windows::Win32::System::IO::DeviceIoControl;
@@ -719,6 +721,7 @@ fn system_performance_info() -> Option<SystemPerformanceInformation> {
 fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<String, i64> {
     let mut out = BTreeMap::new();
     let Some(p) = perf else { return out };
+
     out.insert("pgfault".to_string(), p.page_fault_count as i64);
     out.insert("pgmajfault".to_string(), p.page_read_io_count as i64);
     out.insert("pgpgin".to_string(), p.page_read_count as i64);
@@ -726,6 +729,28 @@ fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<Strin
         "pgpgout".to_string(),
         (p.dirty_pages_write_count as i64).saturating_add(p.mapped_pages_write_count as i64),
     );
+
+    out.insert("windows.available_pages".to_string(), p.available_pages as i64);
+    out.insert("windows.committed_pages".to_string(), p.committed_pages as i64);
+    out.insert("windows.commit_limit_pages".to_string(), p.commit_limit as i64);
+    out.insert("windows.peak_commitment_pages".to_string(), p.peak_commitment as i64);
+    out.insert("windows.paged_pool_pages".to_string(), p.paged_pool_pages as i64);
+    out.insert("windows.non_paged_pool_pages".to_string(), p.non_paged_pool_pages as i64);
+    out.insert("windows.copy_on_write".to_string(), p.copy_on_write_count as i64);
+    out.insert("windows.transition_faults".to_string(), p.transition_count as i64);
+    out.insert(
+        "windows.cache_transition_faults".to_string(),
+        p.cache_transition_count as i64,
+    );
+    out.insert("windows.demand_zero_faults".to_string(), p.demand_zero_count as i64);
+    out.insert("windows.page_read_ios".to_string(), p.page_read_io_count as i64);
+    out.insert("windows.cache_read_ios".to_string(), p.cache_io_count as i64);
+    out.insert("windows.mapped_write_ios".to_string(), p.mapped_write_io_count as i64);
+    out.insert("windows.dirty_write_ios".to_string(), p.dirty_write_io_count as i64);
+    out.insert("windows.system_calls".to_string(), p.system_calls as i64);
+    out.insert("windows.context_switches".to_string(), p.context_switches as i64);
+
+    // Keep legacy keys for backward compatibility.
     out.insert("paged_pool_pages".to_string(), p.paged_pool_pages as i64);
     out.insert("non_paged_pool_pages".to_string(), p.non_paged_pool_pages as i64);
     out.insert("system_calls".to_string(), p.system_calls as i64);
@@ -854,7 +879,7 @@ fn collect_interrupts_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
     let _ = SYSTEM_INTERRUPT_INFORMATION_CLASS;
     let mut out = BTreeMap::new();
     for (cpu, times) in per_cpu.iter().enumerate() {
-        out.insert(format!("total|{cpu}"), times.irq);
+        out.insert(format!("isr_time_100ns|{cpu}"), times.irq);
     }
     out
 }
@@ -862,7 +887,7 @@ fn collect_interrupts_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
 fn collect_softirqs_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
     for (cpu, times) in per_cpu.iter().enumerate() {
-        out.insert(format!("total|{cpu}"), times.softirq);
+        out.insert(format!("dpc_time_100ns|{cpu}"), times.softirq);
     }
     out
 }
@@ -1400,29 +1425,29 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
             mem_total_bytes: total_phys,
             mem_free_bytes: avail_phys,
             mem_available_bytes: perf_avail_bytes.min(total_phys),
-            buffers_bytes: 0,
+            buffers_bytes: None,
             cached_bytes,
-            active_bytes: used_phys.saturating_sub(cached_bytes),
-            inactive_bytes: 0,
-            anon_pages_bytes: 0,
-            mapped_bytes: 0,
-            shmem_bytes: 0,
+            active_bytes: Some(used_phys.saturating_sub(cached_bytes)),
+            inactive_bytes: None,
+            anon_pages_bytes: None,
+            mapped_bytes: None,
+            shmem_bytes: None,
             swap_total_bytes: swap_total,
             swap_free_bytes: swap_avail,
-            swap_cached_bytes: 0,
-            dirty_bytes: 0,
-            writeback_bytes: 0,
-            slab_bytes: non_paged_pool.saturating_add(paged_pool),
-            sreclaimable_bytes: paged_pool,
-            sunreclaim_bytes: non_paged_pool,
-            page_tables_bytes: 0,
+            swap_cached_bytes: None,
+            dirty_bytes: None,
+            writeback_bytes: None,
+            slab_bytes: Some(non_paged_pool.saturating_add(paged_pool)),
+            sreclaimable_bytes: Some(paged_pool),
+            sunreclaim_bytes: Some(non_paged_pool),
+            page_tables_bytes: None,
             committed_as_bytes: commit_total,
             commit_limit_bytes: commit_limit,
-            kernel_stack_bytes: 0,
-            hugepages_total: 0,
-            hugepages_free: 0,
-            hugepage_size_bytes: 0,
-            anon_hugepages_bytes: 0,
+            kernel_stack_bytes: None,
+            hugepages_total: None,
+            hugepages_free: None,
+            hugepage_size_bytes: None,
+            anon_hugepages_bytes: None,
         })
     }
 }
@@ -1567,6 +1592,9 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
             out.push(NetDevSnapshot {
                 name,
+                stable_id: Some(format!("ifindex:{}", row.InterfaceIndex)),
+                interface_index: Some(row.InterfaceIndex),
+                interface_luid: None,
                 mtu: Some(row.Mtu as u64),
                 speed_mbps: if speed_mbps > 0 { Some(speed_mbps) } else { None },
                 tx_queue_len: None,
@@ -1798,6 +1826,126 @@ pub fn collect_mounts() -> Vec<MountSnapshot> {
     out
 }
 
+fn utf16z_to_string(buf: &[u16]) -> String {
+    let len = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..len])
+}
+
+fn query_volume_guid_for_mount(mountpoint: &str) -> Option<String> {
+    let mount_root = format!("{}\\", mountpoint.trim_end_matches('\\'));
+    let mount_w = wide_z(&mount_root);
+    let mut buf = vec![0u16; 512];
+    unsafe {
+        GetVolumeNameForVolumeMountPointW(
+            PCWSTR(mount_w.as_ptr()),
+            PWSTR(buf.as_mut_ptr()),
+            buf.len() as u32,
+        )
+        .ok()?;
+    }
+    let value = utf16z_to_string(&buf);
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn query_nt_device_for_mount(mountpoint: &str) -> Option<String> {
+    let drive = mountpoint.trim_end_matches('\\');
+    let drive_w = wide_z(drive);
+    let mut buf = vec![0u16; 1024];
+    unsafe {
+        let len = QueryDosDeviceW(
+            PCWSTR(drive_w.as_ptr()),
+            Some(PWSTR(buf.as_mut_ptr())),
+            buf.len() as u32,
+        );
+        if len == 0 {
+            return None;
+        }
+    }
+    let value = utf16z_to_string(&buf);
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn query_physical_drive_for_mount(mountpoint: &str) -> Option<String> {
+    let drive = mountpoint.trim_end_matches('\\');
+    let path = format!(r"\\.\{drive}");
+    let path_w = wide_z(&path);
+    unsafe {
+        let handle = CreateFileW(
+            PCWSTR(path_w.as_ptr()),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None,
+        )
+        .ok()?;
+        let mut dev = STORAGE_DEVICE_NUMBER::default();
+        let mut returned = 0u32;
+        let ok = DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER,
+            None,
+            0,
+            Some(&mut dev as *mut _ as *mut c_void),
+            size_of::<STORAGE_DEVICE_NUMBER>() as u32,
+            Some(&mut returned),
+            None,
+        )
+        .is_ok();
+        let _ = CloseHandle(handle);
+        if ok && returned >= size_of::<STORAGE_DEVICE_NUMBER>() as u32 {
+            Some(format!("PhysicalDrive{}", dev.DeviceNumber))
+        } else {
+            None
+        }
+    }
+}
+
+fn collect_disk_volume_correlation(mounts: &[MountSnapshot]) -> Vec<DiskVolumeCorrelation> {
+    let mut out = Vec::new();
+    for mount in mounts {
+        if !mount.mountpoint.contains(':') {
+            continue;
+        }
+        out.push(DiskVolumeCorrelation {
+            mountpoint: mount.mountpoint.clone(),
+            volume_guid: query_volume_guid_for_mount(&mount.mountpoint),
+            nt_device_path: query_nt_device_for_mount(&mount.mountpoint),
+            physical_drive: query_physical_drive_for_mount(&mount.mountpoint),
+        });
+    }
+    out
+}
+
+fn windows_support_state() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    out.insert("memory.inactive_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.anon_pages_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.mapped_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.shmem_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.dirty_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.page_tables_bytes".to_string(), "unsupported".to_string());
+    out.insert("memory.kernel_stack_bytes".to_string(), "unsupported".to_string());
+    out.insert("system.forks_since_boot".to_string(), "unsupported".to_string());
+    out.insert("system.pid_max".to_string(), "unsupported".to_string());
+    out.insert("system.entropy_available_bits".to_string(), "unsupported".to_string());
+    out.insert("system.entropy_pool_size_bits".to_string(), "unsupported".to_string());
+    out
+}
+
+fn windows_metric_classification() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    out.insert("system.cpu.time".to_string(), "derived".to_string());
+    out.insert("system.cpu.utilization".to_string(), "derived".to_string());
+    out.insert("system.cpu.load_average.*".to_string(), "synthetic".to_string());
+    out.insert("system.disk.*".to_string(), "native".to_string());
+    out.insert("system.network.*".to_string(), "native".to_string());
+    out.insert("system.paging.*".to_string(), "derived".to_string());
+    out.insert("system.windows.vmstat.*".to_string(), "native".to_string());
+    out
+}
+
 pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
     if memory.swap_total_bytes == 0 {
         return Vec::new();
@@ -1846,6 +1994,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     let softirqs = collect_softirqs_detail(&system.per_cpu);
     let cpuinfo = collect_cpuinfo();
     let mounts = collect_mounts();
+    let disk_volume_correlation = collect_disk_volume_correlation(&mounts);
     let swaps = collect_swaps(&memory);
     let processes = if include_process_metrics {
         let p = collect_processes_from_nt(true, process_info_buf.as_deref())?;
@@ -1874,5 +2023,8 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         disks,
         net,
         processes,
+        support_state: windows_support_state(),
+        metric_classification: windows_metric_classification(),
+        windows: Some(WindowsSnapshot { disk_volume_correlation }),
     })
 }

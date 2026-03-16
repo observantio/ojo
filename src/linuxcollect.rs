@@ -14,6 +14,24 @@ fn opt_u64(value: Option<u64>) -> u64 {
     value.unwrap_or(0)
 }
 
+fn some_u64(value: u64) -> Option<u64> {
+    Some(value)
+}
+
+fn linux_support_state() -> BTreeMap<String, String> {
+    BTreeMap::new()
+}
+
+fn linux_metric_classification() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    out.insert("system.cpu.time".to_string(), "derived".to_string());
+    out.insert("system.cpu.utilization".to_string(), "derived".to_string());
+    out.insert("system.disk.*".to_string(), "native".to_string());
+    out.insert("system.network.*".to_string(), "native".to_string());
+    out.insert("system.linux.*".to_string(), "native".to_string());
+    out
+}
+
 fn u64_to_i64(value: u64) -> i64 {
     value.min(i64::MAX as u64) as i64
 }
@@ -74,6 +92,9 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         disks: collect_disks()?,
         net: collect_net()?,
         processes,
+        support_state: linux_support_state(),
+        metric_classification: linux_metric_classification(),
+        windows: None,
     })
 }
 
@@ -527,29 +548,29 @@ fn collect_memory() -> Result<MemorySnapshot> {
         mem_total_bytes: mem.mem_total,
         mem_free_bytes: mem.mem_free,
         mem_available_bytes: opt_u64(mem.mem_available),
-        buffers_bytes: mem.buffers,
+        buffers_bytes: some_u64(mem.buffers),
         cached_bytes: mem.cached,
-        active_bytes: mem.active,
-        inactive_bytes: mem.inactive,
-        anon_pages_bytes: opt_u64(mem.anon_pages),
-        mapped_bytes: mem.mapped,
-        shmem_bytes: opt_u64(mem.shmem),
+        active_bytes: some_u64(mem.active),
+        inactive_bytes: some_u64(mem.inactive),
+        anon_pages_bytes: Some(opt_u64(mem.anon_pages)),
+        mapped_bytes: some_u64(mem.mapped),
+        shmem_bytes: Some(opt_u64(mem.shmem)),
         swap_total_bytes: mem.swap_total,
         swap_free_bytes: mem.swap_free,
-        swap_cached_bytes: mem.swap_cached,
-        dirty_bytes: mem.dirty,
-        writeback_bytes: mem.writeback,
-        slab_bytes: mem.slab,
-        sreclaimable_bytes: opt_u64(mem.s_reclaimable),
-        sunreclaim_bytes: opt_u64(mem.s_unreclaim),
-        page_tables_bytes: opt_u64(mem.page_tables),
+        swap_cached_bytes: some_u64(mem.swap_cached),
+        dirty_bytes: some_u64(mem.dirty),
+        writeback_bytes: some_u64(mem.writeback),
+        slab_bytes: some_u64(mem.slab),
+        sreclaimable_bytes: Some(opt_u64(mem.s_reclaimable)),
+        sunreclaim_bytes: Some(opt_u64(mem.s_unreclaim)),
+        page_tables_bytes: Some(opt_u64(mem.page_tables)),
         committed_as_bytes: mem.committed_as,
         commit_limit_bytes: opt_u64(mem.commit_limit),
-        kernel_stack_bytes: opt_u64(mem.kernel_stack),
-        hugepages_total: opt_u64(mem.hugepages_total),
-        hugepages_free: opt_u64(mem.hugepages_free),
-        hugepage_size_bytes: opt_u64(mem.hugepagesize),
-        anon_hugepages_bytes: opt_u64(mem.anon_hugepages),
+        kernel_stack_bytes: Some(opt_u64(mem.kernel_stack)),
+        hugepages_total: Some(opt_u64(mem.hugepages_total)),
+        hugepages_free: Some(opt_u64(mem.hugepages_free)),
+        hugepage_size_bytes: Some(opt_u64(mem.hugepagesize)),
+        anon_hugepages_bytes: Some(opt_u64(mem.anon_hugepages)),
     })
 }
 
@@ -610,6 +631,9 @@ fn collect_net() -> Result<Vec<NetDevSnapshot>> {
         let sys = Path::new("/sys/class/net").join(&name);
         out.push(NetDevSnapshot {
             name,
+            stable_id: read_sysfs_value(sys.join("ifindex")).map(|v| format!("ifindex:{v}")),
+            interface_index: read_sysfs_u64(sys.join("ifindex")).map(|v| v as u32),
+            interface_luid: None,
             mtu: read_sysfs_u64(sys.join("mtu")),
             speed_mbps: read_sysfs_u64(sys.join("speed")),
             tx_queue_len: read_sysfs_u64(sys.join("tx_queue_len")),

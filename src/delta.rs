@@ -205,7 +205,8 @@ impl PrevState {
                 .saturating_sub(current.memory.swap_free_bytes);
             out.swap_used_ratio = used as f64 / current.memory.swap_total_bytes as f64;
         }
-        let dirty_total = current.memory.dirty_bytes + current.memory.writeback_bytes;
+        let dirty_total = current.memory.dirty_bytes.unwrap_or(0)
+            + current.memory.writeback_bytes.unwrap_or(0);
         if current.memory.mem_total_bytes > 0 {
             out.dirty_writeback_ratio =
                 dirty_total as f64 / current.memory.mem_total_bytes as f64;
