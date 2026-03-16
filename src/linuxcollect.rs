@@ -716,6 +716,12 @@ fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
             majflt: stat.majflt,
             vsize_bytes: stat.vsize,
             rss_pages: u64_to_i64(stat.rss),
+            virtual_size_bytes: Some(stat.vsize),
+            resident_bytes: status
+                .as_ref()
+                .and_then(|s| s.vmrss)
+                .map(|kib| kib.saturating_mul(1024))
+                .or_else(|| Some((stat.rss as u64).saturating_mul(4096))),
             utime_ticks: stat.utime,
             stime_ticks: stat.stime,
             start_time_ticks: stat.starttime,
@@ -740,6 +746,11 @@ fn collect_processes() -> Result<Vec<ProcessSnapshot>> {
             vm_swap_kib: parse_status_u64(&status_path, "VmSwap"),
             vm_pte_kib: parse_status_u64(&status_path, "VmPTE"),
             vm_hwm_kib: parse_status_u64(&status_path, "VmHWM"),
+            working_set_bytes: None,
+            private_bytes: None,
+            peak_working_set_bytes: None,
+            pagefile_usage_bytes: None,
+            commit_charge_bytes: None,
             voluntary_ctxt_switches: parse_status_u64(&status_path, "voluntary_ctxt_switches"),
             nonvoluntary_ctxt_switches: parse_status_u64(
                 &status_path,

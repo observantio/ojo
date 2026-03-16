@@ -56,7 +56,26 @@ pub struct WindowsSnapshot {
     pub dpc: BTreeMap<String, u64>,
     pub isr_total_time_seconds: f64,
     pub dpc_total_time_seconds: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pagefiles: Vec<WindowsPagefileSnapshot>,
+    pub memory_pressure: WindowsMemoryPressureSnapshot,
     pub disk_volume_correlation: Vec<DiskVolumeCorrelation>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsPagefileSnapshot {
+    pub name: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WindowsMemoryPressureSnapshot {
+    pub commit_utilization_pct: f64,
+    pub available_memory_pct: f64,
+    pub pagefile_utilization_pct: f64,
+    pub hard_fault_rate: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -277,6 +296,10 @@ pub struct ProcessSnapshot {
     pub majflt: u64,
     pub vsize_bytes: u64,
     pub rss_pages: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub virtual_size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resident_bytes: Option<u64>,
     pub utime_ticks: u64,
     pub stime_ticks: u64,
     pub start_time_ticks: u64,
@@ -292,15 +315,34 @@ pub struct ProcessSnapshot {
     pub read_bytes: Option<u64>,
     pub write_bytes: Option<u64>,
     pub cancelled_write_bytes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_size_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_rss_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_data_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_stack_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_exe_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_lib_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_swap_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_pte_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_hwm_kib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_set_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peak_working_set_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pagefile_usage_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_charge_bytes: Option<u64>,
     pub voluntary_ctxt_switches: Option<u64>,
     pub nonvoluntary_ctxt_switches: Option<u64>,
 }

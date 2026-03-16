@@ -57,9 +57,12 @@ fn pages_to_bytes_4k(pages: i64) -> u64 {
 
 #[inline]
 fn process_rss_bytes(proc: &ProcessSnapshot, is_windows: bool) -> Option<u64> {
+    if let Some(bytes) = proc.resident_bytes {
+        return Some(bytes);
+    }
     if is_windows {
-        if let Some(vm_rss_kib) = proc.vm_rss_kib {
-            return Some(kib_to_bytes(vm_rss_kib));
+        if let Some(bytes) = proc.working_set_bytes {
+            return Some(bytes);
         }
     }
     if proc.rss_pages >= 0 {
@@ -2058,19 +2061,51 @@ impl ProcMetrics {
                         &base_attrs,
                     );
                 }
-                if let Some(value) = proc.vm_size_kib {
+                if let Some(value) = proc.virtual_size_bytes {
                     self.record_u64(
                         "process.memory.vm_size",
                         &self.process_vm_size_bytes,
-                        kib_to_bytes(value),
+                        value,
                         &base_attrs,
                     );
                 }
-                if let Some(value) = proc.vm_rss_kib {
+                if let Some(value) = proc.working_set_bytes {
                     self.record_u64(
-                        "process.memory.vm_rss",
+                        "process.memory.working_set",
                         &self.process_vm_rss_bytes,
-                        kib_to_bytes(value),
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.peak_working_set_bytes {
+                    self.record_u64(
+                        "process.memory.peak_working_set",
+                        &self.process_vm_rss_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.pagefile_usage_bytes {
+                    self.record_u64(
+                        "process.memory.pagefile_usage",
+                        &self.process_vm_rss_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.private_bytes {
+                    self.record_u64(
+                        "process.memory.private_bytes",
+                        &self.process_vm_rss_bytes,
+                        value,
+                        &base_attrs,
+                    );
+                }
+                if let Some(value) = proc.commit_charge_bytes {
+                    self.record_u64(
+                        "process.memory.commit_charge",
+                        &self.process_vm_rss_bytes,
+                        value,
                         &base_attrs,
                     );
                 }
@@ -2364,7 +2399,7 @@ impl ProcMetrics {
             self.record_u64(
                 "process.memory.usage",
                 &self.otel_process_memory_usage,
-                proc.vsize_bytes,
+                proc.virtual_size_bytes.unwrap_or(proc.vsize_bytes),
                 &[
                     pid_kv.clone(),
                     comm_kv.clone(),
@@ -2372,28 +2407,51 @@ impl ProcMetrics {
                 ],
             );
 
-            for (kind, maybe_value) in [
-                ("vm_size", proc.vm_size_kib),
-                ("vm_rss", proc.vm_rss_kib),
-                ("vm_data", proc.vm_data_kib),
-                ("vm_stack", proc.vm_stack_kib),
-                ("vm_exe", proc.vm_exe_kib),
-                ("vm_lib", proc.vm_lib_kib),
-                ("vm_swap", proc.vm_swap_kib),
-                ("vm_pte", proc.vm_pte_kib),
-                ("vm_hwm", proc.vm_hwm_kib),
-            ] {
-                if let Some(value) = maybe_value {
-                    self.record_u64(
-                        "process.memory.usage",
-                        &self.otel_process_memory_usage,
-                        kib_to_bytes(value),
-                        &[
-                            pid_kv.clone(),
-                            comm_kv.clone(),
-                            KeyValue::new("type", kind),
-                        ],
-                    );
+            if is_windows {
+                for (kind, maybe_value) in [
+                    ("working_set", proc.working_set_bytes),
+                    ("private_bytes", proc.private_bytes),
+                    ("peak_working_set", proc.peak_working_set_bytes),
+                    ("pagefile_usage", proc.pagefile_usage_bytes),
+                    ("commit_charge", proc.commit_charge_bytes),
+                ] {
+                    if let Some(value) = maybe_value {
+                        self.record_u64(
+                            "process.memory.usage",
+                            &self.otel_process_memory_usage,
+                            value,
+                            &[
+                                pid_kv.clone(),
+                                comm_kv.clone(),
+                                KeyValue::new("type", kind),
+                            ],
+                        );
+                    }
+                }
+            } else {
+                for (kind, maybe_value) in [
+                    ("vm_size", proc.vm_size_kib),
+                    ("vm_rss", proc.vm_rss_kib),
+                    ("vm_data", proc.vm_data_kib),
+                    ("vm_stack", proc.vm_stack_kib),
+                    ("vm_exe", proc.vm_exe_kib),
+                    ("vm_lib", proc.vm_lib_kib),
+                    ("vm_swap", proc.vm_swap_kib),
+                    ("vm_pte", proc.vm_pte_kib),
+                    ("vm_hwm", proc.vm_hwm_kib),
+                ] {
+                    if let Some(value) = maybe_value {
+                        self.record_u64(
+                            "process.memory.usage",
+                            &self.otel_process_memory_usage,
+                            kib_to_bytes(value),
+                            &[
+                                pid_kv.clone(),
+                                comm_kv.clone(),
+                                KeyValue::new("type", kind),
+                            ],
+                        );
+                    }
                 }
             }
         }

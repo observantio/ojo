@@ -1,7 +1,8 @@
 use crate::model::{
     CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
     LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
-    SwapDeviceSnapshot, SystemSnapshot, WindowsSnapshot,
+    SwapDeviceSnapshot, SystemSnapshot, WindowsMemoryPressureSnapshot, WindowsPagefileSnapshot,
+    WindowsSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -327,6 +328,7 @@ struct ProcessThreadSummary {
 
 static DISK_COUNTER_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
 static LOAD_SYNTH_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
+static HARD_FAULT_RATE_STATE: OnceLock<Mutex<Option<(u64, Instant)>>> = OnceLock::new();
 
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -1351,7 +1353,10 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
     let (process_count, procs_blocked, summaries) = extract_process_thread_summaries(&proc_buf);
     let procs_running = summaries.values().filter(|s| s.state == "R").count() as u32;
     let context_switches = perf.as_ref().map(|p| p.context_switches as u64).unwrap_or(0);
-    let softirqs_total = 0;
+    let softirqs_total = per_cpu
+        .iter()
+        .map(|cpu| cpu.softirq)
+        .fold(0u64, u64::saturating_add);
     let cpu_total_seconds = cpu_times_seconds(&cpu_total, 10_000_000);
     let per_cpu_seconds = per_cpu
         .iter()
@@ -1752,6 +1757,8 @@ fn collect_processes_from_nt(
             majflt: spi.hard_fault_count as u64,
             vsize_bytes: spi.virtual_size as u64,
             rss_pages: (spi.working_set_size as u64 / page) as i64,
+            virtual_size_bytes: Some(spi.virtual_size as u64),
+            resident_bytes: Some(spi.working_set_size as u64),
             utime_ticks: nt_time_100ns(spi.user_time.quad_part),
             stime_ticks: nt_time_100ns(spi.kernel_time.quad_part),
             start_time_ticks,
@@ -1767,15 +1774,20 @@ fn collect_processes_from_nt(
             read_bytes: Some(nt_time_100ns(spi.read_transfer_count.quad_part)),
             write_bytes: Some(nt_time_100ns(spi.write_transfer_count.quad_part)),
             cancelled_write_bytes: None,
-            vm_size_kib: Some(spi.virtual_size as u64 / 1024),
-            vm_rss_kib: Some(spi.working_set_size as u64 / 1024),
-            vm_data_kib: Some(spi.private_page_count as u64 / 1024),
+            vm_size_kib: None,
+            vm_rss_kib: None,
+            vm_data_kib: None,
             vm_stack_kib: None,
             vm_exe_kib: None,
             vm_lib_kib: None,
-            vm_swap_kib: Some(spi.pagefile_usage as u64 / 1024),
+            vm_swap_kib: None,
             vm_pte_kib: None,
-            vm_hwm_kib: Some(spi.peak_working_set_size as u64 / 1024),
+            vm_hwm_kib: None,
+            working_set_bytes: Some(spi.working_set_size as u64),
+            private_bytes: Some(spi.private_page_count as u64),
+            peak_working_set_bytes: Some(spi.peak_working_set_size as u64),
+            pagefile_usage_bytes: Some(spi.pagefile_usage as u64),
+            commit_charge_bytes: Some(spi.private_page_count as u64),
             voluntary_ctxt_switches: None,
             nonvoluntary_ctxt_switches: None,
         };
@@ -1796,10 +1808,12 @@ fn collect_processes_from_nt(
                     }
                     if let Some(mem) = get_process_mem(handle) {
                         process.rss_pages = (mem.WorkingSetSize as u64 / page) as i64;
-                        process.vm_rss_kib = Some(mem.WorkingSetSize as u64 / 1024);
-                        process.vm_data_kib = Some(mem.PrivateUsage as u64 / 1024);
-                        process.vm_swap_kib = Some(mem.PagefileUsage as u64 / 1024);
-                        process.vm_hwm_kib = Some(mem.PeakWorkingSetSize as u64 / 1024);
+                        process.resident_bytes = Some(mem.WorkingSetSize as u64);
+                        process.working_set_bytes = Some(mem.WorkingSetSize as u64);
+                        process.private_bytes = Some(mem.PrivateUsage as u64);
+                        process.commit_charge_bytes = Some(mem.PrivateUsage as u64);
+                        process.pagefile_usage_bytes = Some(mem.PagefileUsage as u64);
+                        process.peak_working_set_bytes = Some(mem.PeakWorkingSetSize as u64);
                     }
                     if let Some(io) = get_process_io(handle) {
                         process.read_chars = Some(io.ReadTransferCount);
@@ -1985,6 +1999,67 @@ fn collect_disk_volume_correlation(mounts: &[MountSnapshot]) -> Vec<DiskVolumeCo
     out
 }
 
+fn compute_windows_hard_fault_rate(hard_fault_total: u64) -> f64 {
+    let now = Instant::now();
+    let state = HARD_FAULT_RATE_STATE.get_or_init(|| Mutex::new(None));
+    let mut guard = state.lock().expect("hard fault state mutex poisoned");
+    let rate = if let Some((prev_total, prev_time)) = *guard {
+        let dt = now.duration_since(prev_time).as_secs_f64();
+        if dt > 0.0 {
+            hard_fault_total.saturating_sub(prev_total) as f64 / dt
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    *guard = Some((hard_fault_total, now));
+    rate
+}
+
+fn collect_windows_pagefiles(memory: &MemorySnapshot) -> Vec<WindowsPagefileSnapshot> {
+    if memory.swap_total_bytes == 0 {
+        return Vec::new();
+    }
+    let total = memory.swap_total_bytes;
+    let free = memory.swap_free_bytes.min(total);
+    let used = total.saturating_sub(free);
+    vec![WindowsPagefileSnapshot {
+        name: "system_pagefile".to_string(),
+        total_bytes: total,
+        used_bytes: used,
+        free_bytes: free,
+    }]
+}
+
+fn collect_windows_memory_pressure(
+    memory: &MemorySnapshot,
+    hard_fault_total: u64,
+) -> WindowsMemoryPressureSnapshot {
+    let commit_utilization_pct = if memory.commit_limit_bytes > 0 {
+        (memory.committed_as_bytes as f64 * 100.0) / memory.commit_limit_bytes as f64
+    } else {
+        0.0
+    };
+    let available_memory_pct = if memory.mem_total_bytes > 0 {
+        (memory.mem_available_bytes as f64 * 100.0) / memory.mem_total_bytes as f64
+    } else {
+        0.0
+    };
+    let pagefile_utilization_pct = if memory.swap_total_bytes > 0 {
+        let used = memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes);
+        (used as f64 * 100.0) / memory.swap_total_bytes as f64
+    } else {
+        0.0
+    };
+    WindowsMemoryPressureSnapshot {
+        commit_utilization_pct,
+        available_memory_pct,
+        pagefile_utilization_pct,
+        hard_fault_rate: compute_windows_hard_fault_rate(hard_fault_total),
+    }
+}
+
 fn windows_support_state() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     out.insert("memory.inactive_bytes".to_string(), "unsupported".to_string());
@@ -1998,9 +2073,16 @@ fn windows_support_state() -> BTreeMap<String, String> {
     out.insert("system.pid_max".to_string(), "unsupported".to_string());
     out.insert("system.entropy_available_bits".to_string(), "unsupported".to_string());
     out.insert("system.entropy_pool_size_bits".to_string(), "unsupported".to_string());
-    out.insert("system.softirqs_total".to_string(), "unsupported_on_windows".to_string());
+    out.insert(
+        "system.softirqs_total".to_string(),
+        "windows_dpc_equivalent".to_string(),
+    );
     out.insert("section.pressure".to_string(), "unsupported".to_string());
     out.insert("section.pressure_totals_us".to_string(), "unsupported".to_string());
+    out.insert(
+        "section.swaps".to_string(),
+        "unsupported_on_windows_use_windows.pagefiles".to_string(),
+    );
     out.insert("section.softnet".to_string(), "unsupported".to_string());
     out.insert("section.zoneinfo".to_string(), "unsupported".to_string());
     out.insert("section.buddyinfo".to_string(), "unsupported".to_string());
@@ -2017,6 +2099,10 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("system.disk.*".to_string(), "native".to_string());
     out.insert("system.network.*".to_string(), "native".to_string());
     out.insert("system.paging.*".to_string(), "derived".to_string());
+    out.insert(
+        "system.softirqs_total".to_string(),
+        "native_windows_analogue".to_string(),
+    );
     out.insert("system.windows.vmstat.*".to_string(), "native".to_string());
     out.insert("system.memory.inactive".to_string(), "unsupported".to_string());
     out.insert("system.memory.anon".to_string(), "unsupported".to_string());
@@ -2029,20 +2115,14 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("windows.interrupts.*".to_string(), "native".to_string());
     out.insert("windows.dpc.*".to_string(), "native".to_string());
     out.insert("windows.vmstat.*".to_string(), "native".to_string());
+    out.insert("windows.pagefiles.*".to_string(), "native".to_string());
+    out.insert("windows.memory_pressure.*".to_string(), "derived".to_string());
     out
 }
 
 pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
-    if memory.swap_total_bytes == 0 {
-        return Vec::new();
-    }
-    vec![SwapDeviceSnapshot {
-        device: "pagefile".to_string(),
-        swap_type: "partition".to_string(),
-        size_bytes: memory.swap_total_bytes,
-        used_bytes: memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes),
-        priority: -1,
-    }]
+    let _ = memory;
+    Vec::new()
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
@@ -2102,6 +2182,9 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     }
     let isr_total_time_seconds = system.cpu_total.irq as f64 / 10_000_000.0;
     let dpc_total_time_seconds = system.cpu_total.softirq as f64 / 10_000_000.0;
+    let hard_fault_total = perf.as_ref().map(|p| p.page_read_count as u64).unwrap_or(0);
+    let windows_pagefiles = collect_windows_pagefiles(&memory);
+    let windows_memory_pressure = collect_windows_memory_pressure(&memory, hard_fault_total);
 
     Ok(Snapshot {
         system,
@@ -2131,6 +2214,8 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
             dpc: windows_dpc,
             isr_total_time_seconds,
             dpc_total_time_seconds,
+            pagefiles: windows_pagefiles,
+            memory_pressure: windows_memory_pressure,
             disk_volume_correlation,
         }),
     })
