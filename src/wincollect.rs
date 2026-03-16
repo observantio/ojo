@@ -750,11 +750,6 @@ fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<Strin
     out.insert("windows.system_calls".to_string(), p.system_calls as i64);
     out.insert("windows.context_switches".to_string(), p.context_switches as i64);
 
-    // Keep legacy keys for backward compatibility.
-    out.insert("paged_pool_pages".to_string(), p.paged_pool_pages as i64);
-    out.insert("non_paged_pool_pages".to_string(), p.non_paged_pool_pages as i64);
-    out.insert("system_calls".to_string(), p.system_calls as i64);
-    out.insert("context_switches".to_string(), p.context_switches as i64);
     out
 }
 
@@ -1558,6 +1553,23 @@ fn wchar_array_to_string<const N: usize>(arr: &[u16; N]) -> String {
     String::from_utf16_lossy(&arr[..len])
 }
 
+fn guid_to_string(g: windows::core::GUID) -> String {
+    format!(
+        "{{{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}}}",
+        g.data1,
+        g.data2,
+        g.data3,
+        g.data4[0],
+        g.data4[1],
+        g.data4[2],
+        g.data4[3],
+        g.data4[4],
+        g.data4[5],
+        g.data4[6],
+        g.data4[7]
+    )
+}
+
 pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
     unsafe {
         let mut table: *mut MIB_IF_TABLE2 = null_mut();
@@ -1590,11 +1602,13 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
             }
             let name = if !alias.is_empty() { alias } else { desc };
             let speed_mbps = row.ReceiveLinkSpeed.max(row.TransmitLinkSpeed) / 1_000_000;
+            let interface_guid = guid_to_string(row.InterfaceGuid);
+            let interface_luid = unsafe { row.InterfaceLuid.Value };
             out.push(NetDevSnapshot {
                 name,
-                stable_id: Some(format!("ifindex:{}", row.InterfaceIndex)),
+                stable_id: Some(format!("guid:{interface_guid}")),
                 interface_index: Some(row.InterfaceIndex),
-                interface_luid: None,
+                interface_luid: Some(interface_luid),
                 mtu: Some(row.Mtu as u64),
                 speed_mbps: if speed_mbps > 0 { Some(speed_mbps) } else { None },
                 tx_queue_len: None,
@@ -1943,6 +1957,10 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("system.network.*".to_string(), "native".to_string());
     out.insert("system.paging.*".to_string(), "derived".to_string());
     out.insert("system.windows.vmstat.*".to_string(), "native".to_string());
+    out.insert("system.memory.inactive".to_string(), "unsupported".to_string());
+    out.insert("system.memory.anon".to_string(), "unsupported".to_string());
+    out.insert("system.memory.mapped".to_string(), "unsupported".to_string());
+    out.insert("system.memory.shmem".to_string(), "unsupported".to_string());
     out
 }
 

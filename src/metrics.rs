@@ -167,6 +167,7 @@ pub struct ProcMetrics {
     pub per_cpu_iowait: Gauge<f64>,
     pub per_cpu_system: Gauge<f64>,
     pub vmstat_value: Gauge<i64>,
+    pub windows_vmstat_value: Gauge<i64>,
     pub swap_device_size: Gauge<u64>,
     pub swap_device_used: Gauge<u64>,
     pub swap_device_priority: Gauge<i64>,
@@ -177,7 +178,10 @@ pub struct ProcMetrics {
     pub zoneinfo_value: Gauge<u64>,
     pub buddyinfo_blocks: Gauge<u64>,
     pub net_snmp_value: Gauge<u64>,
+    pub windows_net_snmp_value: Gauge<u64>,
     pub socket_count: Gauge<u64>,
+    pub metric_support_state: Gauge<u64>,
+    pub metric_classification_state: Gauge<u64>,
     pub kernel_ip_in_discards_per_sec: Gauge<f64>,
     pub kernel_ip_out_discards_per_sec: Gauge<f64>,
     pub kernel_tcp_retrans_segs_per_sec: Gauge<f64>,
@@ -561,6 +565,7 @@ impl ProcMetrics {
             per_cpu_iowait: meter.f64_gauge("system.cpu.core.iowait_ratio").build(),
             per_cpu_system: meter.f64_gauge("system.cpu.core.system_ratio").build(),
             vmstat_value: meter.i64_gauge("system.linux.vmstat").build(),
+            windows_vmstat_value: meter.i64_gauge("system.windows.vmstat").build(),
             swap_device_size: meter
                 .u64_gauge("system.linux.swap.device.size")
                 .with_unit("By")
@@ -583,7 +588,12 @@ impl ProcMetrics {
             zoneinfo_value: meter.u64_gauge("system.linux.zoneinfo").build(),
             buddyinfo_blocks: meter.u64_gauge("system.linux.buddy.blocks").build(),
             net_snmp_value: meter.u64_gauge("system.linux.net.snmp").build(),
+            windows_net_snmp_value: meter.u64_gauge("system.windows.net.snmp").build(),
             socket_count: meter.u64_gauge("system.socket.count").build(),
+            metric_support_state: meter.u64_gauge("system.metric.support_state").build(),
+            metric_classification_state: meter
+                .u64_gauge("system.metric.classification")
+                .build(),
             kernel_ip_in_discards_per_sec: meter
                 .f64_gauge("system.linux.net.ip.in_discards_per_sec")
                 .build(),
@@ -766,6 +776,7 @@ impl ProcMetrics {
     }
 
     pub fn record(&self, snap: &Snapshot, derived: &DerivedMetrics, include_processes: bool) {
+        self.record_metadata(snap);
         self.record_system(snap, derived);
         self.record_load(snap);
         self.record_memory(snap, derived);
@@ -778,6 +789,31 @@ impl ProcMetrics {
         self.record_network_interfaces(snap, derived);
         if include_processes {
             self.record_processes(snap, derived);
+        }
+    }
+
+    fn record_metadata(&self, snap: &Snapshot) {
+        for (metric, state) in &snap.support_state {
+            self.record_u64(
+                "system.metric.support_state",
+                &self.metric_support_state,
+                1,
+                &[
+                    KeyValue::new("metric", metric.clone()),
+                    KeyValue::new("state", state.clone()),
+                ],
+            );
+        }
+        for (metric, class) in &snap.metric_classification {
+            self.record_u64(
+                "system.metric.classification",
+                &self.metric_classification_state,
+                1,
+                &[
+                    KeyValue::new("metric", metric.clone()),
+                    KeyValue::new("class", class.clone()),
+                ],
+            );
         }
     }
 
@@ -1259,31 +1295,39 @@ impl ProcMetrics {
             );
         }
 
-        let vmstat_name = if snap.system.is_windows {
-            "system.windows.vmstat"
-        } else {
-            "system.linux.vmstat"
-        };
         for (key, value) in &snap.vmstat {
-            self.record_i64(
-                vmstat_name,
-                &self.vmstat_value,
-                *value,
-                &vmstat_attrs(key),
-            );
+            if snap.system.is_windows {
+                self.record_i64(
+                    "system.windows.vmstat",
+                    &self.windows_vmstat_value,
+                    *value,
+                    &vmstat_attrs(key),
+                );
+            } else {
+                self.record_i64(
+                    "system.linux.vmstat",
+                    &self.vmstat_value,
+                    *value,
+                    &vmstat_attrs(key),
+                );
+            }
         }
-        let snmp_name = if snap.system.is_windows {
-            "system.windows.net.snmp"
-        } else {
-            "system.linux.net.snmp"
-        };
         for (key, value) in &snap.net_snmp {
-            self.record_u64(
-                snmp_name,
-                &self.net_snmp_value,
-                *value,
-                &net_snmp_attrs(key),
-            );
+            if snap.system.is_windows {
+                self.record_u64(
+                    "system.windows.net.snmp",
+                    &self.windows_net_snmp_value,
+                    *value,
+                    &net_snmp_attrs(key),
+                );
+            } else {
+                self.record_u64(
+                    "system.linux.net.snmp",
+                    &self.net_snmp_value,
+                    *value,
+                    &net_snmp_attrs(key),
+                );
+            }
         }
         for (key, value) in &snap.sockets {
             self.record_u64(
