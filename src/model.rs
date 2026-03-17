@@ -356,6 +356,8 @@ pub struct ProcessSnapshot {
     pub policy: Option<u64>,
     pub oom_score: Option<i64>,
     pub fd_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fd_table_size: Option<u64>,
     pub read_chars: Option<u64>,
     pub write_chars: Option<u64>,
     pub syscr: Option<u64>,
