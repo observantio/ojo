@@ -1804,6 +1804,7 @@ fn collect_processes_from_nt(
             policy: None,
             oom_score: None,
             fd_count: Some(spi.handle_count as u64),
+            fd_table_size: None,
             read_chars: Some(nt_time_100ns(spi.read_transfer_count.quad_part)),
             write_chars: Some(nt_time_100ns(spi.write_transfer_count.quad_part)),
             syscr: Some(nt_time_100ns(spi.read_operation_count.quad_part)),
