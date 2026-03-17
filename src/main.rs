@@ -2,8 +2,10 @@ mod catalog;
 mod collector;
 mod config;
 mod delta;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 mod linuxcollect;
+#[cfg(target_os = "solaris")]
+mod solarcollect;
 mod metrics;
 mod model;
 mod otel;

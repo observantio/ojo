@@ -479,7 +479,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "collapsed": false,
       "panels": []
@@ -496,7 +496,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 10
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -583,7 +583,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 10
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -670,7 +670,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 10
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -757,7 +757,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 10
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -844,7 +844,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 10
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -921,7 +921,7 @@
     },
     {
       "id": 14,
-      "type": "bargauge",
+      "type": "timeseries",
       "title": "Cpu By Core",
       "datasource": {
         "type": "prometheus",
@@ -929,18 +929,47 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 4,
-        "x": 20,
-        "y": 10
+        "w": 24,
+        "x": 0,
+        "y": 9
       },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "decimals": 1,
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 2,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
@@ -949,41 +978,122 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 70
-              },
-              {
-                "color": "red",
-                "value": 90
               }
             ]
-          }
+          },
+          "min": 0,
+          "max": 100,
+          "decimals": 1
         },
         "overrides": []
       },
       "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "showUnfilled": true,
-        "text": {}
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "targets": [
         {
-          "expr": "100 * avg by (cpu) (system_cpu_core_utilization{instance=~\"$instance\"})",
-          "legendFormat": "Cpu {{cpu}}",
+          "expr": "100 * avg by (cpu, instance) (system_cpu_core_utilization{instance=~\"$instance\"})",
+          "legendFormat": "{{instance}} cpu{{cpu}}",
           "refId": "A"
         }
       ],
-      "description": "Per-core non-idle CPU percentage."
+      "description": "Per-core non-idle CPU percentage over time."
+    },
+    {
+      "id": 71,
+      "type": "timeseries",
+      "title": "Cpu Irq",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 20,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 2,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "100 * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=~\"irq|interrupt|softirq\"}[5m])) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "description": "IRQ + softirq share as a percentage of total CPU time."
     },
     {
       "id": 15,
@@ -993,7 +1103,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "collapsed": false,
       "panels": []
@@ -1010,7 +1120,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1094,7 +1204,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1178,7 +1288,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1262,7 +1372,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1346,7 +1456,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1430,7 +1540,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 19
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1513,7 +1623,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 35
       },
       "collapsed": false,
       "panels": []
@@ -1530,7 +1640,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -1615,7 +1725,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -1700,7 +1810,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -1785,7 +1895,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -1869,7 +1979,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -1953,7 +2063,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 28
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -2034,7 +2144,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "collapsed": false,
       "panels": []
@@ -2051,7 +2161,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2135,7 +2245,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2219,7 +2329,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2303,7 +2413,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2387,7 +2497,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2472,7 +2582,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 37
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -2553,7 +2663,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "collapsed": false,
       "panels": []
@@ -2570,7 +2680,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -2654,7 +2764,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -2738,7 +2848,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -2822,7 +2932,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -2906,7 +3016,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -2990,7 +3100,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 46
+        "y": 54
       },
       "fieldConfig": {
         "defaults": {
@@ -3070,7 +3180,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 62
       },
       "collapsed": false,
       "panels": []
@@ -3087,7 +3197,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3129,7 +3239,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3171,7 +3281,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3213,7 +3323,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3256,7 +3366,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3299,7 +3409,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 55
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
@@ -3337,7 +3447,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 71
       },
       "collapsed": false,
       "panels": []
@@ -3354,7 +3464,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 64
+        "y": 72
       },
       "fieldConfig": {
         "defaults": {
@@ -3396,7 +3506,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 64
+        "y": 72
       },
       "fieldConfig": {
         "defaults": {
@@ -3438,7 +3548,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 64
+        "y": 72
       },
       "fieldConfig": {
         "defaults": {
@@ -3480,7 +3590,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 64
+        "y": 72
       },
       "fieldConfig": {
         "defaults": {
@@ -3511,62 +3621,6 @@
       ]
     },
     {
-      "id": 55,
-      "type": "row",
-      "title": "Metric Coverage",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 72
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "id": 56,
-      "type": "timeseries",
-      "title": "All Exported Metric Families",
-      "description": "Coverage panel: one series per metric family currently present for selected instance(s).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 73
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "palette-classic"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "count by (__name__) ({__name__=~\"^(system|process)_.*\",instance=~\"$instance\"})",
-          "legendFormat": "{{__name__}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
       "id": 57,
       "type": "row",
       "title": "Raw Linux Coverage",
@@ -3574,7 +3628,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 89
       },
       "collapsed": false,
       "panels": []
@@ -3591,7 +3645,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3633,7 +3687,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3675,7 +3729,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3717,7 +3771,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3759,7 +3813,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3801,7 +3855,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 82
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -3839,7 +3893,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 90
+        "y": 98
       },
       "collapsed": false,
       "panels": []
@@ -3856,7 +3910,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -3898,7 +3952,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -3940,7 +3994,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -3983,7 +4037,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -4026,7 +4080,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -4069,7 +4123,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 91
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -4095,6 +4149,49 @@
       "targets": [
         {
           "expr": "sum by (instance) (system_network_total_bytes_per_sec{instance=~\"$instance\",device=~\"$interface\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "type": "timeseries",
+      "title": "All Exported Metric Families",
+      "description": "Dynamic coverage panel: one series per exported system/process metric family for selected instances.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 107
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "count by (__name__) ({__name__=~\"^(system|process)_.*\",instance=~\"$instance\"})",
+          "legendFormat": "{{__name__}}",
           "refId": "A"
         }
       ]
@@ -4220,6 +4317,6 @@
   "timezone": "",
   "title": "System Health Overview",
   "uid": "system-health-overview-clean",
-  "version": 1,
+  "version": 3,
   "weekStart": ""
 }

@@ -2,3 +2,4 @@ target/
 target-qa/
 Cargo.lock
 logs/
+solaris-builder/
