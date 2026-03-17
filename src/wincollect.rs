@@ -11,7 +11,6 @@ use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::null_mut;
 use std::slice;
-use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tracing::{debug, warn};
 
@@ -327,9 +326,23 @@ struct ProcessThreadSummary {
     last_cpu: Option<i64>,
 }
 
-static DISK_COUNTER_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
-static LOAD_SYNTH_WARNING_EMITTED: OnceLock<Mutex<bool>> = OnceLock::new();
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
+pub enum ProcessMode {
+    Fast,
+    Detailed,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LoadAvgState {
+    one: f64,
+    five: f64,
+    fifteen: f64,
+    prev_busy: u64,
+    prev_total: u64,
+    last: Instant,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct WindowsPagingRateState {
     hard_fault_total: u64,
     page_reads_total: u64,
@@ -337,7 +350,13 @@ struct WindowsPagingRateState {
     last: Instant,
 }
 
-static WINDOWS_PAGING_RATE_STATE: OnceLock<Mutex<Option<WindowsPagingRateState>>> = OnceLock::new();
+#[derive(Default)]
+struct WinCollectState {
+    load_avg: Option<LoadAvgState>,
+    paging_rate: Option<WindowsPagingRateState>,
+    disk_perf_unavailable: bool,
+    warned_synth_load: bool,
+}
 
 fn wide_z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -364,22 +383,12 @@ fn nt_success(status: NTSTATUS) -> bool {
 }
 
 fn page_size_from_nt() -> u64 {
-    let mut buf = [0u8; size_of::<SystemBasicInformation>()];
-    let mut ret_len = 0u32;
-    let status = unsafe {
-        NtQuerySystemInformation(
-            SYSTEM_BASIC_INFORMATION_CLASS,
-            buf.as_mut_ptr() as *mut c_void,
-            buf.len() as u32,
-            &mut ret_len,
-        )
-    };
-    if nt_success(status) && ret_len >= size_of::<SystemBasicInformation>() as u32 {
-        let info = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemBasicInformation) };
+    if let Ok(info) = query_nt_struct::<SystemBasicInformation>(SYSTEM_BASIC_INFORMATION_CLASS) {
         if info.page_size > 0 {
             return info.page_size as u64;
         }
     }
+
     unsafe {
         let mut sysinfo = SYSTEM_INFO::default();
         GetSystemInfo(&mut sysinfo);
@@ -388,22 +397,12 @@ fn page_size_from_nt() -> u64 {
 }
 
 fn cpu_count_from_nt() -> usize {
-    let mut buf = [0u8; size_of::<SystemBasicInformation>()];
-    let mut ret_len = 0u32;
-    let status = unsafe {
-        NtQuerySystemInformation(
-            SYSTEM_BASIC_INFORMATION_CLASS,
-            buf.as_mut_ptr() as *mut c_void,
-            buf.len() as u32,
-            &mut ret_len,
-        )
-    };
-    if nt_success(status) && ret_len >= size_of::<SystemBasicInformation>() as u32 {
-        let info = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemBasicInformation) };
+    if let Ok(info) = query_nt_struct::<SystemBasicInformation>(SYSTEM_BASIC_INFORMATION_CLASS) {
         if info.number_of_processors > 0 {
             return info.number_of_processors as usize;
         }
     }
+
     unsafe {
         let mut sysinfo = SYSTEM_INFO::default();
         GetSystemInfo(&mut sysinfo);
@@ -412,19 +411,9 @@ fn cpu_count_from_nt() -> usize {
 }
 
 fn boot_time_from_nt() -> Option<u64> {
-    let mut buf = [0u8; size_of::<SystemTimeOfDayInformation>()];
-    let mut ret_len = 0u32;
-    let status = unsafe {
-        NtQuerySystemInformation(
-            SYSTEM_TIME_OF_DAY_INFORMATION_CLASS,
-            buf.as_mut_ptr() as *mut c_void,
-            buf.len() as u32,
-            &mut ret_len,
-        )
-    };
-    if nt_success(status) && ret_len >= 16 {
-        let info =
-            unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const SystemTimeOfDayInformation) };
+    if let Ok(info) = query_nt_struct::<SystemTimeOfDayInformation>(
+        SYSTEM_TIME_OF_DAY_INFORMATION_CLASS,
+    ) {
         let boot_100ns = nt_time_100ns(info.boot_time.quad_part);
         if boot_100ns > WINDOWS_TO_UNIX_EPOCH_100NS {
             return Some(filetime_100ns_to_unix_secs(boot_100ns));
@@ -579,8 +568,9 @@ fn cpu_cache_size_bytes() -> Option<u64> {
     let mut max_cache = 0u64;
     let mut offset = 0usize;
     while offset + size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= required as usize {
-        let info = unsafe {
-            &*(buf.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)
+        let info = match read_unaligned_struct::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(&buf, offset) {
+            Some(i) => i,
+            None => break,
         };
         if info.Relationship == LOGICAL_PROCESSOR_RELATIONSHIP(RelationCache.0) {
             let cache = unsafe { info.Anonymous.Cache };
@@ -712,6 +702,76 @@ fn query_system_information(class: u32) -> Result<Vec<u8>> {
     }
 }
 
+fn query_nt_struct<T: Copy>(class: u32) -> Result<T> {
+    let buf = query_system_information(class)?;
+    if buf.len() < size_of::<T>() {
+        return Err(anyhow!(
+            "NtQuerySystemInformation({class}) returned {} bytes, expected at least {}",
+            buf.len(),
+            size_of::<T>()
+        ));
+    }
+    let ptr = buf.as_ptr() as *const T;
+    Ok(unsafe { std::ptr::read_unaligned(ptr) })
+}
+
+fn read_unaligned_struct<T: Copy>(buf: &[u8], offset: usize) -> Option<T> {
+    let size = size_of::<T>();
+    if offset + size > buf.len() {
+        return None;
+    }
+    let ptr = unsafe { buf.as_ptr().add(offset) as *const T };
+    Some(unsafe { std::ptr::read_unaligned(ptr) })
+}
+
+pub trait NtListEntry {
+    fn next_entry_offset(&self) -> u32;
+}
+
+impl NtListEntry for SystemProcessInformation {
+    fn next_entry_offset(&self) -> u32 {
+        self.next_entry_offset
+    }
+}
+
+impl NtListEntry for SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX {
+    fn next_entry_offset(&self) -> u32 {
+        self.Size
+    }
+}
+
+struct NtListIter<'a, T: NtListEntry + Copy> {
+    buf: &'a [u8],
+    offset: usize,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<'a, T: NtListEntry + Copy> Iterator for NtListIter<'a, T> {
+    type Item = (usize, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let size = size_of::<T>();
+        if self.offset + size > self.buf.len() {
+            return None;
+        }
+
+        let value = unsafe { std::ptr::read_unaligned(self.buf.as_ptr().add(self.offset) as *const T) };
+        let next_offset = value.next_entry_offset() as usize;
+
+        let current_offset = self.offset;
+        self.offset = if next_offset == 0 {
+            self.buf.len()
+        } else {
+            self.offset.saturating_add(next_offset)
+        };
+        Some((current_offset, value))
+    }
+}
+
+fn walk_nt_list<'a, T: NtListEntry + Copy + 'a>(buf: &'a [u8]) -> impl Iterator<Item = (usize, T)> + 'a {
+    NtListIter { buf, offset: 0, _marker: std::marker::PhantomData }
+}
+
 fn utf16_from_unicode_string(s: &UnicodeString) -> String {
     if s.length == 0 || s.buffer.is_null() {
         return String::new();
@@ -722,11 +782,7 @@ fn utf16_from_unicode_string(s: &UnicodeString) -> String {
 }
 
 fn system_performance_info() -> Option<SystemPerformanceInformation> {
-    let buf = query_system_information(SYSTEM_PERFORMANCE_INFORMATION_CLASS).ok()?;
-    if buf.len() < size_of::<SystemPerformanceInformation>() {
-        return None;
-    }
-    Some(unsafe { *(buf.as_ptr() as *const SystemPerformanceInformation) })
+    query_nt_struct::<SystemPerformanceInformation>(SYSTEM_PERFORMANCE_INFORMATION_CLASS).ok()
 }
 
 fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<String, i64> {
@@ -902,15 +958,10 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, Proc
     let mut count = 0u64;
     let mut procs_blocked = 0u32;
     let mut summaries: BTreeMap<i32, ProcessThreadSummary> = BTreeMap::new();
-    let mut offset = 0usize;
     let spi_size = size_of::<SystemProcessInformation>();
     let sti_size = size_of::<SystemThreadInformation>();
 
-    loop {
-        if offset + spi_size > buf.len() {
-            break;
-        }
-        let spi = unsafe { &*(buf.as_ptr().add(offset) as *const SystemProcessInformation) };
+    for (offset, spi) in walk_nt_list::<SystemProcessInformation>(buf) {
         let pid = spi.unique_process_id.0 as usize as i32;
         count += 1;
 
@@ -923,10 +974,10 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, Proc
 
         for t in 0..thread_count {
             let t_off = threads_base + t * sti_size;
-            if t_off + sti_size > buf.len() {
-                break;
-            }
-            let ti = unsafe { &*(buf.as_ptr().add(t_off) as *const SystemThreadInformation) };
+            let ti = match read_unaligned_struct::<SystemThreadInformation>(buf, t_off) {
+                Some(ti) => ti,
+                None => break,
+            };
             match ti.thread_state {
                 THREAD_STATE_RUNNING => {
                     any_running = true;
@@ -960,11 +1011,6 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, Proc
         };
 
         summaries.insert(pid, ProcessThreadSummary { state, last_cpu: None });
-
-        if spi.next_entry_offset == 0 {
-            break;
-        }
-        offset += spi.next_entry_offset as usize;
     }
 
     (count.saturating_sub(1), procs_blocked, summaries)
@@ -1081,7 +1127,7 @@ fn open_storage_query_handle(path: &str) -> Option<HANDLE> {
     None
 }
 
-fn query_disk_performance_for_path(path: &str) -> Option<DiskPerfData> {
+fn query_disk_performance_for_path(path: &str, _state: &mut WinCollectState) -> Option<DiskPerfData> {
     unsafe {
         let handle = match open_storage_query_handle(path) {
             Some(h) => h,
@@ -1169,8 +1215,12 @@ fn per_cpu_times_from_nt() -> Option<(Vec<CpuTimes>, u64)> {
     let mut out = Vec::with_capacity(count);
     let mut interrupts_total: u64 = 0;
     for i in 0..count {
-        let entry = unsafe {
-            &*(buf.as_ptr().add(i * entry_size) as *const SystemProcessorPerformanceInformation)
+        let entry = match read_unaligned_struct::<SystemProcessorPerformanceInformation>(
+            &buf,
+            i * entry_size,
+        ) {
+            Some(e) => e,
+            None => break,
         };
         let idle = nt_time_100ns(entry.idle_time.quad_part);
         let kernel_total = nt_time_100ns(entry.kernel_time.quad_part);
@@ -1284,34 +1334,24 @@ fn cpu_times_from_nt() -> Result<(CpuTimes, Vec<CpuTimes>, u64)> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct LoadAvgState {
-    one: f64,
-    five: f64,
-    fifteen: f64,
-    prev_busy: u64,
-    prev_total: u64,
-    last: Instant,
-}
-
-static LOAD_AVG_STATE: OnceLock<Mutex<Option<LoadAvgState>>> = OnceLock::new();
-
-fn compute_load_averages(cpu_total: &CpuTimes, entities: u32) -> (f64, f64, f64) {
+fn compute_load_averages(
+    cpu_total: &CpuTimes,
+    entities: u32,
+    state: &mut WinCollectState,
+) -> (f64, f64, f64) {
     let current_busy = cpu_total.busy();
     let current_total = cpu_total.total();
     let now = Instant::now();
-    let state = LOAD_AVG_STATE.get_or_init(|| Mutex::new(None));
-    let mut guard = state.lock().expect("load avg mutex poisoned");
 
     let instant_load = |busy: u64, total: u64| -> f64 {
         if total == 0 { return 0.0; }
         (busy as f64 / total as f64 * entities as f64).clamp(0.0, entities as f64)
     };
 
-    match *guard {
+    match state.load_avg {
         None => {
             let load = instant_load(current_busy, current_total);
-            *guard = Some(LoadAvgState {
+            state.load_avg = Some(LoadAvgState {
                 one: load,
                 five: load,
                 fifteen: load,
@@ -1332,7 +1372,7 @@ fn compute_load_averages(cpu_total: &CpuTimes, entities: u32) -> (f64, f64, f64)
             let one = prev.one * a1 + load * (1.0 - a1);
             let five = prev.five * a5 + load * (1.0 - a5);
             let fifteen = prev.fifteen * a15 + load * (1.0 - a15);
-            *guard = Some(LoadAvgState {
+            state.load_avg = Some(LoadAvgState {
                 one,
                 five,
                 fifteen,
@@ -1395,7 +1435,7 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
     })
 }
 
-pub fn collect_memory() -> Result<MemorySnapshot> {
+fn collect_memory(perf: Option<&SystemPerformanceInformation>) -> Result<MemorySnapshot> {
     unsafe {
         let mut mem = MEMORYSTATUSEX::default();
         mem.dwLength = size_of::<MEMORYSTATUSEX>() as u32;
@@ -1408,7 +1448,7 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
         let avail_pagefile = mem.ullAvailPageFile;
 
         let (cached_bytes, commit_total, commit_limit, non_paged_pool, paged_pool, perf_avail_bytes) =
-            match system_performance_info() {
+            match perf {
                 Some(p) => (
                     (p.resident_system_cache_page as u64).saturating_mul(page),
                     (p.committed_pages as u64).saturating_mul(page),
@@ -1437,16 +1477,13 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
 
         let used_phys = total_phys.saturating_sub(avail_phys);
 
-        // On Windows, commit accounting is the best approximation for pagefile-backed swap.
         let mut swap_total = commit_limit.saturating_sub(total_phys);
         if swap_total == 0 {
-            // Fallback for environments where commit limit isn't available.
             swap_total = total_pagefile.saturating_sub(total_phys);
         }
 
         let mut swap_used = commit_total.saturating_sub(total_phys);
         if swap_used == 0 && swap_total > 0 {
-            // Heuristic fallback when commit counters are unavailable.
             let committed = total_pagefile.saturating_sub(avail_pagefile);
             let resident = total_phys.saturating_sub(avail_phys);
             swap_used = committed.saturating_sub(resident).min(swap_total);
@@ -1493,21 +1530,20 @@ pub fn collect_memory() -> Result<MemorySnapshot> {
     }
 }
 
-pub fn collect_synthetic_load(
+fn collect_synthetic_load(
     cpu_total: &CpuTimes,
     runnable_threads: u32,
+    state: &mut WinCollectState,
 ) -> Result<WindowsSyntheticLoadSnapshot> {
-    let warning_once = LOAD_SYNTH_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
-    let mut guard = warning_once.lock().expect("load warning mutex poisoned");
-    if !*guard {
+    if !state.warned_synth_load {
         warn!(
             "wincollect: windows.load.synthetic is derived from CPU busy-time EMA scaled by logical CPU entities; it is not Linux loadavg-equivalent."
         );
-        *guard = true;
+        state.warned_synth_load = true;
     }
-    drop(guard);
+
     let entities = cpu_count_from_nt().max(1) as u32;
-    let (one, five, fifteen) = compute_load_averages(cpu_total, entities);
+    let (one, five, fifteen) = compute_load_averages(cpu_total, entities, state);
     Ok(WindowsSyntheticLoadSnapshot {
         one,
         five,
@@ -1547,7 +1583,7 @@ fn drive_strings() -> Result<Vec<String>> {
     }
 }
 
-pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
+fn collect_disks(state: &mut WinCollectState) -> Result<Vec<DiskSnapshot>> {
     let mut out = Vec::new();
     for idx in 0u32..64 {
         let device_path = format!(r"\\.\PhysicalDrive{idx}");
@@ -1558,17 +1594,12 @@ pub fn collect_disks() -> Result<Vec<DiskSnapshot>> {
         let _ = unsafe { CloseHandle(handle) };
 
         let (logical, physical, rotational) = query_storage_alignment(&device_path);
-        let perf = query_disk_performance_for_path(&device_path);
-        if perf.is_none() {
-            let warning_once = DISK_COUNTER_WARNING_EMITTED.get_or_init(|| Mutex::new(false));
-            let mut guard = warning_once.lock().expect("disk warning mutex poisoned");
-            if !*guard {
-                warn!(
-                    "wincollect: disk throughput/IOPS counters unavailable (IOCTL_DISK_PERFORMANCE failed). \
-common causes are missing privileges or disabled Windows disk performance counters; try running elevated and `diskperf -y`."
-                );
-                *guard = true;
-            }
+        let perf = query_disk_performance_for_path(&device_path, state);
+        if perf.is_none() && !state.disk_perf_unavailable {
+            warn!(
+                "wincollect: disk throughput/IOPS counters unavailable (IOCTL_DISK_PERFORMANCE failed). common causes are missing privileges or disabled Windows disk performance counters; try running elevated and `diskperf -y`."
+            );
+            state.disk_perf_unavailable = true;
         }
         let name = format!("PhysicalDrive{idx}");
         out.push(DiskSnapshot {
@@ -1716,7 +1747,7 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
 }
 
 fn collect_processes_from_nt(
-    open_handles: bool,
+    mode: ProcessMode,
     process_info_buffer: Option<&[u8]>,
 ) -> Result<Vec<ProcessSnapshot>> {
     let owned_buf;
@@ -1728,16 +1759,10 @@ fn collect_processes_from_nt(
     };
     let (_, _, summaries) = extract_process_thread_summaries(&buf);
     let mut out = Vec::new();
-    let mut offset = 0usize;
     let page = page_size_from_nt().max(1);
     let boot_filetime = boot_time_filetime_100ns();
-    let spi_size = size_of::<SystemProcessInformation>();
 
-    loop {
-        if offset + spi_size > buf.len() {
-            break;
-        }
-        let spi = unsafe { &*(buf.as_ptr().add(offset) as *const SystemProcessInformation) };
+    for (_offset, spi) in walk_nt_list::<SystemProcessInformation>(buf) {
         let pid = spi.unique_process_id.0 as usize as i32;
         let ppid = spi.inherited_from_unique_process_id.0 as usize as i32;
         let raw_create = nt_time_100ns(spi.create_time.quad_part);
@@ -1804,7 +1829,7 @@ fn collect_processes_from_nt(
             nonvoluntary_ctxt_switches: None,
         };
 
-        if open_handles && pid > 4 {
+        if matches!(mode, ProcessMode::Detailed) && pid > 4 {
             unsafe {
                 if let Some(handle) = open_process_limited(pid as u32) {
                     if let Some(full_path) = process_image_name(handle) {
@@ -1846,10 +1871,6 @@ fn collect_processes_from_nt(
 
         out.push(process);
 
-        if spi.next_entry_offset == 0 {
-            break;
-        }
-        offset += spi.next_entry_offset as usize;
     }
 
     Ok(out)
@@ -2015,12 +2036,11 @@ fn compute_windows_paging_rates(
     hard_fault_total: u64,
     page_reads_total: u64,
     page_writes_total: u64,
+    state: &mut WinCollectState,
 ) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     let now = Instant::now();
-    let state = WINDOWS_PAGING_RATE_STATE.get_or_init(|| Mutex::new(None));
-    let mut guard = state.lock().expect("windows paging rate state mutex poisoned");
 
-    let result = if let Some(prev) = *guard {
+    let result = if let Some(prev) = state.paging_rate {
         let dt = now.duration_since(prev.last).as_secs_f64();
         if dt > 0.0 {
             (
@@ -2035,7 +2055,8 @@ fn compute_windows_paging_rates(
     } else {
         (None, None, None, None)
     };
-    *guard = Some(WindowsPagingRateState {
+
+    state.paging_rate = Some(WindowsPagingRateState {
         hard_fault_total,
         page_reads_total,
         page_writes_total,
@@ -2064,6 +2085,7 @@ fn collect_windows_memory_pressure(
     hard_fault_total: u64,
     page_reads_total: u64,
     page_writes_total: u64,
+    state: &mut WinCollectState,
 ) -> WindowsMemoryPressureSnapshot {
     let commit_utilization_pct = if memory.commit_limit_bytes > 0 {
         (memory.committed_as_bytes as f64 * 100.0) / memory.commit_limit_bytes as f64
@@ -2082,7 +2104,12 @@ fn collect_windows_memory_pressure(
         0.0
     };
     let (hard_fault_rate, page_reads_per_sec, page_writes_per_sec, sampled_interval_secs) =
-        compute_windows_paging_rates(hard_fault_total, page_reads_total, page_writes_total);
+        compute_windows_paging_rates(
+            hard_fault_total,
+            page_reads_total,
+            page_writes_total,
+            state,
+        );
     WindowsMemoryPressureSnapshot {
         commit_utilization_pct,
         available_memory_pct,
@@ -2217,23 +2244,20 @@ pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_snapshot start");
-    let process_info_buf = if include_process_metrics {
-        Some(query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?)
-    } else {
-        None
-    };
+    let process_info_buf = Some(query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?);
 
     let system = collect_system(process_info_buf.as_deref())?;
     debug!("wincollect: collect_system done");
-    let memory = collect_memory()?;
+    let perf = system_performance_info();
+    let memory = collect_memory(perf.as_ref())?;
     debug!("wincollect: collect_memory done");
-    let synthetic_load = collect_synthetic_load(&system.cpu_total, system.procs_running)?;
+    let mut state = WinCollectState::default();
+    let synthetic_load = collect_synthetic_load(&system.cpu_total, system.procs_running, &mut state)?;
     debug!("wincollect: collect_synthetic_load done");
-    let disks = collect_disks()?;
+    let disks = collect_disks(&mut state)?;
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
     let net = collect_net()?;
     debug!(iface_count = net.len(), "wincollect: collect_net done");
-    let perf = system_performance_info();
     let vmstat = collect_vmstat(perf.as_ref());
     debug!(vmstat_keys = vmstat.len(), "wincollect: collect_vmstat done");
     let net_snmp = collect_net_snmp();
@@ -2248,13 +2272,14 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     let mounts = collect_mounts();
     let disk_volume_correlation = collect_disk_volume_correlation(&mounts);
     let swaps = collect_swaps(&memory);
-    let processes = if include_process_metrics {
-        let p = collect_processes_from_nt(true, process_info_buf.as_deref())?;
-        debug!(process_count = p.len(), "wincollect: collect_processes done");
-        p
+    let process_mode = if include_process_metrics {
+        ProcessMode::Detailed
     } else {
-        Vec::new()
+        ProcessMode::Fast
     };
+
+    let processes = collect_processes_from_nt(process_mode, process_info_buf.as_deref())?;
+    debug!(process_count = processes.len(), "wincollect: collect_processes done");
     let mut windows_vmstat = BTreeMap::new();
     let mut vmstat_generic = BTreeMap::new();
     for (k, v) in vmstat {
@@ -2278,6 +2303,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         hard_fault_total,
         page_reads_total,
         page_writes_total,
+        &mut state,
     );
     let windows_commit = collect_windows_commit(&memory);
     let windows_pools = collect_windows_memory_pools(perf.as_ref());
