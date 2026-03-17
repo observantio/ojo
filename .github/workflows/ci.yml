@@ -1,4 +1,4 @@
-name: Windows Artifact
+name: Windows Snapshot Build & Artifact
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
 
 jobs:
   build-windows:
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -23,7 +24,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Dump snapshot JSON
-        run: cargo run --release -- --dump-snapshot > snapshot-${{ matrix.os }}.json
+        shell: pwsh
+        run: cargo run --release -- --dump-snapshot | Out-File -Encoding utf8 "snapshot-${{ matrix.os }}.json"
 
       - name: Upload snapshot artifact
         uses: actions/upload-artifact@v4

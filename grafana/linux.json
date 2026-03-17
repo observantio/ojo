@@ -4315,8 +4315,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "System Health Overview",
-  "uid": "system-health-overview-clean",
+  "title": "Linux Health Overview",
+  "uid": "linux-health-overview",
   "version": 3,
   "weekStart": ""
 }
