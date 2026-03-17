@@ -1,0 +1,5 @@
+[target.x86_64-pc-solaris]
+linker = "solaris-builder/linker-x86_64-solaris.sh"
+
+[target.sparcv9-sun-solaris]
+linker = "solaris-builder/linker-sparcv9-solaris.sh"
