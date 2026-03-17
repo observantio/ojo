@@ -1,8 +1,8 @@
 # Ojo - Lightweight OpenTelemetry Host Metrics Agent
 
-Ojo is a small Rust-based system metrics agent that collects host and process telemetry and exports it using OpenTelemetry OTLP.
+Ojo is a small Rust-based system metrics agent that collects host and process telemetry and exports it using OpenTelemetry OTLP. It is specialized for collecting metrics from Windows, most Linux Distributions and I am currently working on a Solaris version (11.4)
 
-![Demo Ojo](assets/QUICK.gif)
+![Demo Ojo](assets/collector.gif)
 
 It supports Linux and Windows, with platform-specific collectors under the hood, and can send metrics to any OTLP-compatible receiver (for example, OpenTelemetry Collector).
 
@@ -18,6 +18,7 @@ The collector computes delta/rate metrics between polling intervals where approp
 - `src/config.rs`: config loading and environment mapping
 - `src/linuxcollect.rs`: Linux host/process collection
 - `src/wincollect.rs`: Windows host/process collection
+- `src/solarcollect.rs`: Solaris (11.4) host/process collection
 - `src/delta.rs`: rate/delta derivation logic
 - `src/metrics.rs`: OpenTelemetry instrument creation and recording
 - `linux.yaml`: sample Linux agent config
