@@ -820,6 +820,7 @@ impl ProcMetrics {
         self.record_pressure(snap, derived);
         self.record_stat(snap);
         self.record_cpu_inventory(snap);
+        self.record_mounts(snap);
         self.record_linux_proc(snap, derived);
         self.record_net_kernel(snap, derived);
         self.record_disks(snap, derived);
@@ -1442,6 +1443,22 @@ impl ProcMetrics {
             );
         }
 
+        for (key, value) in &snap.zoneinfo {
+            let Some(attrs) = zoneinfo_attrs(key) else {
+                continue;
+            };
+            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
+        }
+
+        for (key, value) in &snap.buddyinfo {
+            let Some(attrs) = buddyinfo_attrs(key) else {
+                continue;
+            };
+            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
+        }
+    }
+
+    fn record_mounts(&self, snap: &Snapshot) {
         for mount in &snap.mounts {
             let attrs = [
                 KeyValue::new("device", mount.device.clone()),
@@ -1455,20 +1472,6 @@ impl ProcMetrics {
                 1,
                 &attrs,
             );
-        }
-
-        for (key, value) in &snap.zoneinfo {
-            let Some(attrs) = zoneinfo_attrs(key) else {
-                continue;
-            };
-            self.record_u64("system.linux.zoneinfo", &self.zoneinfo_value, *value, &attrs);
-        }
-
-        for (key, value) in &snap.buddyinfo {
-            let Some(attrs) = buddyinfo_attrs(key) else {
-                continue;
-            };
-            self.record_u64("system.linux.buddy.blocks", &self.buddyinfo_blocks, *value, &attrs);
         }
     }
 

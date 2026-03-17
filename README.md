@@ -8,10 +8,7 @@ It supports Linux and Windows, with platform-specific collectors under the hood,
 
 ## What Ojo Collects
 
-Ojo focuses on:
-
-- `system.*` metrics (CPU, memory, disk, network, load, paging)
-- `process.*` metrics (optional, controlled by config)
+Ojo focuses on all the metrics it can collect, please refer to the qa for a snapshot of the json collected from each VM.
 
 The collector computes delta/rate metrics between polling intervals where appropriate.
 
