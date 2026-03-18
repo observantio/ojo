@@ -2670,7 +2670,18 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     })?;
     debug!("wincollect: collect_synthetic_load done");
     let disks = with_wincollect_state(|state| collect_disks(state))?;
-    debug!(disk_count = disks.len(), "wincollect: collect_disks done");
+    let disks_with_counters = disks.iter().filter(|d| d.has_counters).count();
+    let disks_without_counters: Vec<String> = disks
+        .iter()
+        .filter(|d| !d.has_counters)
+        .map(|d| d.name.clone())
+        .collect();
+    debug!(
+        disk_count = disks.len(),
+        disks_with_counters,
+        disks_without_counters = ?disks_without_counters,
+        "wincollect: collect_disks done"
+    );
     let net = collect_net()?;
     debug!(iface_count = net.len(), "wincollect: collect_net done");
     let vmstat = collect_vmstat(perf.as_ref());

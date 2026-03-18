@@ -7898,11 +7898,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (instance, device) (system_disk_read_await{instance=~\"$instance\"})"
+          "expr": "sum by (instance, device) ((({__name__=~\"system_disk_read_await(_.*)?\",instance=~\"$instance\"})) or (label_replace(({__name__=~\"system_disk_read_await(_.*)?\",service_instance_id=~\"$instance\"}), \"instance\", \"$1\", \"service_instance_id\", \"(.*)\")))"
         },
         {
           "refId": "B",
-          "expr": "sum by (instance, device) (system_disk_write_await{instance=~\"$instance\"})"
+          "expr": "sum by (instance, device) ((({__name__=~\"system_disk_write_await(_.*)?\",instance=~\"$instance\"})) or (label_replace(({__name__=~\"system_disk_write_await(_.*)?\",service_instance_id=~\"$instance\"}), \"instance\", \"$1\", \"service_instance_id\", \"(.*)\")))"
         }
       ],
       "description": "Average per-operation disk latency derived from cumulative disk time and operation counters."
