@@ -3,3 +3,6 @@ linker = "solaris-builder/linker-x86_64-solaris.sh"
 
 [target.sparcv9-sun-solaris]
 linker = "solaris-builder/linker-sparcv9-solaris.sh"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"

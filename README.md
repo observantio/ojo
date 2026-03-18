@@ -1,114 +1,65 @@
-# Ojo - Lightweight OpenTelemetry Host Metrics Agent
+# Ojo - Powerful OpenTelemtry Agent for Deep Analaysis
 
-Ojo is a small Rust-based system metrics agent that collects host and process telemetry and exports it using OpenTelemetry OTLP. It is specialized for collecting metrics from Windows, most Linux Distributions and I am currently working on a Solaris version (11.4)
+Ojo is a lightweight host metrics agent written in Rust.
+It collects system and process metrics and exports them via OpenTelemetry OTLP.
+
+Supported collectors:
+- Linux
+- Windows
+- Solaris (in-progress and platform-constrained)
 
 ![Demo Ojo](assets/collector.gif)
 
-It supports Linux and Windows, with platform-specific collectors under the hood, and can send metrics to any OTLP-compatible receiver (for example, OpenTelemetry Collector).
+## What Ojo Does
 
-## What Ojo Collects
-
-Ojo focuses on all the metrics it can collect, please refer to the qa for a snapshot of the json collected from each VM.
-
-The collector computes delta/rate metrics between polling intervals where appropriate.
+- Polls host metrics on a fixed interval
+- Optionally includes per-process metrics
+- Computes deltas/rates where needed
+- Exports to any OTLP-compatible backend (directly or through OpenTelemetry Collector)
 
 ## Repository Layout
 
-- `src/main.rs`: agent loop, polling, recording, flush, shutdown
-- `src/config.rs`: config loading and environment mapping
-- `src/linuxcollect.rs`: Linux host/process collection
-- `src/wincollect.rs`: Windows host/process collection
-- `src/solarcollect.rs`: Solaris (11.4) host/process collection
-- `src/delta.rs`: rate/delta derivation logic
-- `src/metrics.rs`: OpenTelemetry instrument creation and recording
-- `linux.yaml`: sample Linux agent config
-- `windows.yaml`: sample Windows agent config
-- `otel.yaml`: sample OpenTelemetry Collector pipeline
-- `grafana/ojo.json`: sample Grafana dashboard
-
-## Prerequisites
-
-1. Rust toolchain (`cargo`, `rustc`) installed.
-2. Network connectivity from Ojo to your OTLP endpoint.
-3. If using process metrics:
-- Linux: permissions to read `/proc` data for target processes.
-- Windows: run with sufficient privileges to query process/system APIs.
+- `src/main.rs`: runtime loop, flush/reconnect behavior
+- `src/config.rs`: YAML/env config loader and validation
+- `src/linuxcollect.rs`: Linux collector
+- `src/wincollect.rs`: Windows collector
+- `src/solarcollect.rs`: Solaris collector
+- `src/delta.rs`: delta/rate derivation
+- `src/metrics.rs`: OTEL metric instruments and recording
+- `linux.yaml`: Linux config example
+- `windows.yaml`: Windows config example
+- `otel.yaml`: OpenTelemetry Collector example
+- `docker.dev/`: QA Dockerfiles and compose services
 
 ## Quick Start
 
-### 1. Choose or edit config
+### 1. Pick a config file
 
-Use one of the included config files:
-
+Use one of the included examples:
 - `linux.yaml`
 - `windows.yaml`
 
-Set at least:
-
-- `export.otlp.endpoint`
-- `export.otlp.protocol`
-
-For HTTP OTLP, endpoint typically includes a path like `/v1/metrics`.
-
 ### 2. Run Ojo
 
-Run with explicit config path:
+```bash
+cargo run -- --config linux.yaml
+```
+
+Or on Windows:
 
 ```bash
-# Linux
-cargo run -- --config linux.yaml
-
-# Windows
 cargo run -- --config windows.yaml
 ```
 
-This is the recommended way to run Ojo for development
-
-### 2b. Build an optimized binary first (release mode)
-
-If you want maximum runtime performance, build the optimized binary first:
+### 3. Dump one snapshot for debugging
 
 ```bash
-cargo build --release
+cargo run -- --config linux.yaml --dump-snapshot
 ```
 
-Then run the compiled binary directly:
-
-```bash
-# Linux
-./target/release/ojo --config linux.yaml
-
-# Windows (PowerShell or CMD)
-target\\release\\ojo.exe --config windows.yaml
-```
-
-If you still prefer `cargo run`, use release mode so it builds/runs optimized code:
-
-```bash
-# Linux
-cargo run --release -- --config linux.yaml
-
-# Windows
-cargo run --release -- --config windows.yaml
-```
-
-### 3. Optional: run with default config name
-
-If `--config` is not provided, Ojo looks for:
-
-- `PROC_OTEL_CONFIG` env var, otherwise
-- `ojo.yaml`
-
-Example:
-
-```bash
-PROC_OTEL_CONFIG=linux.yaml cargo run
-```
-
-## Configuration Reference
+## Configuration
 
 Top-level sections:
-
 - `service`
 - `collection`
 - `export`
@@ -122,9 +73,6 @@ service:
   instance_id: linux-0001
 ```
 
-- `name`: exported as service name.
-- `instance_id`: unique ID for host/agent instance.
-
 ### collection
 
 ```yaml
@@ -133,18 +81,13 @@ collection:
   include_process_metrics: true
 ```
 
-- `poll_interval_secs`: polling cadence.
-- `include_process_metrics`: enable/disable process metrics.
-
 ### export
 
 ```yaml
 export:
   otlp:
-    endpoint: "http://127.0.0.1:4317"
-    protocol: grpc
-    headers:
-      x-otlp-token: "token"
+    endpoint: "http://127.0.0.1:4355/v1/metrics"
+    protocol: http/protobuf
     compression: gzip
     timeout_secs: 10
   batch:
@@ -152,144 +95,127 @@ export:
     timeout_secs: 10
 ```
 
-`otlp` fields:
+## Metric Selection (New)
 
-- `endpoint`: OTLP endpoint URL.
-- `protocol`: `grpc` or `http/protobuf`.
-- `token` and `token_header`: convenience auth header config.
-- `headers`: additional static OTLP headers.
-- `compression`: exporter compression.
-- `timeout_secs`: OTLP export timeout.
+If `metrics` is omitted, Ojo exports all metrics.
 
-`batch` fields:
+You can select metric groups in three ways.
 
-- `interval_secs`: maps to `OTEL_METRIC_EXPORT_INTERVAL` (milliseconds internally).
-- `timeout_secs`: maps to `OTEL_METRIC_EXPORT_TIMEOUT` (milliseconds internally).
+### 1) Single group
 
-### metrics
+```yaml
+metrics: cpu
+```
+
+### 2) Multiple groups
+
+```yaml
+metrics: [cpu, memory, disk]
+```
+
+### 3) Advanced section form
 
 ```yaml
 metrics:
-  include:
-    - system.
-    - process.
-  exclude:
-    - system.linux.
+  groups: [cpu, memory]
+  include: [system.linux.net.]
+  exclude: [process.]
 ```
 
-- Prefix-based filtering.
-- `include` empty means include all.
-- `exclude` always wins over include.
+Rules:
+- `groups` expands to metric-name prefixes
+- `include`/`exclude` are prefix-based
+- `exclude` wins over `include`
+- If `metrics` is not defined, all metrics are exported
 
-## OpenTelemetry Collector Example
+Supported groups:
+- `cpu`
+- `memory`
+- `disk`
+- `network`
+- `process`
+- `filesystem`
+- `linux`
+- `windows`
+- `host`
 
-`otel.yaml` in this repo is an example pipeline that:
+If an unknown group is configured, Ojo fails fast with a config error.
 
-1. Receives OTLP metrics over HTTP (`:4355`) and gRPC (`:4356`).
-2. Applies memory limiter and batch processors.
-3. Exports using Prometheus remote write.
+## Environment Variables
 
-Start collector with your preferred distribution, for example:
+Important env overrides:
+- `PROC_OTEL_CONFIG`
+- `PROC_POLL_INTERVAL_SECS`
+- `PROC_INCLUDE_PROCESS_METRICS`
+- `OTEL_EXPORTER_OTLP_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_PROTOCOL`
+- `OTEL_EXPORTER_OTLP_HEADERS`
+- `OTEL_EXPORTER_OTLP_COMPRESSION`
+- `OTEL_EXPORTER_OTLP_TIMEOUT`
+
+## OpenTelemetry Collector
+
+A sample collector config is included in `otel.yaml`.
+
+Typical flow:
+1. Start collector
+2. Point Ojo `export.otlp.endpoint` to collector OTLP endpoint
+3. Run Ojo
+
+## Docker QA
+
+QA services are defined in `docker.dev/docker-compose.yml`.
+
+Run a Linux QA service example:
 
 ```bash
-otelcol --config otel.yaml
+docker compose -f docker.dev/docker-compose.yml run --rm qa-ubuntu-2204
 ```
 
-Then point Ojo config endpoint to collector HTTP:
-
-```yaml
-export:
-  otlp:
-    endpoint: "http://<collector-host>:4355/v1/metrics"
-    protocol: http/protobuf
-```
-
-## Logging and Runtime Behavior
-
-- Default log level is `info`.
-- Override with `RUST_LOG`, for example:
+Run Windows GNU cross-target check JSON output:
 
 ```bash
-RUST_LOG=debug cargo run -- --config linux.yaml
+docker compose -f docker.dev/docker-compose.yml run --rm qa-windows-2022-gnu
 ```
 
-- On successful export connectivity, Ojo logs `Connected Successfully`.
-- On transient export failure, Ojo logs reconnect warnings and retries on next poll.
-- `Ctrl+C` triggers graceful shutdown.
+This writes:
+- `tests/qa/windows-2022-check.json`
 
-## Platform Notes
-
-Ojo intentionally avoids forcing fake values for unsupported metrics.
-
-- Linux-only metrics are emitted on Linux.
-- On Windows, unsupported Linux-specific fields are omitted (no data) rather than emitted as `0`.
-- If Windows disk performance counters are unavailable for a disk, disk rate/pending/time metrics for that disk are omitted.
-- On Windows, shared `load.*` is omitted; synthetic scheduler load is exposed under
-  `windows.load.synthetic.*` and is derived as EMA of `cpu_busy_ratio * logical_cpu_entities`
-  (not Linux loadavg-equivalent).
-- Windows paging is split into two native models:
-  - pagefile objects in `swaps[]` with `swap_type=windows_pagefile`
-  - commit accounting in `windows.memory.commit.*` (charge/limit/available/reserve/utilization)
-- Windows native memory families also include `windows.memory.pools.*`
-  (`paged_pool_bytes`, `nonpaged_pool_bytes`, `system_cache_bytes`).
-- `windows.memory.pressure.hard_fault_rate/page_reads_per_sec/page_writes_per_sec` are sampled
-  delta rates and are emitted after at least two samples (first sample may be omitted).
-- Windows disk collection is physical-disk-first (`PhysicalDriveN`) rather than drive-letter volume-first.
-
-This helps dashboards distinguish "real zero" from "metric not available on this platform".
-
-## Troubleshooting
-
-### No metrics arriving
-
-1. Verify Ojo is running with the expected config file.
-2. Check endpoint/protocol match (`grpc` vs `http/protobuf`).
-3. Confirm collector is listening on the configured host/port.
-4. Set `RUST_LOG=debug` and inspect export/flush logs.
-
-### Windows shows missing Linux metrics
-
-Expected behavior. Unsupported Linux-specific metrics are omitted by design.
-
-### Process metrics are empty
-
-1. Ensure `include_process_metrics: true`.
-2. Check runtime permissions.
-3. Verify include/exclude filters are not removing `process.*`.
-
-## Development
-
-Build:
+## Build and Validate
 
 ```bash
-cargo build
-```
-
-Run tests (if present):
-
-```bash
+cargo check
+cargo check --target x86_64-pc-windows-gnu
 cargo test
 ```
 
-Format/lint (if configured in your environment):
+## Platform Notes
+
+- Linux-only metrics are omitted on Windows by design
+- Unsupported metrics are omitted rather than forced to zero
+- Windows uses synthetic load under `windows.load.synthetic.*` (not Linux loadavg equivalent)
+- Windows process handle count is mapped as compatibility for open-file-descriptor style views
+
+## Troubleshooting
+
+### No metrics exported
+
+- Verify endpoint/protocol match backend (`grpc` vs `http/protobuf`)
+- Check collector/backend availability
+- Enable debug logs:
 
 ```bash
-cargo fmt
-cargo clippy --all-targets --all-features
-```
-
-## Example Commands
-
-```bash
-# Linux run
-cargo run -- --config linux.yaml
-
-# Windows run
-cargo run -- --config windows.yaml
-
-# Use env var-based config selection
-PROC_OTEL_CONFIG=windows.yaml cargo run
-
-# Debug logging
 RUST_LOG=debug cargo run -- --config linux.yaml
 ```
+
+### Process metrics missing
+
+- Ensure `collection.include_process_metrics: true`
+- Verify permissions
+- Check `metrics` filters are not excluding `process.`
+
+## Development Notes
+
+- Keep collector behavior best-effort and explicit in support-state metadata
+- Prefer adding schema/compat notes rather than silently changing semantics
+- Validate with `cargo check` for host and cross-target when touching platform code

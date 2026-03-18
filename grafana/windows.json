@@ -2512,7 +2512,7 @@
       },
       "targets": [
         {
-          "expr": "system_processes_blocked{instance=~\"$instance\"} or system_processes_count{instance=~\"$instance\",state=~\"blocked|D|uninterruptible\"} or (0 * system_processes_running{instance=~\"$instance\"})",
+          "expr": "system_processes_blocked{instance=~\"$instance\"} or system_process_count{instance=~\"$instance\",state=~\"blocked|D|uninterruptible\"} or system_processes_count{instance=~\"$instance\",state=~\"blocked|D|uninterruptible\"} or (0 * system_processes_running{instance=~\"$instance\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -6682,7 +6682,7 @@
       },
       "targets": [
         {
-          "expr": "system_processes_count{instance=~\"$instance\"}",
+          "expr": "system_process_count{instance=~\"$instance\"} or system_processes_count{instance=~\"$instance\"}",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
@@ -7851,6 +7851,177 @@
         }
       ],
       "transparent": false
+    },
+    {
+      "id": 105,
+      "type": "row",
+      "title": "Windows Extended",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 167
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 106,
+      "type": "timeseries",
+      "title": "Disk Await (read/write)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 168
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance, device) (system_disk_read_await{instance=~\"$instance\"})"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (instance, device) (system_disk_write_await{instance=~\"$instance\"})"
+        }
+      ],
+      "description": "Average per-operation disk latency derived from cumulative disk time and operation counters."
+    },
+    {
+      "id": 107,
+      "type": "timeseries",
+      "title": "Disk Queue Depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 168
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance, device) (system_disk_queue_depth{instance=~\"$instance\"})"
+        }
+      ],
+      "description": "Queue depth estimate from weighted in-progress disk time deltas."
+    },
+    {
+      "id": 108,
+      "type": "timeseries",
+      "title": "Filesystem Used % by Mount",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 176
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum by (instance, mountpoint) (system_filesystem_usage{instance=~\"$instance\",key=\"used_bytes\"}) / clamp_min(sum by (instance, mountpoint) (system_filesystem_usage{instance=~\"$instance\",key=\"total_bytes\"}), 1))"
+        }
+      ],
+      "description": "Filesystem occupancy if filesystem capacity metrics are enabled for the host."
+    },
+    {
+      "id": 109,
+      "type": "timeseries",
+      "title": "Runnable Processes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 176
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_processes_running{instance=~\"$instance\"}"
+        }
+      ],
+      "description": "Runnable process count from system snapshot (useful for scheduler pressure tracking)."
     }
   ],
   "refresh": "30s",

@@ -103,7 +103,11 @@ fn per_sec(delta: u64, secs: f64) -> f64 {
 }
 
 fn ratio(part: u64, total: u64) -> f64 {
-    if total > 0 { part as f64 / total as f64 } else { 0.0 }
+    if total > 0 {
+        part as f64 / total as f64
+    } else {
+        0.0
+    }
 }
 
 #[inline]
@@ -143,16 +147,58 @@ impl PrevState {
 
         let hz = current.system.ticks_per_second.max(1) as f64;
         for (name, (cur_val, prev_val)) in [
-            ("user", (current.system.cpu_total.user, prev.system.cpu_total.user)),
-            ("nice", (current.system.cpu_total.nice, prev.system.cpu_total.nice)),
-            ("system", (current.system.cpu_total.system, prev.system.cpu_total.system)),
-            ("idle", (current.system.cpu_total.idle, prev.system.cpu_total.idle)),
-            ("iowait", (current.system.cpu_total.iowait, prev.system.cpu_total.iowait)),
-            ("irq", (current.system.cpu_total.irq, prev.system.cpu_total.irq)),
-            ("softirq", (current.system.cpu_total.softirq, prev.system.cpu_total.softirq)),
-            ("steal", (current.system.cpu_total.steal, prev.system.cpu_total.steal)),
-            ("guest", (current.system.cpu_total.guest, prev.system.cpu_total.guest)),
-            ("guest_nice", (current.system.cpu_total.guest_nice, prev.system.cpu_total.guest_nice)),
+            (
+                "user",
+                (current.system.cpu_total.user, prev.system.cpu_total.user),
+            ),
+            (
+                "nice",
+                (current.system.cpu_total.nice, prev.system.cpu_total.nice),
+            ),
+            (
+                "system",
+                (
+                    current.system.cpu_total.system,
+                    prev.system.cpu_total.system,
+                ),
+            ),
+            (
+                "idle",
+                (current.system.cpu_total.idle, prev.system.cpu_total.idle),
+            ),
+            (
+                "iowait",
+                (
+                    current.system.cpu_total.iowait,
+                    prev.system.cpu_total.iowait,
+                ),
+            ),
+            (
+                "irq",
+                (current.system.cpu_total.irq, prev.system.cpu_total.irq),
+            ),
+            (
+                "softirq",
+                (
+                    current.system.cpu_total.softirq,
+                    prev.system.cpu_total.softirq,
+                ),
+            ),
+            (
+                "steal",
+                (current.system.cpu_total.steal, prev.system.cpu_total.steal),
+            ),
+            (
+                "guest",
+                (current.system.cpu_total.guest, prev.system.cpu_total.guest),
+            ),
+            (
+                "guest_nice",
+                (
+                    current.system.cpu_total.guest_nice,
+                    prev.system.cpu_total.guest_nice,
+                ),
+            ),
         ] {
             out.cpu_time_delta_secs
                 .insert(name, cur_val.saturating_sub(prev_val) as f64 / hz);
@@ -205,15 +251,17 @@ impl PrevState {
                 .saturating_sub(current.memory.swap_free_bytes);
             out.swap_used_ratio = used as f64 / current.memory.swap_total_bytes as f64;
         }
-        let dirty_total = current.memory.dirty_bytes.unwrap_or(0)
-            + current.memory.writeback_bytes.unwrap_or(0);
+        let dirty_total =
+            current.memory.dirty_bytes.unwrap_or(0) + current.memory.writeback_bytes.unwrap_or(0);
         if current.memory.mem_total_bytes > 0 {
-            out.dirty_writeback_ratio =
-                dirty_total as f64 / current.memory.mem_total_bytes as f64;
+            out.dirty_writeback_ratio = dirty_total as f64 / current.memory.mem_total_bytes as f64;
         }
 
         let vmstat_delta = |key: &str| -> u64 {
-            non_negative_i64_delta(current.vmstat.get(key).copied(), prev.vmstat.get(key).copied())
+            non_negative_i64_delta(
+                current.vmstat.get(key).copied(),
+                prev.vmstat.get(key).copied(),
+            )
         };
         out.page_faults_delta = vmstat_delta("pgfault");
         out.page_faults_per_sec = out.page_faults_delta as f64 / secs;
@@ -287,11 +335,19 @@ impl PrevState {
             let system = cur.system.saturating_sub(prv.system);
             out.per_cpu_iowait_ratio.push((
                 idx,
-                if td > 0 { iowait as f64 / td as f64 } else { 0.0 },
+                if td > 0 {
+                    iowait as f64 / td as f64
+                } else {
+                    0.0
+                },
             ));
             out.per_cpu_system_ratio.push((
                 idx,
-                if td > 0 { system as f64 / td as f64 } else { 0.0 },
+                if td > 0 {
+                    system as f64 / td as f64
+                } else {
+                    0.0
+                },
             ));
         }
 
@@ -348,11 +404,19 @@ impl PrevState {
                     .insert(cur.name.clone(), busy_time_ms as f64 / 1000.0);
                 out.disk_avg_read_size_bytes.insert(
                     cur.name.clone(),
-                    if reads > 0 { read_bytes / reads as f64 } else { 0.0 },
+                    if reads > 0 {
+                        read_bytes / reads as f64
+                    } else {
+                        0.0
+                    },
                 );
                 out.disk_avg_write_size_bytes.insert(
                     cur.name.clone(),
-                    if writes > 0 { write_bytes / writes as f64 } else { 0.0 },
+                    if writes > 0 {
+                        write_bytes / writes as f64
+                    } else {
+                        0.0
+                    },
                 );
                 out.disk_utilization_ratio.insert(
                     cur.name.clone(),
@@ -382,10 +446,8 @@ impl PrevState {
                 out.net_tx_bytes_per_sec
                     .insert(cur.name.clone(), per_sec(tx_bytes, secs));
                 out.net_tx_bytes_delta.insert(cur.name.clone(), tx_bytes);
-                out.net_total_bytes_per_sec.insert(
-                    cur.name.clone(),
-                    per_sec(rx_bytes + tx_bytes, secs),
-                );
+                out.net_total_bytes_per_sec
+                    .insert(cur.name.clone(), per_sec(rx_bytes + tx_bytes, secs));
                 out.net_rx_packets_per_sec
                     .insert(cur.name.clone(), per_sec(rx_packets, secs));
                 out.net_rx_packets_delta
@@ -458,10 +520,12 @@ impl PrevState {
                         .insert(cur.pid, cv.saturating_sub(pv));
                 }
                 if let (Some(cv), Some(pv)) = (cur.syscr, prv.syscr) {
-                    out.process_syscr_delta.insert(cur.pid, cv.saturating_sub(pv));
+                    out.process_syscr_delta
+                        .insert(cur.pid, cv.saturating_sub(pv));
                 }
                 if let (Some(cv), Some(pv)) = (cur.syscw, prv.syscw) {
-                    out.process_syscw_delta.insert(cur.pid, cv.saturating_sub(pv));
+                    out.process_syscw_delta
+                        .insert(cur.pid, cv.saturating_sub(pv));
                 }
                 if let (Some(cv), Some(pv)) =
                     (cur.voluntary_ctxt_switches, prv.voluntary_ctxt_switches)
@@ -469,9 +533,10 @@ impl PrevState {
                     out.process_voluntary_ctxt_delta
                         .insert(cur.pid, cv.saturating_sub(pv));
                 }
-                if let (Some(cv), Some(pv)) =
-                    (cur.nonvoluntary_ctxt_switches, prv.nonvoluntary_ctxt_switches)
-                {
+                if let (Some(cv), Some(pv)) = (
+                    cur.nonvoluntary_ctxt_switches,
+                    prv.nonvoluntary_ctxt_switches,
+                ) {
                     out.process_nonvoluntary_ctxt_delta
                         .insert(cur.pid, cv.saturating_sub(pv));
                 }

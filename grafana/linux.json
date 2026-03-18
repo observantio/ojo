@@ -3893,7 +3893,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 123
       },
       "collapsed": false,
       "panels": []
@@ -3910,7 +3910,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -3935,7 +3935,7 @@
       },
       "targets": [
         {
-          "expr": "system_processes_count{instance=~\"$instance\",state=\"all\"}",
+          "expr": "system_process_count{instance=~\"$instance\",state=\"all\"} or system_processes_count{instance=~\"$instance\",state=\"all\"}",
           "refId": "A"
         }
       ]
@@ -3952,7 +3952,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -3994,7 +3994,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -4037,7 +4037,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -4080,7 +4080,7 @@
         "h": 8,
         "w": 4,
         "x": 16,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -4123,7 +4123,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 99
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -4154,10 +4154,176 @@
       ]
     },
     {
-      "id": 56,
+      "id": 72,
+      "type": "row",
+      "title": "Linux Extended",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 98
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 73,
       "type": "timeseries",
-      "title": "All Exported Metric Families",
-      "description": "Dynamic coverage panel: one series per exported system/process metric family for selected instances.",
+      "title": "TCP Ext Counters (rate)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 99
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance, key) (rate(system_linux_netstat{instance=~\"$instance\",family=\"TcpExt\",key=~\"RetransSegs|TCPTimeouts|TCPAbortOnData|TCPAbortOnTimeout\"}[5m]))"
+        }
+      ],
+      "description": "Kernel TCP extension counters from /proc/net/netstat."
+    },
+    {
+      "id": 74,
+      "type": "timeseries",
+      "title": "Runqueue Depth per CPU (approx)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 99
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_linux_runqueue_depth{instance=~\"$instance\"}"
+        }
+      ],
+      "description": "Per-CPU runqueue depth approximation derived from schedstat weighting and runnable load."
+    },
+    {
+      "id": 75,
+      "type": "timeseries",
+      "title": "Filesystem Used % by Mount",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 107
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum by (instance, mountpoint) (system_filesystem_usage{instance=~\"$instance\",key=\"used_bytes\"}) / clamp_min(sum by (instance, mountpoint) (system_filesystem_usage{instance=~\"$instance\",key=\"total_bytes\"}), 1))"
+        }
+      ],
+      "description": "Filesystem occupancy based on statvfs total and used bytes."
+    },
+    {
+      "id": 76,
+      "type": "timeseries",
+      "title": "Top Slab Caches (active objects)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 107
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (cache) (system_linux_slab{instance=~\"$instance\",key=\"active_objs\"})) or label_replace(sum by (instance) (system_memory_slab_bytes{instance=~\"$instance\"}), \"cache\", \"total_slab_bytes\", \"instance\", \".*\")"
+        }
+      ],
+      "description": "Top slab caches by active objects when available; falls back to total slab bytes when per-cache data is unavailable due kernel permissions."
+    },
+    {
+      "id": 77,
+      "type": "timeseries",
+      "title": "Cgroup CPU Throttling (rate)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -4166,35 +4332,35 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 115
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "palette-classic"
-          }
+          "unit": "ops",
+          "decimals": 2
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
+          "placement": "bottom"
         },
         "tooltip": {
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi"
         }
       },
       "targets": [
         {
-          "expr": "count by (__name__) ({__name__=~\"^(system|process)_.*\",instance=~\"$instance\"})",
-          "legendFormat": "{{__name__}}",
-          "refId": "A"
+          "refId": "A",
+          "expr": "sum by (instance, scope) (rate(system_linux_cgroup{instance=~\"$instance\",section=\"cpu.stat\",key=\"nr_throttled\"}[5m]))"
+        },
+        {
+          "refId": "B",
+          "expr": "100 * sum by (instance, scope) (rate(system_linux_cgroup{instance=~\"$instance\",section=\"cpu.stat\",key=\"nr_throttled\"}[5m])) / clamp_min(sum by (instance, scope) (rate(system_linux_cgroup{instance=~\"$instance\",section=\"cpu.stat\",key=\"nr_periods\"}[5m])), 1e-9)"
         }
-      ]
+      ],
+      "description": "cgroup v2 throttling across scopes: A=throttle events/sec, B=throttled periods percent."
     }
   ],
   "refresh": "30s",
@@ -4317,6 +4483,6 @@
   "timezone": "",
   "title": "Linux Health Overview",
   "uid": "linux-health-overview",
-  "version": 3,
+  "version": 5,
   "weekStart": ""
 }

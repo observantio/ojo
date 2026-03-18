@@ -14,3 +14,13 @@ export:
   batch:
     interval_secs: 5
     timeout_secs: 10
+    
+# Optional metric selector. If omitted, Ojo exports all metrics.
+# Supported groups: cpu, memory, disk, network, process, filesystem, linux, windows, host
+# Examples:
+# metrics: cpu
+# metrics: [cpu, memory, disk]
+# metrics:
+#   groups: [cpu, windows]
+#   include: [system.windows.]
+#   exclude: [process.]

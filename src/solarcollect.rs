@@ -73,7 +73,10 @@ fn solaris_metric_classification() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
 
     out.insert("system.cpu.time".to_string(), "counter".to_string());
-    out.insert("system.cpu.utilization".to_string(), "gauge_derived_ratio".to_string());
+    out.insert(
+        "system.cpu.utilization".to_string(),
+        "gauge_derived_ratio".to_string(),
+    );
     out.insert("system.cpu.load_average.*".to_string(), "gauge".to_string());
 
     out.insert("system.memory.*".to_string(), "gauge".to_string());
@@ -85,8 +88,14 @@ fn solaris_metric_classification() -> BTreeMap<String, String> {
 
     out.insert("system.disk.io".to_string(), "counter".to_string());
     out.insert("system.disk.operations".to_string(), "counter".to_string());
-    out.insert("system.disk.operation_time".to_string(), "counter".to_string());
-    out.insert("system.disk.pending_operations".to_string(), "gauge".to_string());
+    out.insert(
+        "system.disk.operation_time".to_string(),
+        "counter".to_string(),
+    );
+    out.insert(
+        "system.disk.pending_operations".to_string(),
+        "gauge".to_string(),
+    );
 
     out.insert("system.network.io".to_string(), "counter".to_string());
     out.insert("system.network.packets".to_string(), "counter".to_string());
@@ -94,7 +103,10 @@ fn solaris_metric_classification() -> BTreeMap<String, String> {
 
     out.insert("process.cpu.time".to_string(), "counter".to_string());
     out.insert("process.memory.usage".to_string(), "gauge".to_string());
-    out.insert("process.open_file_descriptors".to_string(), "gauge".to_string());
+    out.insert(
+        "process.open_file_descriptors".to_string(),
+        "gauge".to_string(),
+    );
 
     out.insert("system.mounts.*".to_string(), "state".to_string());
     out.insert("system.cpuinfo.*".to_string(), "inventory".to_string());
@@ -230,12 +242,11 @@ fn parse_cpu_time_to_ticks(value: &str, ticks_per_second: u64) -> u64 {
         .collect::<Vec<_>>();
 
     let secs = match parts.as_slice() {
-        [h, m, s] => {
-            days.saturating_mul(86_400)
-                .saturating_add(h.saturating_mul(3600))
-                .saturating_add(m.saturating_mul(60))
-                .saturating_add(*s)
-        }
+        [h, m, s] => days
+            .saturating_mul(86_400)
+            .saturating_add(h.saturating_mul(3600))
+            .saturating_add(m.saturating_mul(60))
+            .saturating_add(*s),
         [m, s] => days
             .saturating_mul(86_400)
             .saturating_add(m.saturating_mul(60))
@@ -307,7 +318,13 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         interrupts: BTreeMap::new(),
         softirqs: BTreeMap::new(),
         net_snmp: BTreeMap::new(),
+        net_stat: BTreeMap::new(),
         sockets: BTreeMap::new(),
+        schedstat: BTreeMap::new(),
+        runqueue_depth: BTreeMap::new(),
+        slabinfo: BTreeMap::new(),
+        filesystem: BTreeMap::new(),
+        cgroup: BTreeMap::new(),
         softnet: Vec::<SoftnetCpuSnapshot>::new(),
         swaps,
         mounts: collect_mounts()?,
@@ -497,10 +514,12 @@ fn collect_vmstat(kstats: &KstatMap) -> BTreeMap<String, i64> {
             continue;
         };
 
-        let parsed = value
-            .parse::<i64>()
-            .ok()
-            .or_else(|| value.parse::<u64>().ok().map(|v| v.min(i64::MAX as u64) as i64));
+        let parsed = value.parse::<i64>().ok().or_else(|| {
+            value
+                .parse::<u64>()
+                .ok()
+                .map(|v| v.min(i64::MAX as u64) as i64)
+        });
 
         if let Some(parsed) = parsed {
             out.insert(format!("{module}.{instance}.{name}.{stat}"), parsed);
@@ -811,27 +830,8 @@ fn collect_processes(page_size: u64, ticks_per_second: u64) -> Result<Vec<Proces
     let Some(output) = run_command_optional(
         "ps",
         &[
-            "-e",
-            "-o",
-            "pid=",
-            "-o",
-            "ppid=",
-            "-o",
-            "s=",
-            "-o",
-            "nlwp=",
-            "-o",
-            "pri=",
-            "-o",
-            "nice=",
-            "-o",
-            "rss=",
-            "-o",
-            "vsz=",
-            "-o",
-            "time=",
-            "-o",
-            "fname=",
+            "-e", "-o", "pid=", "-o", "ppid=", "-o", "s=", "-o", "nlwp=", "-o", "pri=", "-o",
+            "nice=", "-o", "rss=", "-o", "vsz=", "-o", "time=", "-o", "fname=",
         ],
     ) else {
         return Ok(Vec::new());

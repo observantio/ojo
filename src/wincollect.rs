@@ -1,9 +1,9 @@
 use crate::model::{
-    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation,
-    LoadSnapshot, MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot,
-    SwapDeviceSnapshot, SystemSnapshot, WindowsCommitSnapshot, WindowsLoadSnapshot,
-    WindowsMemoryPoolsSnapshot, WindowsMemoryPressureSnapshot, WindowsMemorySnapshot,
-    WindowsPagefileSnapshot, WindowsSnapshot, WindowsSyntheticLoadSnapshot,
+    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, DiskVolumeCorrelation, LoadSnapshot,
+    MemorySnapshot, MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SwapDeviceSnapshot,
+    SystemSnapshot, WindowsCommitSnapshot, WindowsLoadSnapshot, WindowsMemoryPoolsSnapshot,
+    WindowsMemoryPressureSnapshot, WindowsMemorySnapshot, WindowsPagefileSnapshot, WindowsSnapshot,
+    WindowsSyntheticLoadSnapshot,
 };
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -11,31 +11,32 @@ use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::null_mut;
 use std::slice;
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tracing::{debug, warn};
 
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, GetLastError, FILETIME, HANDLE, NTSTATUS};
 use windows::Win32::NetworkManagement::IpHelper::{
-    FreeMibTable, GetIfTable2, GetIpStatistics, GetTcpStatistics, GetTcpTable2, GetUdpStatistics,
-    GetUdpTable, MIB_IF_TABLE2, MIB_IPSTATS_LH, MIB_TCP_STATE, MIB_TCPROW2, MIB_TCPSTATS_LH,
-    MIB_IF_TYPE_LOOPBACK, MIB_TCPTABLE2,
-    MIB_TCP_STATE_CLOSE_WAIT, MIB_TCP_STATE_CLOSING, MIB_TCP_STATE_ESTAB,
-    MIB_TCP_STATE_FIN_WAIT1, MIB_TCP_STATE_FIN_WAIT2, MIB_TCP_STATE_LAST_ACK,
-    MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_RCVD, MIB_TCP_STATE_SYN_SENT,
-    MIB_TCP_STATE_TIME_WAIT, MIB_UDPSTATS, MIB_UDPTABLE,
+    FreeMibTable, GetIfTable2, GetIpStatistics, GetTcp6Table2, GetTcpStatistics, GetTcpTable2,
+    GetUdp6Table, GetUdpStatistics, GetUdpTable, MIB_IF_TABLE2, MIB_IF_TYPE_LOOPBACK,
+    MIB_IPSTATS_LH, MIB_TCP6ROW2, MIB_TCP6TABLE2, MIB_TCPROW2, MIB_TCPSTATS_LH, MIB_TCPTABLE2,
+    MIB_TCP_STATE, MIB_TCP_STATE_CLOSE_WAIT, MIB_TCP_STATE_CLOSING, MIB_TCP_STATE_ESTAB,
+    MIB_TCP_STATE_FIN_WAIT1, MIB_TCP_STATE_FIN_WAIT2, MIB_TCP_STATE_LAST_ACK, MIB_TCP_STATE_LISTEN,
+    MIB_TCP_STATE_SYN_RCVD, MIB_TCP_STATE_SYN_SENT, MIB_TCP_STATE_TIME_WAIT, MIB_UDP6TABLE,
+    MIB_UDPSTATS, MIB_UDPTABLE,
 };
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
-    GetVolumeNameForVolumeMountPointW, QueryDosDeviceW, FILE_ATTRIBUTE_NORMAL,
-    FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDriveStringsW,
+    GetVolumeInformationW, GetVolumeNameForVolumeMountPointW, QueryDosDeviceW,
+    FILE_ATTRIBUTE_NORMAL, FILE_FLAG_NO_BUFFERING, FILE_GENERIC_READ, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_QUERY_PROPERTY,
     STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR, STORAGE_DEVICE_NUMBER, STORAGE_PROPERTY_ID,
     STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
 };
-use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::ProcessStatus::{
     GetPerformanceInfo, GetProcessMemoryInfo, PERFORMANCE_INFORMATION, PROCESS_MEMORY_COUNTERS_EX,
 };
@@ -45,18 +46,20 @@ use windows::Win32::System::Registry::{
 };
 use windows::Win32::System::SystemInformation::{
     GetLogicalProcessorInformationEx, GetSystemInfo, GetSystemTimeAsFileTime, GetTickCount64,
-    GlobalMemoryStatusEx, LOGICAL_PROCESSOR_RELATIONSHIP, MEMORYSTATUSEX,
+    GlobalMemoryStatusEx, RelationCache, LOGICAL_PROCESSOR_RELATIONSHIP, MEMORYSTATUSEX,
     PROCESSOR_ARCHITECTURE_AMD64, PROCESSOR_ARCHITECTURE_ARM64, PROCESSOR_ARCHITECTURE_INTEL,
-    RelationCache, SYSTEM_INFO, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    SYSTEM_INFO, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+};
+use windows::Win32::System::Threading::{
+    GetNumaHighestNodeNumber, GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters,
+    GetProcessTimes, GetSystemTimes, OpenProcess, QueryFullProcessImageNameW, IO_COUNTERS,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_VM_READ,
 };
 use windows::Win32::System::WindowsProgramming::{
     DRIVE_CDROM, DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE,
 };
-use windows::Win32::System::Threading::{
-    GetPriorityClass, GetProcessHandleCount, GetProcessIoCounters, GetProcessTimes, GetSystemTimes,
-    IO_COUNTERS, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
-};
+use windows::Win32::System::IO::DeviceIoControl;
 
 #[link(name = "ntdll")]
 unsafe extern "system" {
@@ -94,7 +97,11 @@ struct UnicodeString {
 
 impl Default for UnicodeString {
     fn default() -> Self {
-        Self { length: 0, maximum_length: 0, buffer: PWSTR::null() }
+        Self {
+            length: 0,
+            maximum_length: 0,
+            buffer: PWSTR::null(),
+        }
     }
 }
 
@@ -326,6 +333,29 @@ struct ProcessThreadSummary {
     last_cpu: Option<i64>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct DiskStaticMeta {
+    logical_block_size: Option<u64>,
+    physical_block_size: Option<u64>,
+    rotational: Option<bool>,
+}
+
+struct OwnedHandle(HANDLE);
+
+impl OwnedHandle {
+    fn as_raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ProcessMode {
     Fast,
@@ -356,6 +386,17 @@ struct WinCollectState {
     paging_rate: Option<WindowsPagingRateState>,
     disk_perf_unavailable: bool,
     warned_synth_load: bool,
+    disk_static: BTreeMap<String, DiskStaticMeta>,
+}
+
+static WIN_COLLECT_STATE: OnceLock<Mutex<WinCollectState>> = OnceLock::new();
+
+fn with_wincollect_state<T>(f: impl FnOnce(&mut WinCollectState) -> Result<T>) -> Result<T> {
+    let lock = WIN_COLLECT_STATE.get_or_init(|| Mutex::new(WinCollectState::default()));
+    let mut guard = lock
+        .lock()
+        .map_err(|_| anyhow!("wincollect global state lock poisoned"))?;
+    f(&mut guard)
 }
 
 fn wide_z(s: &str) -> Vec<u16> {
@@ -375,7 +416,11 @@ fn filetime_100ns_to_unix_secs(v: u64) -> u64 {
 }
 
 fn nt_time_100ns(v: i64) -> u64 {
-    if v <= 0 { 0 } else { v as u64 }
+    if v <= 0 {
+        0
+    } else {
+        v as u64
+    }
 }
 
 fn nt_success(status: NTSTATUS) -> bool {
@@ -411,9 +456,9 @@ fn cpu_count_from_nt() -> usize {
 }
 
 fn boot_time_from_nt() -> Option<u64> {
-    if let Ok(info) = query_nt_struct::<SystemTimeOfDayInformation>(
-        SYSTEM_TIME_OF_DAY_INFORMATION_CLASS,
-    ) {
+    if let Ok(info) =
+        query_nt_struct::<SystemTimeOfDayInformation>(SYSTEM_TIME_OF_DAY_INFORMATION_CLASS)
+    {
         let boot_100ns = nt_time_100ns(info.boot_time.quad_part);
         if boot_100ns > WINDOWS_TO_UNIX_EPOCH_100NS {
             return Some(filetime_100ns_to_unix_secs(boot_100ns));
@@ -461,8 +506,7 @@ fn reg_query_string(hkey: HKEY, value_name: &str) -> Option<String> {
             None,
             Some(&mut size),
         )
-        .0
-            != 0
+        .0 != 0
             || size < 2
             || value_type != REG_SZ
         {
@@ -477,8 +521,7 @@ fn reg_query_string(hkey: HKEY, value_name: &str) -> Option<String> {
             Some(data.as_mut_ptr()),
             Some(&mut size),
         )
-        .0
-            != 0
+        .0 != 0
             || value_type != REG_SZ
             || size < 2
         {
@@ -504,8 +547,7 @@ fn reg_query_dword(hkey: HKEY, value_name: &str) -> Option<u32> {
             Some((&mut data as *mut u32).cast::<u8>()),
             Some(&mut size),
         )
-        .0
-            == 0
+        .0 == 0
             && value_type == REG_DWORD
             && size == size_of::<u32>() as u32
         {
@@ -527,8 +569,7 @@ fn cpu_metadata_from_registry() -> (Option<String>, Option<String>, Option<f64>)
             KEY_READ,
             &mut key,
         )
-        .0
-            == 0
+        .0 == 0
     };
     if !opened {
         return (None, None, None);
@@ -568,10 +609,11 @@ fn cpu_cache_size_bytes() -> Option<u64> {
     let mut max_cache = 0u64;
     let mut offset = 0usize;
     while offset + size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= required as usize {
-        let info = match read_unaligned_struct::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(&buf, offset) {
-            Some(i) => i,
-            None => break,
-        };
+        let info =
+            match read_unaligned_struct::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(&buf, offset) {
+                Some(i) => i,
+                None => break,
+            };
         if info.Relationship == LOGICAL_PROCESSOR_RELATIONSHIP(RelationCache.0) {
             let cache = unsafe { info.Anonymous.Cache };
             max_cache = max_cache.max(cache.CacheSize as u64);
@@ -582,14 +624,27 @@ fn cpu_cache_size_bytes() -> Option<u64> {
         offset = offset.saturating_add(info.Size as usize);
     }
 
-    if max_cache > 0 { Some(max_cache) } else { None }
+    if max_cache > 0 {
+        Some(max_cache)
+    } else {
+        None
+    }
 }
 
-fn open_process_limited(pid: u32) -> Option<HANDLE> {
+fn open_process_limited(pid: u32) -> Option<OwnedHandle> {
     unsafe {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid)
-            .ok()
-            .or_else(|| OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok())
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
+            false,
+            pid,
+        )
+        .ok()
+        .map(OwnedHandle)
+        .or_else(|| {
+            OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
+                .ok()
+                .map(OwnedHandle)
+        })
     }
 }
 
@@ -664,7 +719,11 @@ fn get_process_handle_count_safe(handle: HANDLE) -> Option<u64> {
 
 fn get_priority_class_safe(handle: HANDLE) -> Option<u64> {
     let pc = unsafe { GetPriorityClass(handle) };
-    if pc == 0 { None } else { Some(pc as u64) }
+    if pc == 0 {
+        None
+    } else {
+        Some(pc as u64)
+    }
 }
 
 fn query_system_information(class: u32) -> Result<Vec<u8>> {
@@ -691,7 +750,9 @@ fn query_system_information(class: u32) -> Result<Vec<u8>> {
                 size.saturating_mul(2)
             };
             if size > 256 * 1024 * 1024 {
-                return Err(anyhow!("NtQuerySystemInformation({class}) buffer grew too large"));
+                return Err(anyhow!(
+                    "NtQuerySystemInformation({class}) buffer grew too large"
+                ));
             }
             continue;
         }
@@ -755,7 +816,8 @@ impl<'a, T: NtListEntry + Copy> Iterator for NtListIter<'a, T> {
             return None;
         }
 
-        let value = unsafe { std::ptr::read_unaligned(self.buf.as_ptr().add(self.offset) as *const T) };
+        let value =
+            unsafe { std::ptr::read_unaligned(self.buf.as_ptr().add(self.offset) as *const T) };
         let next_offset = value.next_entry_offset() as usize;
 
         let current_offset = self.offset;
@@ -768,8 +830,14 @@ impl<'a, T: NtListEntry + Copy> Iterator for NtListIter<'a, T> {
     }
 }
 
-fn walk_nt_list<'a, T: NtListEntry + Copy + 'a>(buf: &'a [u8]) -> impl Iterator<Item = (usize, T)> + 'a {
-    NtListIter { buf, offset: 0, _marker: std::marker::PhantomData }
+fn walk_nt_list<'a, T: NtListEntry + Copy + 'a>(
+    buf: &'a [u8],
+) -> impl Iterator<Item = (usize, T)> + 'a {
+    NtListIter {
+        buf,
+        offset: 0,
+        _marker: std::marker::PhantomData,
+    }
 }
 
 fn utf16_from_unicode_string(s: &UnicodeString) -> String {
@@ -797,25 +865,67 @@ fn collect_vmstat(perf: Option<&SystemPerformanceInformation>) -> BTreeMap<Strin
         (p.dirty_pages_write_count as i64).saturating_add(p.mapped_pages_write_count as i64),
     );
 
-    out.insert("windows.available_pages".to_string(), p.available_pages as i64);
-    out.insert("windows.committed_pages".to_string(), p.committed_pages as i64);
-    out.insert("windows.commit_limit_pages".to_string(), p.commit_limit as i64);
-    out.insert("windows.peak_commitment_pages".to_string(), p.peak_commitment as i64);
-    out.insert("windows.paged_pool_pages".to_string(), p.paged_pool_pages as i64);
-    out.insert("windows.non_paged_pool_pages".to_string(), p.non_paged_pool_pages as i64);
-    out.insert("windows.copy_on_write".to_string(), p.copy_on_write_count as i64);
-    out.insert("windows.transition_faults".to_string(), p.transition_count as i64);
+    out.insert(
+        "windows.available_pages".to_string(),
+        p.available_pages as i64,
+    );
+    out.insert(
+        "windows.committed_pages".to_string(),
+        p.committed_pages as i64,
+    );
+    out.insert(
+        "windows.commit_limit_pages".to_string(),
+        p.commit_limit as i64,
+    );
+    out.insert(
+        "windows.peak_commitment_pages".to_string(),
+        p.peak_commitment as i64,
+    );
+    out.insert(
+        "windows.paged_pool_pages".to_string(),
+        p.paged_pool_pages as i64,
+    );
+    out.insert(
+        "windows.non_paged_pool_pages".to_string(),
+        p.non_paged_pool_pages as i64,
+    );
+    out.insert(
+        "windows.copy_on_write".to_string(),
+        p.copy_on_write_count as i64,
+    );
+    out.insert(
+        "windows.transition_faults".to_string(),
+        p.transition_count as i64,
+    );
     out.insert(
         "windows.cache_transition_faults".to_string(),
         p.cache_transition_count as i64,
     );
-    out.insert("windows.demand_zero_faults".to_string(), p.demand_zero_count as i64);
-    out.insert("windows.page_read_ios".to_string(), p.page_read_io_count as i64);
-    out.insert("windows.cache_read_ios".to_string(), p.cache_io_count as i64);
-    out.insert("windows.mapped_write_ios".to_string(), p.mapped_write_io_count as i64);
-    out.insert("windows.dirty_write_ios".to_string(), p.dirty_write_io_count as i64);
+    out.insert(
+        "windows.demand_zero_faults".to_string(),
+        p.demand_zero_count as i64,
+    );
+    out.insert(
+        "windows.page_read_ios".to_string(),
+        p.page_read_io_count as i64,
+    );
+    out.insert(
+        "windows.cache_read_ios".to_string(),
+        p.cache_io_count as i64,
+    );
+    out.insert(
+        "windows.mapped_write_ios".to_string(),
+        p.mapped_write_io_count as i64,
+    );
+    out.insert(
+        "windows.dirty_write_ios".to_string(),
+        p.dirty_write_io_count as i64,
+    );
     out.insert("windows.system_calls".to_string(), p.system_calls as i64);
-    out.insert("windows.context_switches".to_string(), p.context_switches as i64);
+    out.insert(
+        "windows.context_switches".to_string(),
+        p.context_switches as i64,
+    );
 
     out
 }
@@ -829,11 +939,17 @@ fn collect_net_snmp() -> BTreeMap<String, u64> {
             out.insert("Ip.InHdrErrors".to_string(), ip.dwInHdrErrors as u64);
             out.insert("Ip.InAddrErrors".to_string(), ip.dwInAddrErrors as u64);
             out.insert("Ip.ForwDatagrams".to_string(), ip.dwForwDatagrams as u64);
-            out.insert("Ip.InUnknownProtos".to_string(), ip.dwInUnknownProtos as u64);
+            out.insert(
+                "Ip.InUnknownProtos".to_string(),
+                ip.dwInUnknownProtos as u64,
+            );
             out.insert("Ip.InDiscards".to_string(), ip.dwInDiscards as u64);
             out.insert("Ip.InDelivers".to_string(), ip.dwInDelivers as u64);
             out.insert("Ip.OutRequests".to_string(), ip.dwOutRequests as u64);
-            out.insert("Ip.RoutingDiscards".to_string(), ip.dwRoutingDiscards as u64);
+            out.insert(
+                "Ip.RoutingDiscards".to_string(),
+                ip.dwRoutingDiscards as u64,
+            );
             out.insert("Ip.OutDiscards".to_string(), ip.dwOutDiscards as u64);
             out.insert("Ip.OutNoRoutes".to_string(), ip.dwOutNoRoutes as u64);
             out.insert("Ip.ReasmReqds".to_string(), ip.dwReasmReqds as u64);
@@ -877,7 +993,11 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
         GetTcpTable2(None, &mut size, false);
         if size > 0 {
             let mut buf = vec![0u8; size as usize];
-            if GetTcpTable2(Some(buf.as_mut_ptr() as *mut MIB_TCPTABLE2), &mut size, false) == 0
+            if GetTcpTable2(
+                Some(buf.as_mut_ptr() as *mut MIB_TCPTABLE2),
+                &mut size,
+                false,
+            ) == 0
             {
                 let table_ptr = buf.as_ptr() as *const MIB_TCPTABLE2;
                 let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as usize;
@@ -927,10 +1047,56 @@ fn collect_socket_counts() -> BTreeMap<String, u64> {
         GetUdpTable(None, &mut size, false);
         if size > 0 {
             let mut buf = vec![0u8; size as usize];
-            if GetUdpTable(Some(buf.as_mut_ptr() as *mut MIB_UDPTABLE), &mut size, false) == 0 {
+            if GetUdpTable(
+                Some(buf.as_mut_ptr() as *mut MIB_UDPTABLE),
+                &mut size,
+                false,
+            ) == 0
+            {
                 let table_ptr = buf.as_ptr() as *const MIB_UDPTABLE;
                 let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as u64;
                 out.insert("v4.udp.inuse".to_string(), count);
+            }
+        }
+
+        let mut size = 0u32;
+        GetTcp6Table2(std::ptr::null_mut(), &mut size, false);
+        if size > 0 {
+            let mut buf = vec![0u8; size as usize];
+            if GetTcp6Table2(buf.as_mut_ptr() as *mut MIB_TCP6TABLE2, &mut size, false) == 0 {
+                let table_ptr = buf.as_ptr() as *const MIB_TCP6TABLE2;
+                let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as usize;
+                let rows_ptr = std::ptr::addr_of!((*table_ptr).table) as *const MIB_TCP6ROW2;
+                let mut established = 0u64;
+                let mut listen = 0u64;
+                for i in 0..count {
+                    let row = rows_ptr.add(i).read_unaligned();
+                    match row.State {
+                        s if s == MIB_TCP_STATE_ESTAB => established += 1,
+                        s if s == MIB_TCP_STATE_LISTEN => listen += 1,
+                        _ => {}
+                    }
+                }
+                out.insert("v6.tcp.inuse".to_string(), established + listen);
+                out.insert("v6.tcp.established".to_string(), established);
+                out.insert("v6.tcp.listen".to_string(), listen);
+                out.insert("v6.tcp.alloc".to_string(), count as u64);
+            }
+        }
+
+        let mut size = 0u32;
+        GetUdp6Table(None, &mut size, false);
+        if size > 0 {
+            let mut buf = vec![0u8; size as usize];
+            if GetUdp6Table(
+                Some(buf.as_mut_ptr() as *mut MIB_UDP6TABLE),
+                &mut size,
+                false,
+            ) == 0
+            {
+                let table_ptr = buf.as_ptr() as *const MIB_UDP6TABLE;
+                let count = std::ptr::addr_of!((*table_ptr).dwNumEntries).read_unaligned() as u64;
+                out.insert("v6.udp.inuse".to_string(), count);
             }
         }
     }
@@ -942,6 +1108,63 @@ fn collect_interrupts_detail(per_cpu: &[CpuTimes]) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
     for (cpu, times) in per_cpu.iter().enumerate() {
         out.insert(format!("isr_time_100ns|{cpu}"), times.irq);
+    }
+    out
+}
+
+fn collect_thread_state_vmstat(buf: &[u8]) -> BTreeMap<String, i64> {
+    let mut out = BTreeMap::new();
+    let mut running = 0u64;
+    let mut ready = 0u64;
+    let mut waiting = 0u64;
+    let mut wait_reason_counts: BTreeMap<u32, u64> = BTreeMap::new();
+    let spi_size = size_of::<SystemProcessInformation>();
+    let sti_size = size_of::<SystemThreadInformation>();
+
+    for (offset, spi) in walk_nt_list::<SystemProcessInformation>(buf) {
+        let thread_count = spi.number_of_threads as usize;
+        let mut thread_offset = offset + spi_size;
+
+        for _ in 0..thread_count {
+            if let Some(thread) =
+                read_unaligned_struct::<SystemThreadInformation>(buf, thread_offset)
+            {
+                match thread.thread_state {
+                    THREAD_STATE_RUNNING => running += 1,
+                    THREAD_STATE_READY => ready += 1,
+                    THREAD_STATE_WAIT => {
+                        waiting += 1;
+                        let entry = wait_reason_counts.entry(thread.wait_reason).or_insert(0);
+                        *entry = entry.saturating_add(1);
+                    }
+                    _ => {}
+                }
+            }
+            thread_offset += sti_size;
+        }
+    }
+
+    out.insert("windows.thread.state.running".to_string(), running as i64);
+    out.insert("windows.thread.state.ready".to_string(), ready as i64);
+    out.insert("windows.thread.state.wait".to_string(), waiting as i64);
+    for (reason, count) in wait_reason_counts {
+        out.insert(
+            format!("windows.thread.wait_reason.{}", reason),
+            count as i64,
+        );
+    }
+    out
+}
+
+fn collect_numa_vmstat() -> BTreeMap<String, i64> {
+    let mut out = BTreeMap::new();
+    let mut highest = 0u32;
+    let ok = unsafe { GetNumaHighestNodeNumber(&mut highest) }.is_ok();
+    if ok {
+        out.insert(
+            "windows.numa.nodes".to_string(),
+            highest.saturating_add(1) as i64,
+        );
     }
     out
 }
@@ -1010,25 +1233,21 @@ fn extract_process_thread_summaries(buf: &[u8]) -> (u64, u32, BTreeMap<i32, Proc
             "unknown".to_string()
         };
 
-        summaries.insert(pid, ProcessThreadSummary { state, last_cpu: None });
+        summaries.insert(
+            pid,
+            ProcessThreadSummary {
+                state,
+                last_cpu: None,
+            },
+        );
     }
 
     (count.saturating_sub(1), procs_blocked, summaries)
 }
 
 fn query_seek_penalty(device_path: &str) -> Option<bool> {
-    let path_w = wide_z(device_path);
     unsafe {
-        let handle = CreateFileW(
-            PCWSTR(path_w.as_ptr()),
-            FILE_GENERIC_READ.0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            None,
-        )
-        .ok()?;
+        let handle = open_storage_query_handle(device_path)?;
         let mut query = STORAGE_PROPERTY_QUERY {
             PropertyId: STORAGE_PROPERTY_ID(STORAGE_PROPERTY_ID_SEEK_PENALTY as i32),
             QueryType: STORAGE_QUERY_TYPE(0),
@@ -1037,7 +1256,7 @@ fn query_seek_penalty(device_path: &str) -> Option<bool> {
         let mut desc = DeviceSeekPenaltyDescriptor::default();
         let mut returned = 0u32;
         let ok = DeviceIoControl(
-            handle,
+            handle.as_raw(),
             IOCTL_STORAGE_QUERY_PROPERTY,
             Some(&mut query as *mut _ as *mut c_void),
             size_of::<STORAGE_PROPERTY_QUERY>() as u32,
@@ -1047,7 +1266,6 @@ fn query_seek_penalty(device_path: &str) -> Option<bool> {
             None,
         )
         .is_ok();
-        let _ = CloseHandle(handle);
         if ok && returned >= size_of::<DeviceSeekPenaltyDescriptor>() as u32 {
             Some(desc.incurs_seek_penalty != 0)
         } else {
@@ -1058,19 +1276,10 @@ fn query_seek_penalty(device_path: &str) -> Option<bool> {
 
 fn query_storage_alignment(device_path: &str) -> (Option<u64>, Option<u64>, Option<bool>) {
     let rotational = query_seek_penalty(device_path);
-    let path_w = wide_z(device_path);
     unsafe {
-        let handle = match CreateFileW(
-            PCWSTR(path_w.as_ptr()),
-            FILE_GENERIC_READ.0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            None,
-        ) {
-            Ok(h) => h,
-            Err(_) => return (Some(512), Some(512), rotational),
+        let handle = match open_storage_query_handle(device_path) {
+            Some(h) => h,
+            None => return (Some(512), Some(512), rotational),
         };
         let mut query = STORAGE_PROPERTY_QUERY {
             PropertyId: STORAGE_PROPERTY_ID(6),
@@ -1080,7 +1289,7 @@ fn query_storage_alignment(device_path: &str) -> (Option<u64>, Option<u64>, Opti
         let mut out = vec![0u8; 1024];
         let mut returned = 0u32;
         let ok = DeviceIoControl(
-            handle,
+            handle.as_raw(),
             IOCTL_STORAGE_QUERY_PROPERTY,
             Some(&mut query as *mut _ as *mut c_void),
             size_of::<STORAGE_PROPERTY_QUERY>() as u32,
@@ -1090,11 +1299,18 @@ fn query_storage_alignment(device_path: &str) -> (Option<u64>, Option<u64>, Opti
             None,
         )
         .is_ok();
-        let _ = CloseHandle(handle);
         if ok && returned >= size_of::<STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR>() as u32 {
             let desc = &*(out.as_ptr() as *const STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR);
-            let l = if desc.BytesPerLogicalSector > 0 { desc.BytesPerLogicalSector as u64 } else { 512 };
-            let p = if desc.BytesPerPhysicalSector > 0 { desc.BytesPerPhysicalSector as u64 } else { l };
+            let l = if desc.BytesPerLogicalSector > 0 {
+                desc.BytesPerLogicalSector as u64
+            } else {
+                512
+            };
+            let p = if desc.BytesPerPhysicalSector > 0 {
+                desc.BytesPerPhysicalSector as u64
+            } else {
+                l
+            };
             (Some(l), Some(p), rotational)
         } else {
             (Some(512), Some(512), rotational)
@@ -1102,7 +1318,7 @@ fn query_storage_alignment(device_path: &str) -> (Option<u64>, Option<u64>, Opti
     }
 }
 
-fn open_storage_query_handle(path: &str) -> Option<HANDLE> {
+fn open_storage_query_handle(path: &str) -> Option<OwnedHandle> {
     let path_w = wide_z(path);
     unsafe {
         let attempts = [
@@ -1120,14 +1336,17 @@ fn open_storage_query_handle(path: &str) -> Option<HANDLE> {
                 flags,
                 None,
             ) {
-                return Some(handle);
+                return Some(OwnedHandle(handle));
             }
         }
     }
     None
 }
 
-fn query_disk_performance_for_path(path: &str, _state: &mut WinCollectState) -> Option<DiskPerfData> {
+fn query_disk_performance_for_path(
+    path: &str,
+    _state: &mut WinCollectState,
+) -> Option<DiskPerfData> {
     unsafe {
         let handle = match open_storage_query_handle(path) {
             Some(h) => h,
@@ -1167,14 +1386,15 @@ fn query_disk_performance_for_path(path: &str, _state: &mut WinCollectState) -> 
             }
         };
 
-        let raw = try_ioctl_perf(handle)?;
-        let _ = CloseHandle(handle);
+        let raw = try_ioctl_perf(handle.as_raw())?;
 
         let boot_100ns = boot_time_filetime_100ns();
         let query_100ns = nt_time_100ns(raw.query_time.quad_part);
         let idle_100ns = nt_time_100ns(raw.idle_time.quad_part);
-        let time_in_progress_ms =
-            query_100ns.saturating_sub(boot_100ns).saturating_sub(idle_100ns) / 10_000;
+        let time_in_progress_ms = query_100ns
+            .saturating_sub(boot_100ns)
+            .saturating_sub(idle_100ns)
+            / 10_000;
         let bytes_read = nt_time_100ns(raw.bytes_read.quad_part);
         let bytes_written = nt_time_100ns(raw.bytes_written.quad_part);
         let read_time_ms = nt_time_100ns(raw.read_time.quad_part) / 10_000;
@@ -1227,8 +1447,10 @@ fn per_cpu_times_from_nt() -> Option<(Vec<CpuTimes>, u64)> {
         let user = nt_time_100ns(entry.user_time.quad_part);
         let dpc = nt_time_100ns(entry.dpc_time.quad_part);
         let irq = nt_time_100ns(entry.interrupt_time.quad_part);
-        let system =
-            kernel_total.saturating_sub(idle).saturating_sub(dpc).saturating_sub(irq);
+        let system = kernel_total
+            .saturating_sub(idle)
+            .saturating_sub(dpc)
+            .saturating_sub(irq);
         interrupts_total = interrupts_total.saturating_add(entry.interrupt_count as u64);
         out.push(CpuTimes {
             user,
@@ -1344,7 +1566,9 @@ fn compute_load_averages(
     let now = Instant::now();
 
     let instant_load = |busy: u64, total: u64| -> f64 {
-        if total == 0 { return 0.0; }
+        if total == 0 {
+            return 0.0;
+        }
         (busy as f64 / total as f64 * entities as f64).clamp(0.0, entities as f64)
     };
 
@@ -1396,12 +1620,15 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
     let proc_buf = if let Some(buf) = process_info_buffer {
         buf
     } else {
-        owned_buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS).unwrap_or_default();
+        owned_buf = query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?;
         owned_buf.as_slice()
     };
     let (process_count, procs_blocked, summaries) = extract_process_thread_summaries(&proc_buf);
     let procs_running = summaries.values().filter(|s| s.state == "R").count() as u32;
-    let context_switches = perf.as_ref().map(|p| p.context_switches as u64).unwrap_or(0);
+    let context_switches = perf
+        .as_ref()
+        .map(|p| p.context_switches as u64)
+        .unwrap_or(0);
     let softirqs_total = per_cpu
         .iter()
         .map(|cpu| cpu.softirq)
@@ -1439,7 +1666,9 @@ fn collect_memory(perf: Option<&SystemPerformanceInformation>) -> Result<MemoryS
     unsafe {
         let mut mem = MEMORYSTATUSEX::default();
         mem.dwLength = size_of::<MEMORYSTATUSEX>() as u32;
-        GlobalMemoryStatusEx(&mut mem).ok().context("GlobalMemoryStatusEx failed")?;
+        GlobalMemoryStatusEx(&mut mem)
+            .ok()
+            .context("GlobalMemoryStatusEx failed")?;
 
         let page = page_size_from_nt();
         let total_phys = mem.ullTotalPhys;
@@ -1447,33 +1676,39 @@ fn collect_memory(perf: Option<&SystemPerformanceInformation>) -> Result<MemoryS
         let total_pagefile = mem.ullTotalPageFile;
         let avail_pagefile = mem.ullAvailPageFile;
 
-        let (cached_bytes, commit_total, commit_limit, non_paged_pool, paged_pool, perf_avail_bytes) =
-            match perf {
-                Some(p) => (
-                    (p.resident_system_cache_page as u64).saturating_mul(page),
-                    (p.committed_pages as u64).saturating_mul(page),
-                    (p.commit_limit as u64).saturating_mul(page),
-                    (p.non_paged_pool_pages as u64).saturating_mul(page),
-                    (p.paged_pool_pages as u64).saturating_mul(page),
-                    (p.available_pages as u64).saturating_mul(page),
-                ),
-                None => {
-                    let mut perf = PERFORMANCE_INFORMATION::default();
-                    perf.cb = size_of::<PERFORMANCE_INFORMATION>() as u32;
-                    if GetPerformanceInfo(&mut perf, perf.cb).is_ok() {
-                        (
-                            (perf.SystemCache as u64).saturating_mul(page),
-                            (perf.CommitTotal as u64).saturating_mul(page),
-                            (perf.CommitLimit as u64).saturating_mul(page),
-                            0,
-                            0,
-                            (perf.PhysicalAvailable as u64).saturating_mul(page),
-                        )
-                    } else {
-                        (0, 0, 0, 0, 0, avail_phys)
-                    }
+        let (
+            cached_bytes,
+            commit_total,
+            commit_limit,
+            non_paged_pool,
+            paged_pool,
+            perf_avail_bytes,
+        ) = match perf {
+            Some(p) => (
+                (p.resident_system_cache_page as u64).saturating_mul(page),
+                (p.committed_pages as u64).saturating_mul(page),
+                (p.commit_limit as u64).saturating_mul(page),
+                (p.non_paged_pool_pages as u64).saturating_mul(page),
+                (p.paged_pool_pages as u64).saturating_mul(page),
+                (p.available_pages as u64).saturating_mul(page),
+            ),
+            None => {
+                let mut perf = PERFORMANCE_INFORMATION::default();
+                perf.cb = size_of::<PERFORMANCE_INFORMATION>() as u32;
+                if GetPerformanceInfo(&mut perf, perf.cb).is_ok() {
+                    (
+                        (perf.SystemCache as u64).saturating_mul(page),
+                        (perf.CommitTotal as u64).saturating_mul(page),
+                        (perf.CommitLimit as u64).saturating_mul(page),
+                        0,
+                        0,
+                        (perf.PhysicalAvailable as u64).saturating_mul(page),
+                    )
+                } else {
+                    (0, 0, 0, 0, 0, avail_phys)
                 }
-            };
+            }
+        };
 
         let used_phys = total_phys.saturating_sub(avail_phys);
 
@@ -1559,7 +1794,10 @@ fn drive_strings() -> Result<Vec<String>> {
         let mut buf = vec![0u16; 1024];
         let len = GetLogicalDriveStringsW(Some(&mut buf)) as usize;
         if len == 0 {
-            return Err(anyhow!("GetLogicalDriveStringsW failed: {}", GetLastError().0));
+            return Err(anyhow!(
+                "GetLogicalDriveStringsW failed: {}",
+                GetLastError().0
+            ));
         }
         if len > buf.len() {
             buf.resize(len + 2, 0);
@@ -1587,13 +1825,23 @@ fn collect_disks(state: &mut WinCollectState) -> Result<Vec<DiskSnapshot>> {
     let mut out = Vec::new();
     for idx in 0u32..64 {
         let device_path = format!(r"\\.\PhysicalDrive{idx}");
-        let handle = match open_storage_query_handle(&device_path) {
-            Some(h) => h,
-            None => continue,
-        };
-        let _ = unsafe { CloseHandle(handle) };
+        if open_storage_query_handle(&device_path).is_none() {
+            continue;
+        }
 
-        let (logical, physical, rotational) = query_storage_alignment(&device_path);
+        let static_meta = if let Some(meta) = state.disk_static.get(&device_path).copied() {
+            meta
+        } else {
+            let (logical, physical, rotational) = query_storage_alignment(&device_path);
+            let meta = DiskStaticMeta {
+                logical_block_size: logical,
+                physical_block_size: physical,
+                rotational,
+            };
+            state.disk_static.insert(device_path.clone(), meta);
+            meta
+        };
+
         let perf = query_disk_performance_for_path(&device_path, state);
         if perf.is_none() && !state.disk_perf_unavailable {
             warn!(
@@ -1607,7 +1855,10 @@ fn collect_disks(state: &mut WinCollectState) -> Result<Vec<DiskSnapshot>> {
             has_counters: perf.is_some(),
             reads: perf.as_ref().map(|v| v.reads).unwrap_or(0),
             writes: perf.as_ref().map(|v| v.writes).unwrap_or(0),
-            sectors_read: perf.as_ref().map(|v| v.bytes_read / SECTOR_SIZE.max(1)).unwrap_or(0),
+            sectors_read: perf
+                .as_ref()
+                .map(|v| v.bytes_read / SECTOR_SIZE.max(1))
+                .unwrap_or(0),
             sectors_written: perf
                 .as_ref()
                 .map(|v| v.bytes_written / SECTOR_SIZE.max(1))
@@ -1620,9 +1871,9 @@ fn collect_disks(state: &mut WinCollectState) -> Result<Vec<DiskSnapshot>> {
                 .as_ref()
                 .map(|v| v.weighted_time_in_progress_ms)
                 .unwrap_or(0),
-            logical_block_size: logical,
-            physical_block_size: physical,
-            rotational,
+            logical_block_size: static_meta.logical_block_size,
+            physical_block_size: static_meta.physical_block_size,
+            rotational: static_meta.rotational,
         });
     }
     Ok(out)
@@ -1697,7 +1948,11 @@ pub fn collect_net() -> Result<Vec<NetDevSnapshot>> {
                 is_physical: Some(is_physical),
                 is_primary: Some(false),
                 mtu: Some(row.Mtu as u64),
-                speed_mbps: if speed_mbps > 0 { Some(speed_mbps) } else { None },
+                speed_mbps: if speed_mbps > 0 {
+                    Some(speed_mbps)
+                } else {
+                    None
+                },
                 tx_queue_len: None,
                 carrier_up: Some(row.OperStatus.0 == 1),
                 rx_bytes: row.InOctets,
@@ -1771,7 +2026,11 @@ fn collect_processes_from_nt(
         let comm_from_spi = {
             let n = utf16_from_unicode_string(&spi.image_name);
             if n.is_empty() {
-                if pid == 0 { "System Idle Process".to_string() } else { "System".to_string() }
+                if pid == 0 {
+                    "System Idle Process".to_string()
+                } else {
+                    "System".to_string()
+                }
             } else {
                 n
             }
@@ -1831,47 +2090,43 @@ fn collect_processes_from_nt(
         };
 
         if matches!(mode, ProcessMode::Detailed) && pid > 4 {
-            unsafe {
-                if let Some(handle) = open_process_limited(pid as u32) {
-                    if let Some(full_path) = process_image_name(handle) {
-                        let base = process_basename(&full_path).to_string();
-                        if !base.is_empty() {
-                            process.comm = base;
-                        }
+            if let Some(handle) = open_process_limited(pid as u32) {
+                if let Some(full_path) = process_image_name(handle.as_raw()) {
+                    let base = process_basename(&full_path).to_string();
+                    if !base.is_empty() {
+                        process.comm = base;
                     }
-                    if let Some((utime, stime, ctime)) = get_process_times_100ns(handle) {
-                        process.utime_ticks = utime;
-                        process.stime_ticks = stime;
-                        process.start_time_ticks = ctime.saturating_sub(boot_filetime);
-                    }
-                    if let Some(mem) = get_process_mem(handle) {
-                        process.rss_pages = (mem.WorkingSetSize as u64 / page) as i64;
-                        process.resident_bytes = Some(mem.WorkingSetSize as u64);
-                        process.working_set_bytes = Some(mem.WorkingSetSize as u64);
-                        process.private_bytes = Some(mem.PrivateUsage as u64);
-                        process.commit_charge_bytes = Some(mem.PrivateUsage as u64);
-                        process.pagefile_usage_bytes = Some(mem.PagefileUsage as u64);
-                        process.peak_working_set_bytes = Some(mem.PeakWorkingSetSize as u64);
-                    }
-                    if let Some(io) = get_process_io(handle) {
-                        process.read_chars = Some(io.ReadTransferCount);
-                        process.write_chars = Some(io.WriteTransferCount);
-                        process.syscr = Some(io.ReadOperationCount);
-                        process.syscw = Some(io.WriteOperationCount);
-                        process.read_bytes = Some(io.ReadTransferCount);
-                        process.write_bytes = Some(io.WriteTransferCount);
-                    }
-                    if let Some(h) = get_process_handle_count_safe(handle) {
-                        process.fd_count = Some(h);
-                    }
-                    process.policy = get_priority_class_safe(handle);
-                    let _ = CloseHandle(handle);
                 }
+                if let Some((utime, stime, ctime)) = get_process_times_100ns(handle.as_raw()) {
+                    process.utime_ticks = utime;
+                    process.stime_ticks = stime;
+                    process.start_time_ticks = ctime.saturating_sub(boot_filetime);
+                }
+                if let Some(mem) = get_process_mem(handle.as_raw()) {
+                    process.rss_pages = (mem.WorkingSetSize as u64 / page) as i64;
+                    process.resident_bytes = Some(mem.WorkingSetSize as u64);
+                    process.working_set_bytes = Some(mem.WorkingSetSize as u64);
+                    process.private_bytes = Some(mem.PrivateUsage as u64);
+                    process.commit_charge_bytes = Some(mem.PrivateUsage as u64);
+                    process.pagefile_usage_bytes = Some(mem.PagefileUsage as u64);
+                    process.peak_working_set_bytes = Some(mem.PeakWorkingSetSize as u64);
+                }
+                if let Some(io) = get_process_io(handle.as_raw()) {
+                    process.read_chars = Some(io.ReadTransferCount);
+                    process.write_chars = Some(io.WriteTransferCount);
+                    process.syscr = Some(io.ReadOperationCount);
+                    process.syscw = Some(io.WriteOperationCount);
+                    process.read_bytes = Some(io.ReadTransferCount);
+                    process.write_bytes = Some(io.WriteTransferCount);
+                }
+                if let Some(h) = get_process_handle_count_safe(handle.as_raw()) {
+                    process.fd_count = Some(h);
+                }
+                process.policy = get_priority_class_safe(handle.as_raw());
             }
         }
 
         out.push(process);
-
     }
 
     Ok(out)
@@ -1903,7 +2158,9 @@ pub fn collect_cpuinfo() -> Vec<CpuInfoSnapshot> {
 }
 
 pub fn collect_mounts() -> Vec<MountSnapshot> {
-    let Ok(drives) = drive_strings() else { return Vec::new() };
+    let Ok(drives) = drive_strings() else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for drive in drives {
         let drive_w = wide_z(&drive);
@@ -1963,7 +2220,11 @@ fn query_volume_guid_for_mount(mountpoint: &str) -> Option<String> {
         GetVolumeNameForVolumeMountPointW(PCWSTR(mount_w.as_ptr()), &mut buf).ok()?;
     }
     let value = utf16z_to_string(&buf);
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn query_nt_device_for_mount(mountpoint: &str) -> Option<String> {
@@ -1977,7 +2238,11 @@ fn query_nt_device_for_mount(mountpoint: &str) -> Option<String> {
         }
     }
     let value = utf16z_to_string(&buf);
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn query_physical_drive_for_mount(mountpoint: &str) -> Option<String> {
@@ -2015,6 +2280,48 @@ fn query_physical_drive_for_mount(mountpoint: &str) -> Option<String> {
             None
         }
     }
+}
+
+fn collect_filesystem_stats(mounts: &[MountSnapshot]) -> BTreeMap<String, u64> {
+    let mut out = BTreeMap::new();
+
+    for mount in mounts {
+        let root = if mount.mountpoint.ends_with('\\') {
+            mount.mountpoint.clone()
+        } else {
+            format!("{}\\", mount.mountpoint)
+        };
+        let root_w = wide_z(&root);
+
+        let mut avail_to_user = 0u64;
+        let mut total = 0u64;
+        let mut free = 0u64;
+
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                PCWSTR(root_w.as_ptr()),
+                Some(&mut avail_to_user),
+                Some(&mut total),
+                Some(&mut free),
+            )
+        }
+        .is_ok();
+
+        if !ok {
+            continue;
+        }
+
+        let used = total.saturating_sub(free);
+        out.insert(format!("{}|total_bytes|value", mount.mountpoint), total);
+        out.insert(format!("{}|used_bytes|value", mount.mountpoint), used);
+        out.insert(format!("{}|free_bytes|value", mount.mountpoint), free);
+        out.insert(
+            format!("{}|avail_bytes|value", mount.mountpoint),
+            avail_to_user,
+        );
+    }
+
+    out
 }
 
 fn collect_disk_volume_correlation(mounts: &[MountSnapshot]) -> Vec<DiskVolumeCorrelation> {
@@ -2099,18 +2406,15 @@ fn collect_windows_memory_pressure(
         0.0
     };
     let pagefile_utilization_pct = if memory.swap_total_bytes > 0 {
-        let used = memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes);
+        let used = memory
+            .swap_total_bytes
+            .saturating_sub(memory.swap_free_bytes);
         (used as f64 * 100.0) / memory.swap_total_bytes as f64
     } else {
         0.0
     };
     let (hard_fault_rate, page_reads_per_sec, page_writes_per_sec, sampled_interval_secs) =
-        compute_windows_paging_rates(
-            hard_fault_total,
-            page_reads_total,
-            page_writes_total,
-            state,
-        );
+        compute_windows_paging_rates(hard_fault_total, page_reads_total, page_writes_total, state);
     WindowsMemoryPressureSnapshot {
         commit_utilization_pct,
         available_memory_pct,
@@ -2141,11 +2445,15 @@ fn collect_windows_commit(memory: &MemorySnapshot) -> WindowsCommitSnapshot {
     }
 }
 
-fn collect_windows_memory_pools(perf: Option<&SystemPerformanceInformation>) -> WindowsMemoryPoolsSnapshot {
+fn collect_windows_memory_pools(
+    perf: Option<&SystemPerformanceInformation>,
+) -> WindowsMemoryPoolsSnapshot {
     let page = page_size_from_nt().max(1);
     let paged_pool_pages = perf.map(|p| p.paged_pool_pages as u64).unwrap_or(0);
     let nonpaged_pool_pages = perf.map(|p| p.non_paged_pool_pages as u64).unwrap_or(0);
-    let system_cache_pages = perf.map(|p| p.resident_system_cache_page as u64).unwrap_or(0);
+    let system_cache_pages = perf
+        .map(|p| p.resident_system_cache_page as u64)
+        .unwrap_or(0);
     WindowsMemoryPoolsSnapshot {
         paged_pool_bytes: paged_pool_pages.saturating_mul(page),
         nonpaged_pool_bytes: nonpaged_pool_pages.saturating_mul(page),
@@ -2155,20 +2463,41 @@ fn collect_windows_memory_pools(perf: Option<&SystemPerformanceInformation>) -> 
 
 fn windows_support_state() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    out.insert("memory.inactive_bytes".to_string(), "unsupported".to_string());
-    out.insert("memory.anon_pages_bytes".to_string(), "unsupported".to_string());
+    out.insert(
+        "memory.inactive_bytes".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "memory.anon_pages_bytes".to_string(),
+        "unsupported".to_string(),
+    );
     out.insert("memory.mapped_bytes".to_string(), "unsupported".to_string());
     out.insert("memory.shmem_bytes".to_string(), "unsupported".to_string());
     out.insert("memory.dirty_bytes".to_string(), "unsupported".to_string());
-    out.insert("memory.page_tables_bytes".to_string(), "unsupported".to_string());
-    out.insert("memory.kernel_stack_bytes".to_string(), "unsupported".to_string());
-    out.insert("system.forks_since_boot".to_string(), "unsupported".to_string());
+    out.insert(
+        "memory.page_tables_bytes".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "memory.kernel_stack_bytes".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "system.forks_since_boot".to_string(),
+        "unsupported".to_string(),
+    );
     out.insert("system.pid_max".to_string(), "unsupported".to_string());
-    out.insert("system.entropy_available_bits".to_string(), "unsupported".to_string());
-    out.insert("system.entropy_pool_size_bits".to_string(), "unsupported".to_string());
+    out.insert(
+        "system.entropy_available_bits".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "system.entropy_pool_size_bits".to_string(),
+        "unsupported".to_string(),
+    );
     out.insert(
         "system.softirqs_total".to_string(),
-        "windows_dpc_equivalent".to_string(),
+        "windows_dpc_analogue_not_linux_softirq".to_string(),
     );
     out.insert(
         "process.vsize_bytes".to_string(),
@@ -2179,17 +2508,41 @@ fn windows_support_state() -> BTreeMap<String, String> {
         "compat_alias_use_process.resident_bytes_on_windows".to_string(),
     );
     out.insert("section.pressure".to_string(), "unsupported".to_string());
-    out.insert("section.pressure_totals_us".to_string(), "unsupported".to_string());
-    out.insert("section.swaps".to_string(), "windows_pagefile_model".to_string());
+    out.insert(
+        "section.pressure_totals_us".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "section.swaps".to_string(),
+        "windows_pagefile_model".to_string(),
+    );
     out.insert(
         "load.shared".to_string(),
-        "unsupported_on_windows_use_windows.load.synthetic".to_string(),
+        "unsupported_on_windows_use_windows.load.synthetic_not_linux_loadavg".to_string(),
+    );
+    out.insert(
+        "process.open_file_descriptors".to_string(),
+        "mapped_to_windows_handle_count_not_posix_fd".to_string(),
+    );
+    out.insert(
+        "process.linux.scheduler".to_string(),
+        "mapped_to_windows_priority_class_not_linux_policy".to_string(),
+    );
+    out.insert(
+        "snapshot.state.persistence".to_string(),
+        "wincollect_state_persisted_across_snapshots".to_string(),
     );
     out.insert("section.softnet".to_string(), "unsupported".to_string());
     out.insert("section.zoneinfo".to_string(), "unsupported".to_string());
     out.insert("section.buddyinfo".to_string(), "unsupported".to_string());
-    out.insert("section.linux_softirqs".to_string(), "unsupported".to_string());
-    out.insert("section.linux_interrupts".to_string(), "unsupported".to_string());
+    out.insert(
+        "section.linux_softirqs".to_string(),
+        "unsupported".to_string(),
+    );
+    out.insert(
+        "section.linux_interrupts".to_string(),
+        "unsupported".to_string(),
+    );
     out
 }
 
@@ -2209,9 +2562,15 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
         "native_windows_analogue".to_string(),
     );
     out.insert("system.windows.vmstat.*".to_string(), "native".to_string());
-    out.insert("system.memory.inactive".to_string(), "unsupported".to_string());
+    out.insert(
+        "system.memory.inactive".to_string(),
+        "unsupported".to_string(),
+    );
     out.insert("system.memory.anon".to_string(), "unsupported".to_string());
-    out.insert("system.memory.mapped".to_string(), "unsupported".to_string());
+    out.insert(
+        "system.memory.mapped".to_string(),
+        "unsupported".to_string(),
+    );
     out.insert("system.memory.shmem".to_string(), "unsupported".to_string());
     out.insert("system.socket.*".to_string(), "native".to_string());
     out.insert("system.filesystem.*".to_string(), "native".to_string());
@@ -2220,13 +2579,39 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
     out.insert("windows.interrupts.*".to_string(), "native".to_string());
     out.insert("windows.dpc.*".to_string(), "native".to_string());
     out.insert("windows.vmstat.*".to_string(), "native".to_string());
-    out.insert("windows.load.synthetic.*".to_string(), "synthetic".to_string());
+    out.insert(
+        "windows.load.synthetic.*".to_string(),
+        "synthetic".to_string(),
+    );
     out.insert("windows.pagefiles.*".to_string(), "native".to_string());
     out.insert("windows.memory.commit.*".to_string(), "native".to_string());
     out.insert("windows.memory.pools.*".to_string(), "native".to_string());
-    out.insert("windows.memory.pressure.*".to_string(), "derived".to_string());
-    out.insert("process.vsize_bytes".to_string(), "compatibility_alias".to_string());
-    out.insert("process.rss_pages".to_string(), "compatibility_alias".to_string());
+    out.insert(
+        "windows.memory.pressure.*".to_string(),
+        "derived".to_string(),
+    );
+    out.insert("windows.thread.*".to_string(), "native".to_string());
+    out.insert("windows.numa.*".to_string(), "native".to_string());
+    out.insert(
+        "process.vsize_bytes".to_string(),
+        "compatibility_alias".to_string(),
+    );
+    out.insert(
+        "process.rss_pages".to_string(),
+        "compatibility_alias".to_string(),
+    );
+    out.insert(
+        "process.open_file_descriptors".to_string(),
+        "compatibility_alias_windows_handle_count".to_string(),
+    );
+    out.insert(
+        "process.linux.scheduler".to_string(),
+        "compatibility_alias_windows_priority_class".to_string(),
+    );
+    out.insert(
+        "windows.load.synthetic.*".to_string(),
+        "synthetic_not_linux_loadavg".to_string(),
+    );
     out
 }
 
@@ -2238,39 +2623,78 @@ pub fn collect_swaps(memory: &MemorySnapshot) -> Vec<SwapDeviceSnapshot> {
         device: "system_pagefile".to_string(),
         swap_type: "windows_pagefile".to_string(),
         size_bytes: memory.swap_total_bytes,
-        used_bytes: memory.swap_total_bytes.saturating_sub(memory.swap_free_bytes),
+        used_bytes: memory
+            .swap_total_bytes
+            .saturating_sub(memory.swap_free_bytes),
         priority: -1,
     }]
 }
 
 pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     debug!("wincollect: collect_snapshot start");
-    let process_info_buf = Some(query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS)?);
+    let mut support_state = windows_support_state();
 
-    let system = collect_system(process_info_buf.as_deref())?;
+    let process_info_buf = match query_system_information(SYSTEM_PROCESS_INFORMATION_CLASS) {
+        Ok(buf) => Some(buf),
+        Err(e) => {
+            support_state.insert(
+                "snapshot.windows.process_info.error".to_string(),
+                e.to_string(),
+            );
+            None
+        }
+    };
+
+    let (system, system_ok) = match collect_system(process_info_buf.as_deref()) {
+        Ok(s) => (s, true),
+        Err(e) => {
+            support_state.insert("snapshot.windows.system.error".to_string(), e.to_string());
+            (SystemSnapshot::default(), false)
+        }
+    };
+    support_state.insert(
+        "snapshot.core.system".to_string(),
+        if system_ok {
+            "collected".to_string()
+        } else {
+            "fallback_default_due_to_collection_failure".to_string()
+        },
+    );
+
     debug!("wincollect: collect_system done");
     let perf = system_performance_info();
     let memory = collect_memory(perf.as_ref())?;
     debug!("wincollect: collect_memory done");
-    let mut state = WinCollectState::default();
-    let synthetic_load = collect_synthetic_load(&system.cpu_total, system.procs_running, &mut state)?;
+    let synthetic_load = with_wincollect_state(|state| {
+        collect_synthetic_load(&system.cpu_total, system.procs_running, state)
+    })?;
     debug!("wincollect: collect_synthetic_load done");
-    let disks = collect_disks(&mut state)?;
+    let disks = with_wincollect_state(|state| collect_disks(state))?;
     debug!(disk_count = disks.len(), "wincollect: collect_disks done");
     let net = collect_net()?;
     debug!(iface_count = net.len(), "wincollect: collect_net done");
     let vmstat = collect_vmstat(perf.as_ref());
-    debug!(vmstat_keys = vmstat.len(), "wincollect: collect_vmstat done");
+    debug!(
+        vmstat_keys = vmstat.len(),
+        "wincollect: collect_vmstat done"
+    );
     let net_snmp = collect_net_snmp();
-    debug!(snmp_keys = net_snmp.len(), "wincollect: collect_net_snmp done");
+    debug!(
+        snmp_keys = net_snmp.len(),
+        "wincollect: collect_net_snmp done"
+    );
     let sockets = collect_socket_counts();
-    debug!(socket_keys = sockets.len(), "wincollect: collect_sockets done");
+    debug!(
+        socket_keys = sockets.len(),
+        "wincollect: collect_sockets done"
+    );
     let windows_interrupts = collect_interrupts_detail(&system.per_cpu);
     let windows_dpc = collect_softirqs_detail(&system.per_cpu);
     let interrupts = BTreeMap::new();
     let softirqs = BTreeMap::new();
     let cpuinfo = collect_cpuinfo();
     let mounts = collect_mounts();
+    let filesystem = collect_filesystem_stats(&mounts);
     let disk_volume_correlation = collect_disk_volume_correlation(&mounts);
     let swaps = collect_swaps(&memory);
     let process_mode = if include_process_metrics {
@@ -2280,7 +2704,10 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
     };
 
     let processes = collect_processes_from_nt(process_mode, process_info_buf.as_deref())?;
-    debug!(process_count = processes.len(), "wincollect: collect_processes done");
+    debug!(
+        process_count = processes.len(),
+        "wincollect: collect_processes done"
+    );
     let mut windows_vmstat = BTreeMap::new();
     let mut vmstat_generic = BTreeMap::new();
     for (k, v) in vmstat {
@@ -2290,22 +2717,37 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
             vmstat_generic.insert(k, v);
         }
     }
+    for (k, v) in collect_thread_state_vmstat(process_info_buf.as_deref().unwrap_or(&[])) {
+        if let Some(stripped) = k.strip_prefix("windows.") {
+            windows_vmstat.insert(stripped.to_string(), v);
+        }
+    }
+    for (k, v) in collect_numa_vmstat() {
+        if let Some(stripped) = k.strip_prefix("windows.") {
+            windows_vmstat.insert(stripped.to_string(), v);
+        }
+    }
     let isr_total_time_seconds = system.cpu_total.irq as f64 / 10_000_000.0;
     let dpc_total_time_seconds = system.cpu_total.softirq as f64 / 10_000_000.0;
     let hard_fault_total = perf.as_ref().map(|p| p.page_read_count as u64).unwrap_or(0);
-    let page_reads_total = perf.as_ref().map(|p| p.page_read_io_count as u64).unwrap_or(0);
+    let page_reads_total = perf
+        .as_ref()
+        .map(|p| p.page_read_io_count as u64)
+        .unwrap_or(0);
     let page_writes_total = perf
         .as_ref()
         .map(|p| p.dirty_write_io_count as u64 + p.mapped_write_io_count as u64)
         .unwrap_or(0);
     let windows_pagefiles = collect_windows_pagefiles(&memory);
-    let windows_memory_pressure = collect_windows_memory_pressure(
-        &memory,
-        hard_fault_total,
-        page_reads_total,
-        page_writes_total,
-        &mut state,
-    );
+    let windows_memory_pressure = with_wincollect_state(|state| {
+        Ok(collect_windows_memory_pressure(
+            &memory,
+            hard_fault_total,
+            page_reads_total,
+            page_writes_total,
+            state,
+        ))
+    })?;
     let windows_commit = collect_windows_commit(&memory);
     let windows_pools = collect_windows_memory_pools(perf.as_ref());
     let load = LoadSnapshot {
@@ -2327,7 +2769,13 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         interrupts,
         softirqs,
         net_snmp,
+        net_stat: BTreeMap::new(),
         sockets,
+        schedstat: BTreeMap::new(),
+        runqueue_depth: BTreeMap::new(),
+        slabinfo: BTreeMap::new(),
+        filesystem,
+        cgroup: BTreeMap::new(),
         softnet: Vec::new(),
         swaps,
         mounts,
@@ -2337,7 +2785,7 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         disks,
         net,
         processes,
-        support_state: windows_support_state(),
+        support_state,
         metric_classification: windows_metric_classification(),
         windows: Some(WindowsSnapshot {
             vmstat: windows_vmstat,

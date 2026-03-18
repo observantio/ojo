@@ -4,11 +4,11 @@ mod config;
 mod delta;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linuxcollect;
-#[cfg(target_os = "solaris")]
-mod solarcollect;
 mod metrics;
 mod model;
 mod otel;
+#[cfg(target_os = "solaris")]
+mod solarcollect;
 #[cfg(target_os = "windows")]
 mod wincollect;
 
@@ -117,7 +117,10 @@ fn main() -> Result<()> {
 
                 match export_state {
                     ExportState::Connected => {
-                        warn!(err = err_msg.as_str(), "Exporter flush failed; reconnecting");
+                        warn!(
+                            err = err_msg.as_str(),
+                            "Exporter flush failed; reconnecting"
+                        );
                     }
                     ExportState::Pending | ExportState::Reconnecting => {
                         warn!(err = err_msg.as_str(), "Exporter still unavailable");
@@ -128,7 +131,10 @@ fn main() -> Result<()> {
             }
         }
 
-        debug!(elapsed_ms = started_at.elapsed().as_millis(), "poll tick done");
+        debug!(
+            elapsed_ms = started_at.elapsed().as_millis(),
+            "poll tick done"
+        );
 
         let elapsed = started_at.elapsed();
         if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {

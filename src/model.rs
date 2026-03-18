@@ -20,7 +20,21 @@ pub struct Snapshot {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub net_snmp: BTreeMap<String, u64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub net_stat: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub sockets: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub schedstat: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub runqueue_depth: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub slabinfo: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub filesystem: BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(rename = "cgroup")]
+    #[serde(alias = "cgroup_v2")]
+    pub cgroup: BTreeMap<String, u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub softnet: Vec<SoftnetCpuSnapshot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -143,6 +157,12 @@ pub struct SoftnetCpuSnapshot {
     pub processed: u64,
     pub dropped: u64,
     pub time_squeezed: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_collision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub received_rps: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_limit_count: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
