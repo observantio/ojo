@@ -634,7 +634,7 @@
       },
       "targets": [
         {
-          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"user\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"user\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"user\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"user\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9)) * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])) > bool 0)",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -721,7 +721,7 @@
       },
       "targets": [
         {
-          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"system\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"system\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"system\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"system\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9)) * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])) > bool 0)",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -808,7 +808,7 @@
       },
       "targets": [
         {
-          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"irq\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"irq\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"irq\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"irq\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9)) * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])) > bool 0)",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -896,7 +896,7 @@
       },
       "targets": [
         {
-          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"softirq\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"softirq\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"softirq\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"softirq\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9)) * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])) > bool 0)",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
@@ -984,7 +984,7 @@
       },
       "targets": [
         {
-          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"idle\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"idle\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9))",
+          "expr": "100 * ((((sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",state=\"idle\"}[5m]))) or (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\",cpu_mode=\"idle\"}[5m]))))) / clamp_min(sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])), 1e-9)) * (sum by (instance) (rate(system_cpu_time_seconds_total{instance=~\"$instance\"}[5m])) > bool 0)",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }
