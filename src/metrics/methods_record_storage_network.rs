@@ -3,14 +3,14 @@ impl ProcMetrics {
         for disk in &snap.disks {
             let device = disk.name.clone();
 
-            let attrs = [KeyValue::new("device", device.clone())];
+            let attrs = [KeyValue::new(ATTR_SYSTEM_DEVICE, device.clone())];
             let read_attrs = [
-                KeyValue::new("device", device.clone()),
-                KeyValue::new("direction", "read"),
+                KeyValue::new(ATTR_SYSTEM_DEVICE, device.clone()),
+                KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
             ];
             let write_attrs = [
-                KeyValue::new("device", device.clone()),
-                KeyValue::new("direction", "write"),
+                KeyValue::new(ATTR_SYSTEM_DEVICE, device.clone()),
+                KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
             ];
 
             if let Some(v) = derived.disk_read_bytes_per_sec.get(&disk.name) {
@@ -216,7 +216,7 @@ impl ProcMetrics {
     fn record_network_interfaces(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         for net in &snap.net {
             let device = net.name.clone();
-            let mut attrs_vec = vec![KeyValue::new("device", device.clone())];
+            let mut attrs_vec = vec![KeyValue::new(ATTR_NETWORK_INTERFACE, device.clone())];
             if let Some(stable_id) = &net.stable_id {
                 attrs_vec.push(KeyValue::new("stable_id", stable_id.clone()));
             }
@@ -241,12 +241,12 @@ impl ProcMetrics {
 
             let attrs = attrs_vec.clone();
             let rx_attrs = [
-                KeyValue::new("device", device.clone()),
-                KeyValue::new("direction", "receive"),
+                KeyValue::new(ATTR_NETWORK_INTERFACE, device.clone()),
+                KeyValue::new(ATTR_NETWORK_IO_DIRECTION, "receive"),
             ];
             let tx_attrs = [
-                KeyValue::new("device", device.clone()),
-                KeyValue::new("direction", "transmit"),
+                KeyValue::new(ATTR_NETWORK_INTERFACE, device.clone()),
+                KeyValue::new(ATTR_NETWORK_IO_DIRECTION, "transmit"),
             ];
 
             if let Some(v) = derived.net_rx_bytes_per_sec.get(&net.name) {
@@ -346,16 +346,16 @@ impl ProcMetrics {
             }
             if let Some(v) = derived.net_rx_packets_delta.get(&net.name) {
                 self.add_u64(
-                    "system.network.packets",
-                    &self.otel_network_packets,
+                    "system.network.packet.count",
+                    &self.otel_network_packet_count,
                     *v,
                     &rx_attrs,
                 );
             }
             if let Some(v) = derived.net_tx_packets_delta.get(&net.name) {
                 self.add_u64(
-                    "system.network.packets",
-                    &self.otel_network_packets,
+                    "system.network.packet.count",
+                    &self.otel_network_packet_count,
                     *v,
                     &tx_attrs,
                 );
@@ -378,16 +378,16 @@ impl ProcMetrics {
             }
             if let Some(v) = derived.net_rx_drop_delta.get(&net.name) {
                 self.add_u64(
-                    "system.network.dropped",
-                    &self.otel_network_dropped,
+                    "system.network.packet.dropped",
+                    &self.otel_network_packet_dropped,
                     *v,
                     &rx_attrs,
                 );
             }
             if let Some(v) = derived.net_tx_drop_delta.get(&net.name) {
                 self.add_u64(
-                    "system.network.dropped",
-                    &self.otel_network_dropped,
+                    "system.network.packet.dropped",
+                    &self.otel_network_packet_dropped,
                     *v,
                     &tx_attrs,
                 );

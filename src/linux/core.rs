@@ -173,7 +173,7 @@ fn linux_support_state(inputs: LinuxSupportInputs<'_>) -> BTreeMap<String, Strin
 
     if let Some(meta) = inputs.process_meta {
         out.insert(
-            "process.open_file_descriptors.collection".to_string(),
+            "process.unix.file_descriptor.count.collection".to_string(),
             if meta.fd_scan_enabled {
                 "counted_from_proc_pid_fd".to_string()
             } else {
@@ -443,9 +443,15 @@ fn linux_metric_classification() -> BTreeMap<String, String> {
     out.insert("system.disk.*".to_string(), "gauge".to_string());
 
     out.insert("system.network.io".to_string(), "counter".to_string());
-    out.insert("system.network.packets".to_string(), "counter".to_string());
+    out.insert(
+        "system.network.packet.count".to_string(),
+        "counter".to_string(),
+    );
     out.insert("system.network.errors".to_string(), "counter".to_string());
-    out.insert("system.network.dropped".to_string(), "counter".to_string());
+    out.insert(
+        "system.network.packet.dropped".to_string(),
+        "counter".to_string(),
+    );
     out.insert(
         "system.network.*_per_sec".to_string(),
         "gauge_derived".to_string(),
@@ -477,7 +483,7 @@ fn linux_metric_classification() -> BTreeMap<String, String> {
     out.insert("process.paging.faults".to_string(), "counter".to_string());
     out.insert("process.memory.usage".to_string(), "gauge".to_string());
     out.insert(
-        "process.open_file_descriptors".to_string(),
+        "process.unix.file_descriptor.count".to_string(),
         "gauge".to_string(),
     );
     out.insert("process.oom_score".to_string(), "gauge".to_string());

@@ -195,7 +195,7 @@ fn windows_support_state() -> BTreeMap<String, String> {
         "unsupported_on_windows_use_windows.load.synthetic_not_linux_loadavg".to_string(),
     );
     out.insert(
-        "process.open_file_descriptors".to_string(),
+        "process.unix.file_descriptor.count".to_string(),
         "mapped_to_windows_handle_count_not_posix_fd".to_string(),
     );
     out.insert(
@@ -275,7 +275,7 @@ fn windows_metric_classification() -> BTreeMap<String, String> {
         "compatibility_alias".to_string(),
     );
     out.insert(
-        "process.open_file_descriptors".to_string(),
+        "process.unix.file_descriptor.count".to_string(),
         "compatibility_alias_windows_handle_count".to_string(),
     );
     out.insert(

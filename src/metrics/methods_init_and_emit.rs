@@ -22,10 +22,10 @@ impl ProcMetrics {
                 .with_unit("{switch}")
                 .with_description("Total context switches.")
                 .build(),
-            otel_system_processes_created: meter
-                .u64_counter("system.processes.created")
+            otel_system_process_created: meter
+                .u64_counter("system.process.created")
                 .with_unit("{process}")
-                .with_description("Total processes created since boot.")
+                .with_description("Total processes created since boot (OTEL semantic convention).")
                 .build(),
             otel_system_paging_faults: meter
                 .u64_counter("system.paging.faults")
@@ -117,20 +117,20 @@ impl ProcMetrics {
                 .with_unit("By")
                 .with_description("Network I/O bytes by interface and direction.")
                 .build(),
-            otel_network_packets: meter
-                .u64_counter("system.network.packets")
+            otel_network_packet_count: meter
+                .u64_counter("system.network.packet.count")
                 .with_unit("{packet}")
-                .with_description("Network packets by interface and direction.")
+                .with_description("Network packet count by interface and direction (OTEL semantic convention).")
                 .build(),
             otel_network_errors: meter
                 .u64_counter("system.network.errors")
                 .with_unit("{error}")
                 .with_description("Network errors by interface and direction.")
                 .build(),
-            otel_network_dropped: meter
-                .u64_counter("system.network.dropped")
+            otel_network_packet_dropped: meter
+                .u64_counter("system.network.packet.dropped")
                 .with_unit("{packet}")
-                .with_description("Network dropped packets by interface and direction.")
+                .with_description("Network dropped packet count by interface and direction (OTEL semantic convention).")
                 .build(),
             otel_process_cpu_time: meter
                 .f64_counter("process.cpu.time")
@@ -167,10 +167,10 @@ impl ProcMetrics {
                 .with_unit("By")
                 .with_description("Process memory usage by type.")
                 .build(),
-            otel_process_open_fds: meter
-                .u64_gauge("process.open_file_descriptors")
+            otel_process_unix_file_descriptor_count: meter
+                .u64_gauge("process.unix.file_descriptor.count")
                 .with_unit("{file}")
-                .with_description("Open file descriptors per process.")
+                .with_description("Open file descriptors per process (OTEL semantic convention).")
                 .build(),
             otel_process_oom_score: meter
                 .i64_gauge("process.oom_score")

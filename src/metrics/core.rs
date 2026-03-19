@@ -9,6 +9,17 @@ use opentelemetry::metrics::{Counter, Gauge, Meter};
 use opentelemetry::KeyValue;
 use std::sync::Arc;
 
+// Recommended semantic conventions (OTEL) for metric attributes.
+// These are kept in addition to existing attribute keys for backwards compatibility.
+pub const ATTR_CPU_MODE: &str = "cpu.mode";
+pub const ATTR_SYSTEM_DEVICE: &str = "system.device";
+pub const ATTR_NETWORK_INTERFACE: &str = "network.interface.name";
+pub const ATTR_DISK_IO_DIRECTION: &str = "disk.io.direction";
+pub const ATTR_NETWORK_IO_DIRECTION: &str = "network.io.direction";
+pub const ATTR_PROCESS_PID: &str = "process.pid";
+pub const ATTR_PROCESS_COMMAND: &str = "process.command";
+pub const ATTR_PROCESS_STATE: &str = "process.state";
+
 #[derive(Clone, Debug, Default)]
 pub struct MetricFilter {
     include: Arc<[String]>,
@@ -88,7 +99,7 @@ pub struct ProcMetrics {
     pub otel_system_interrupts: Counter<u64>,
     pub otel_system_softirqs: Counter<u64>,
     pub otel_system_context_switches: Counter<u64>,
-    pub otel_system_processes_created: Counter<u64>,
+    pub otel_system_process_created: Counter<u64>,
     pub otel_system_paging_faults: Counter<u64>,
     pub otel_system_paging_operations: Counter<u64>,
     pub otel_system_swap_operations: Counter<u64>,
@@ -107,9 +118,9 @@ pub struct ProcMetrics {
     pub otel_disk_io_time: Counter<f64>,
     pub otel_disk_pending: Gauge<u64>,
     pub otel_network_io: Counter<u64>,
-    pub otel_network_packets: Counter<u64>,
+    pub otel_network_packet_count: Counter<u64>,
     pub otel_network_errors: Counter<u64>,
-    pub otel_network_dropped: Counter<u64>,
+    pub otel_network_packet_dropped: Counter<u64>,
     pub otel_process_cpu_time: Counter<f64>,
     pub otel_process_io: Counter<u64>,
     pub otel_process_io_chars: Counter<u64>,
@@ -117,7 +128,7 @@ pub struct ProcMetrics {
     pub otel_process_context_switches: Counter<u64>,
     pub otel_process_page_faults: Counter<u64>,
     pub otel_process_memory_usage: Gauge<u64>,
-    pub otel_process_open_fds: Gauge<u64>,
+    pub otel_process_unix_file_descriptor_count: Gauge<u64>,
     pub otel_process_oom_score: Gauge<i64>,
     pub otel_process_processor: Gauge<i64>,
     pub otel_process_start_time: Gauge<f64>,

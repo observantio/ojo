@@ -98,13 +98,16 @@ fn solaris_metric_classification() -> BTreeMap<String, String> {
     );
 
     out.insert("system.network.io".to_string(), "counter".to_string());
-    out.insert("system.network.packets".to_string(), "counter".to_string());
+    out.insert(
+        "system.network.packet.count".to_string(),
+        "counter".to_string(),
+    );
     out.insert("system.network.errors".to_string(), "counter".to_string());
 
     out.insert("process.cpu.time".to_string(), "counter".to_string());
     out.insert("process.memory.usage".to_string(), "gauge".to_string());
     out.insert(
-        "process.open_file_descriptors".to_string(),
+        "process.unix.file_descriptor.count".to_string(),
         "gauge".to_string(),
     );
 

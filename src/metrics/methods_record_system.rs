@@ -134,8 +134,8 @@ impl ProcMetrics {
             &[],
         );
         self.add_u64(
-            "system.processes.created",
-            &self.otel_system_processes_created,
+            "system.process.created",
+            &self.otel_system_process_created,
             derived.forks_delta,
             &[],
         );
@@ -148,7 +148,7 @@ impl ProcMetrics {
                 "system.cpu.time",
                 &self.otel_system_cpu_time,
                 *value,
-                &[KeyValue::new("state", (*state).to_string())],
+                &[KeyValue::new(ATTR_CPU_MODE, (*state).to_string())],
             );
         }
 

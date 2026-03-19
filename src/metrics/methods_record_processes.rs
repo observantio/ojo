@@ -9,11 +9,15 @@ impl ProcMetrics {
             let pid = proc.pid.to_string();
             let comm = proc.comm.clone();
 
-            let pid_kv = KeyValue::new("pid", pid.clone());
-            let comm_kv = KeyValue::new("comm", comm.clone());
-            let proc_state_kv = KeyValue::new("state", proc.state.clone());
+            let process_pid_kv = KeyValue::new(ATTR_PROCESS_PID, pid.clone());
+            let process_command_kv = KeyValue::new(ATTR_PROCESS_COMMAND, comm.clone());
+            let process_state_kv = KeyValue::new(ATTR_PROCESS_STATE, proc.state.clone());
 
-            let base_attrs = [pid_kv.clone(), comm_kv.clone(), proc_state_kv];
+            let base_attrs = [
+                process_pid_kv.clone(),
+                process_command_kv.clone(),
+                process_state_kv,
+            ];
 
             if let Some(cpu) = derived.process_cpu_ratio.get(&proc.pid) {
                 self.record_f64(
@@ -184,10 +188,9 @@ impl ProcMetrics {
                     &self.otel_process_cpu_time,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("state", "user"),
-                        KeyValue::new("cpu_mode", "user"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_CPU_MODE, "user"),
                     ],
                 );
             }
@@ -197,10 +200,9 @@ impl ProcMetrics {
                     &self.otel_process_cpu_time,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("state", "system"),
-                        KeyValue::new("cpu_mode", "system"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_CPU_MODE, "system"),
                     ],
                 );
             }
@@ -210,9 +212,9 @@ impl ProcMetrics {
                     &self.otel_process_io,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "read"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
                     ],
                 );
             }
@@ -222,9 +224,9 @@ impl ProcMetrics {
                     &self.otel_process_io,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "write"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
                     ],
                 );
             }
@@ -234,9 +236,9 @@ impl ProcMetrics {
                     &self.otel_process_io_chars,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "read"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
                     ],
                 );
             }
@@ -246,9 +248,9 @@ impl ProcMetrics {
                     &self.otel_process_io_chars,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "write"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
                     ],
                 );
             }
@@ -258,9 +260,9 @@ impl ProcMetrics {
                     &self.otel_process_io_syscalls,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "read"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
                     ],
                 );
             }
@@ -270,9 +272,9 @@ impl ProcMetrics {
                     &self.otel_process_io_syscalls,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
-                        KeyValue::new("direction", "write"),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
+                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
                     ],
                 );
             }
@@ -282,8 +284,8 @@ impl ProcMetrics {
                     &self.otel_process_context_switches,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
                         KeyValue::new("type", "voluntary"),
                     ],
                 );
@@ -294,8 +296,8 @@ impl ProcMetrics {
                     &self.otel_process_context_switches,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
                         KeyValue::new("type", "involuntary"),
                     ],
                 );
@@ -306,8 +308,8 @@ impl ProcMetrics {
                     &self.otel_process_page_faults,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
                         KeyValue::new("type", "minor"),
                     ],
                 );
@@ -318,8 +320,8 @@ impl ProcMetrics {
                     &self.otel_process_page_faults,
                     *value,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
                         KeyValue::new("type", "major"),
                     ],
                 );
@@ -327,8 +329,8 @@ impl ProcMetrics {
 
             if let Some(value) = proc.fd_count {
                 self.record_u64(
-                    "process.open_file_descriptors",
-                    &self.otel_process_open_fds,
+                    "process.unix.file_descriptor.count",
+                    &self.otel_process_unix_file_descriptor_count,
                     value,
                     &base_attrs,
                 );
@@ -377,8 +379,8 @@ impl ProcMetrics {
                         &self.otel_process_sched_priority,
                         value,
                         &[
-                            pid_kv.clone(),
-                            comm_kv.clone(),
+                            process_pid_kv.clone(),
+                            process_command_kv.clone(),
                             KeyValue::new("field", "rt_priority"),
                         ],
                     );
@@ -389,8 +391,8 @@ impl ProcMetrics {
                         &self.otel_process_sched_priority,
                         value,
                         &[
-                            pid_kv.clone(),
-                            comm_kv.clone(),
+                            process_pid_kv.clone(),
+                            process_command_kv.clone(),
                             KeyValue::new("field", "policy"),
                         ],
                     );
@@ -403,8 +405,8 @@ impl ProcMetrics {
                     &self.otel_process_memory_usage,
                     rss_bytes,
                     &[
-                        pid_kv.clone(),
-                        comm_kv.clone(),
+                        process_pid_kv.clone(),
+                        process_command_kv.clone(),
                         KeyValue::new("type", "rss"),
                     ],
                 );
@@ -415,8 +417,8 @@ impl ProcMetrics {
                 &self.otel_process_memory_usage,
                 proc.virtual_size_bytes.unwrap_or(proc.vsize_bytes),
                 &[
-                    pid_kv.clone(),
-                    comm_kv.clone(),
+                    process_pid_kv.clone(),
+                    process_command_kv.clone(),
                     KeyValue::new("type", "virtual"),
                 ],
             );
@@ -434,7 +436,11 @@ impl ProcMetrics {
                             "process.memory.usage",
                             &self.otel_process_memory_usage,
                             value,
-                            &[pid_kv.clone(), comm_kv.clone(), KeyValue::new("type", kind)],
+                            &[
+                                process_pid_kv.clone(),
+                                process_command_kv.clone(),
+                                KeyValue::new("type", kind),
+                            ],
                         );
                     }
                 }
@@ -455,7 +461,11 @@ impl ProcMetrics {
                             "process.memory.usage",
                             &self.otel_process_memory_usage,
                             kib_to_bytes(value),
-                            &[pid_kv.clone(), comm_kv.clone(), KeyValue::new("type", kind)],
+                            &[
+                                process_pid_kv.clone(),
+                                process_command_kv.clone(),
+                                KeyValue::new("type", kind),
+                            ],
                         );
                     }
                 }

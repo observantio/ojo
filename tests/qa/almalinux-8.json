@@ -2709,7 +2709,7 @@
     "process.linux.start_time": "gauge",
     "process.memory.usage": "gauge",
     "process.oom_score": "gauge",
-    "process.open_file_descriptors": "gauge",
+    "process.unix.file_descriptor.count": "gauge",
     "process.paging.faults": "counter",
     "process.start_time": "gauge",
     "system.buddyinfo.*": "gauge",
@@ -2748,10 +2748,10 @@
     "system.mounts.*": "state",
     "system.network.*": "gauge",
     "system.network.*_per_sec": "gauge_derived",
-    "system.network.dropped": "counter",
+    "system.network.packet.dropped": "counter",
     "system.network.errors": "counter",
     "system.network.io": "counter",
-    "system.network.packets": "counter",
+    "system.network.packet.count": "counter",
     "system.swap.*": "gauge",
     "system.zoneinfo.*": "gauge"
   }
