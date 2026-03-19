@@ -3,14 +3,14 @@ mod collector;
 mod config;
 mod delta;
 #[cfg(any(target_os = "linux", target_os = "android"))]
-mod linuxcollect;
+mod linux;
 mod metrics;
 mod model;
 mod otel;
 #[cfg(target_os = "solaris")]
-mod solarcollect;
+mod solaris;
 #[cfg(target_os = "windows")]
-mod wincollect;
+mod windows;
 
 use anyhow::Result;
 use config::Config;

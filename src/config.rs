@@ -170,9 +170,7 @@ impl Config {
             otlp_endpoint,
             otlp_protocol,
             otlp_headers,
-            otlp_compression: otlp
-                .compression
-                .or_else(|| env_otlp_var("COMPRESSION")),
+            otlp_compression: otlp.compression.or_else(|| env_otlp_var("COMPRESSION")),
             otlp_timeout: otlp.timeout_secs.map(Duration::from_secs).or_else(|| {
                 env_otlp_var("TIMEOUT")
                     .and_then(|v| v.parse::<u64>().ok())
@@ -306,9 +304,7 @@ fn env_otlp_var(suffix: &str) -> Option<String> {
     }
 
     let generic_key = format!("OTEL_EXPORTER_OTLP_{suffix}");
-    env::var(generic_key)
-        .ok()
-        .filter(|v| !v.trim().is_empty())
+    env::var(generic_key).ok().filter(|v| !v.trim().is_empty())
 }
 
 fn env_otlp_headers() -> BTreeMap<String, String> {

@@ -1,4 +1,4 @@
-# Ojo - Powerful OpenTelemtry Agent for Deep Analaysis
+# Ojo - Powerful OpenTelemtry Agent for Deep Analysis
 
 Ojo is a lightweight host metrics agent written in Rust.
 It collects system and process metrics and exports them via OpenTelemetry OTLP.
