@@ -3222,7 +3222,7 @@
       "targets": [
         {
           "expr": "100 * topk(10, max by (process_command, process_pid) (process_cpu_utilization{instance=~\"$instance\"}))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
@@ -3264,7 +3264,7 @@
       "targets": [
         {
           "expr": "topk(10, max by (process_command, process_pid) (process_memory_rss_bytes{instance=~\"$instance\"}))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
@@ -3306,7 +3306,7 @@
       "targets": [
         {
           "expr": "topk(10, sum by (process_command, process_pid) (rate(process_disk_io_bytes_total{instance=~\"$instance\",disk_io_direction=\"read\"}[5m])))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
@@ -3348,7 +3348,7 @@
       "targets": [
         {
           "expr": "topk(10, sum by (process_command, process_pid) (rate(process_disk_io_bytes_total{instance=~\"$instance\",disk_io_direction=\"write\"}[5m])))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
@@ -3391,7 +3391,7 @@
       "targets": [
         {
           "expr": "topk(10, sum by (process_command, process_pid) (rate(process_disk_io_bytes_total{instance=~\"$instance\",disk_io_direction=\"read\"}[5m])) / clamp_min(sum by (process_command, process_pid) (rate(process_io_syscalls_total{instance=~\"$instance\",disk_io_direction=\"read\"}[5m])), 1e-9))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
@@ -3434,7 +3434,7 @@
       "targets": [
         {
           "expr": "topk(10, sum by (process_command, process_pid) (rate(process_disk_io_bytes_total{instance=~\"$instance\",disk_io_direction=\"write\"}[5m])) / clamp_min(sum by (process_command, process_pid) (rate(process_io_syscalls_total{instance=~\"$instance\",disk_io_direction=\"write\"}[5m])), 1e-9))",
-          "legendFormat": "{{comm}} ({{pid}})",
+          "legendFormat": "{{process_command}} ({{process_pid}})",
           "refId": "A"
         }
       ]
