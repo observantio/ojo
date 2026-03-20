@@ -181,6 +181,57 @@ docker compose -f docker.dev/docker-compose.yml run --rm qa-windows-2022-gnu
 This writes:
 - `tests/qa/windows-2022-check.json`
 
+## Build and Release (GitHub Actions)
+
+This repo uses a workflow (`.github/workflows/ci.yml`) that runs on:
+- `push` to tags matching `v*` (e.g. `v0.0.1`)
+- `workflow_dispatch` manual run
+
+It builds:
+- modern builds (always):
+  - `linux-x86_64` → `x86_64-unknown-linux-gnu`
+  - `windows-x86_64` → `x86_64-pc-windows-gnu`
+- optional legacy builds (manual dispatch with `build_legacy_linux=true` / `build_legacy_windows=true`):
+  - `linux-legacy-x86_64` → `x86_64` Linux with `RUSTFLAGS='-C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2'`
+  - `windows-legacy-i686` → `i686-pc-windows-gnu`
+
+Release step behavior fixed to allow skipped legacy jobs:
+- `if: ${{ !failure() && !cancelled() }}`
+
+### Run a release build locally
+
+Create and push a tag:
+
+```bash
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+Or trigger manually in GitHub Actions with `workflow_dispatch` and provide `version`, plus optional legacy flags.
+
+### Download and run binary from a release
+
+Linux:
+
+```bash
+curl -L https://github.com/<org>/<repo>/releases/download/v0.0.1/ojo-v0.0.1-linux-x86_64 -o ojo
+chmod +x ojo
+./ojo
+```
+
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/<org>/<repo>/releases/download/v0.0.1/ojo-v0.0.1-windows-x86_64.exe -OutFile ojo.exe
+.\ojo.exe
+```
+
+### GitHub token requirements
+
+No manual secrets are needed for workflow operations shown here:
+- `GITHUB_TOKEN` is provided by default and works with `softprops/action-gh-release`, `actions/upload-artifact`, and `actions/download-artifact`
+- only custom registry or non-default publishing would require additional secrets
+
 ## Build and Validate
 
 ```bash
@@ -219,3 +270,5 @@ RUST_LOG=debug cargo run -- --config linux.yaml
 - Keep collector behavior best-effort and explicit in support-state metadata
 - Prefer adding schema/compat notes rather than silently changing semantics
 - Validate with `cargo check` for host and cross-target when touching platform code
+
+

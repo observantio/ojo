@@ -52,22 +52,51 @@ jobs:
 
           echo "value=$version" >> "$GITHUB_OUTPUT"
 
-  build-modern:
-    name: Build ${{ matrix.id }}
+  build:
+    name: Build — ${{ matrix.name }}
     runs-on: ubuntu-22.04
     needs: resolve-version
     strategy:
       fail-fast: false
       matrix:
         include:
-          - id: linux-x86_64
+          - name: Linux x86_64
+            id: linux-x86_64
             target: x86_64-unknown-linux-gnu
             platform: linux
-          - id: windows-x86_64
+            legacy: false
+
+          - name: Linux aarch64
+            id: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+            platform: linux
+            legacy: false
+
+          - name: Linux x86_64 (Legacy)
+            id: linux-x86_64-legacy
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            legacy: true
+            rustflags: "-C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2"
+
+          - name: Windows x86_64
+            id: windows-x86_64
             target: x86_64-pc-windows-gnu
             platform: windows
+            legacy: false
+
+          - name: Windows i686 (Legacy)
+            id: windows-i686-legacy
+            target: i686-pc-windows-gnu
+            platform: windows
+            legacy: true
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install aarch64 toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu
 
       - name: Install MinGW toolchains
         if: matrix.platform == 'windows'
@@ -79,12 +108,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}${{ matrix.legacy && '-legacy' || '' }}
 
-      - name: Build release
+      - name: Build
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags || '' }}
         run: cargo build --release --target "${{ matrix.target }}"
 
-      - name: Package artifact
+      - name: Package
         shell: bash
         run: |
           VERSION="${{ needs.resolve-version.outputs.value }}"
@@ -102,83 +133,12 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  build-legacy-linux:
-    name: Build linux-legacy-x86_64
-    runs-on: ubuntu-22.04
-    needs: resolve-version
-    if: github.event_name == 'workflow_dispatch' && inputs.build_legacy_linux
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: x86_64-unknown-linux-gnu-legacy
-
-      - name: Build legacy Linux release
-        env:
-          RUSTFLAGS: -C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2
-        run: cargo build --release --target x86_64-unknown-linux-gnu
-
-      - name: Package artifact
-        shell: bash
-        run: |
-          VERSION="${{ needs.resolve-version.outputs.value }}"
-          mkdir -p dist
-          cp target/x86_64-unknown-linux-gnu/release/ojo "dist/ojo-${VERSION}-linux-legacy-x86_64"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-legacy-x86_64-${{ needs.resolve-version.outputs.value }}
-          path: dist/*
-          if-no-files-found: error
-
-  build-legacy-windows:
-    name: Build windows-legacy-i686
-    runs-on: ubuntu-22.04
-    needs: resolve-version
-    if: github.event_name == 'workflow_dispatch' && inputs.build_legacy_windows
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install MinGW toolchains
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: i686-pc-windows-gnu
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: i686-pc-windows-gnu-legacy
-
-      - name: Build legacy Windows release
-        run: cargo build --release --target i686-pc-windows-gnu
-
-      - name: Package artifact
-        shell: bash
-        run: |
-          VERSION="${{ needs.resolve-version.outputs.value }}"
-          mkdir -p dist
-          cp target/i686-pc-windows-gnu/release/ojo.exe "dist/ojo-${VERSION}-windows-legacy-i686.exe"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-legacy-i686-${{ needs.resolve-version.outputs.value }}
-          path: dist/*
-          if-no-files-found: error
-
   release:
     name: Publish Release
     runs-on: ubuntu-22.04
     needs:
       - resolve-version
-      - build-modern
-      - build-legacy-linux
-      - build-legacy-windows
+      - build
     if: ${{ !failure() && !cancelled() }}
     steps:
       - uses: actions/download-artifact@v4
