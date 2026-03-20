@@ -74,31 +74,15 @@ struct MetricSection {
 impl Config {
     pub fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
-        let config_from_arg = args
+        let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
-            .map(|pair| pair[1].clone());
-        let config_from_env = env::var("PROC_OTEL_CONFIG").ok();
-
-        let config_path = config_from_arg
-            .clone()
-            .or(config_from_env.clone())
+            .map(|pair| pair[1].clone())
+            .or_else(|| env::var("PROC_OTEL_CONFIG").ok())
             .unwrap_or_else(|| "ojo.yaml".to_string());
 
-        let mandatory_config = config_from_arg.is_some() || config_from_env.is_some();
-
-        let file_cfg = if Path::new(&config_path).exists() {
-            let contents = std::fs::read_to_string(&config_path)
-                .with_context(|| format!("failed to read config file {}", config_path))?;
-            let parsed: FileConfig = serde_yaml::from_str(&contents)
-                .with_context(|| format!("failed to parse config file {}", config_path))?;
-            validate_file_config(&parsed, &config_path)?;
-            parsed
-        } else if mandatory_config {
-            return Err(anyhow!("configuration file '{}' is required but does not exist", config_path));
-        } else {
-            FileConfig::default()
-        };
+        let file_cfg = load_yaml_config_file(&config_path)?;
+        validate_required_yaml_fields(&file_cfg, &config_path)?;
 
         let service = file_cfg.service.unwrap_or_default();
         let collection = file_cfg.collection.unwrap_or_default();
@@ -216,41 +200,97 @@ impl Config {
     }
 }
 
-fn validate_file_config(file_cfg: &FileConfig, path: &str) -> Result<()> {
-    let service = file_cfg
-        .service
-        .as_ref()
-        .ok_or_else(|| anyhow!("config file '{}' is missing required `service` section", path))?;
+fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
+    let path = Path::new(config_path);
 
-    if service.name.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()).is_none() {
-        return Err(anyhow!("config file '{}' is missing required `service.name`", path));
+    if !path.exists() {
+        return Err(anyhow!(
+            "config file '{}' was not found. Pass --config <path> or set PROC_OTEL_CONFIG to a valid YAML file.",
+            config_path
+        ));
+    }
+
+    if !path.is_file() {
+        return Err(anyhow!(
+            "config path '{}' is not a file. Provide a YAML file path.",
+            config_path
+        ));
+    }
+
+    let contents = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read config file '{}'", config_path))?;
+
+    if contents.trim().is_empty() {
+        return Err(anyhow!(
+            "config file '{}' is empty. Add required sections like service, collection, and export.otlp.",
+            config_path
+        ));
+    }
+
+    serde_yaml::from_str::<FileConfig>(&contents).with_context(|| {
+        format!(
+            "failed to parse YAML in '{}'. Check indentation and key/value structure.",
+            config_path
+        )
+    })
+}
+
+fn validate_required_yaml_fields(file_cfg: &FileConfig, config_path: &str) -> Result<()> {
+    let mut missing = Vec::new();
+
+    let service = file_cfg.service.as_ref();
+    let collection = file_cfg.collection.as_ref();
+    let export = file_cfg.export.as_ref();
+    let otlp = export.and_then(|section| section.otlp.as_ref());
+
+    if service
+        .and_then(|section| section.name.as_ref())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true)
+    {
+        missing.push("service.name");
     }
 
     if service
-        .instance_id
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
+        .and_then(|section| section.instance_id.as_ref())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true)
+    {
+        missing.push("service.instance_id");
+    }
+
+    if collection
+        .and_then(|section| section.poll_interval_secs)
         .is_none()
     {
-        return Err(anyhow!("config file '{}' is missing required `service.instance_id`", path));
+        missing.push("collection.poll_interval_secs");
     }
 
-    let export = file_cfg
-        .export
-        .as_ref()
-        .ok_or_else(|| anyhow!("config file '{}' is missing required `export` section", path))?;
-
-    let otlp = export
-        .otlp
-        .as_ref()
-        .ok_or_else(|| anyhow!("config file '{}' is missing required `export.otlp` section", path))?;
-
-    if otlp.endpoint.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()).is_none() {
-        return Err(anyhow!("config file '{}' is missing required `export.otlp.endpoint`", path));
+    if otlp
+        .and_then(|section| section.endpoint.as_ref())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true)
+    {
+        missing.push("export.otlp.endpoint");
     }
 
-    Ok(())
+    if otlp
+        .and_then(|section| section.protocol.as_ref())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true)
+    {
+        missing.push("export.otlp.protocol");
+    }
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "config file '{}' is missing required attributes:\n- {}\n\nExpected minimal structure:\nservice:\n  name: linux\n  instance_id: linux-0001\ncollection:\n  poll_interval_secs: 5\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf",
+        config_path,
+        missing.join("\n- ")
+    ))
 }
 
 fn hostname_fallback() -> String {

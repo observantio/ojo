@@ -2,24 +2,21 @@ mod catalog;
 mod collector;
 mod config;
 mod delta;
-mod buffers;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linux;
 mod metrics;
 mod model;
 mod otel;
-#[cfg(target_os = "solaris")]
-mod solaris;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "solaris")]
+mod solaris;
 
 use anyhow::Result;
 use config::Config;
 use delta::PrevState;
-use buffers::{IntervalBuffer, OFFLINE_BUFFER_INTERVALS};
 use metrics::{MetricFilter, ProcMetrics};
 use opentelemetry::global;
-use serde_json::to_string_pretty;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -36,35 +33,15 @@ enum ExportState {
     Reconnecting,
 }
 
-#[derive(Clone, Debug)]
-struct BufferedInterval {
-    snapshot: model::Snapshot,
-    derived: delta::DerivedMetrics,
-}
-
 fn main() -> Result<()> {
     let cfg = Config::load()?;
-
-    if cfg.dump_snapshot {
-        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
-        println!("{}", to_string_pretty(&snap)?);
-        return Ok(());
-    }
-
     cfg.apply_otel_env();
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("ojo=debug,opentelemetry=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
-
-    info!(
-        endpoint = cfg.otlp_endpoint.as_str(),
-        protocol = cfg.otlp_protocol.as_str(),
-        "OTLP export configured"
-    );
 
     let provider = otel::init_meter_provider(&cfg)?;
     let meter = global::meter("procfs");
@@ -81,7 +58,7 @@ fn main() -> Result<()> {
 
     let mut prev = PrevState::default();
     let mut export_state = ExportState::Pending;
-    let mut offline_buffer = IntervalBuffer::new(OFFLINE_BUFFER_INTERVALS);
+
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         debug!("poll tick start");
@@ -97,127 +74,43 @@ fn main() -> Result<()> {
         );
 
         let derived = prev.derive(&snap, cfg.poll_interval);
-        let interval = BufferedInterval {
-            snapshot: snap,
-            derived,
-        };
-
-        if export_state == ExportState::Reconnecting {
-            let dropped = offline_buffer.push(interval);
-            if dropped {
-                warn!(
-                    dropped_intervals = offline_buffer.dropped_intervals(),
-                    capacity = OFFLINE_BUFFER_INTERVALS,
-                    "Reconnect buffer full; dropped oldest interval"
-                );
-            }
-            debug!(
-                buffered_intervals = offline_buffer.len(),
-                capacity = OFFLINE_BUFFER_INTERVALS,
-                "interval buffered while exporter is unavailable"
-            );
-
-            match provider.force_flush() {
-                Ok(()) => {
-                    info!(
-                        buffered_intervals = offline_buffer.len(),
-                        "Reconnected Successfully"
-                    );
-
-                    while let Some(buffered) = offline_buffer.pop() {
-                        instruments.record(
-                            &buffered.snapshot,
-                            &buffered.derived,
-                            cfg.include_process_metrics,
-                        );
-                    }
-
-                    debug!(
-                        elapsed_ms = started_at.elapsed().as_millis(),
-                        "metrics recorded"
-                    );
-
-                    match provider.force_flush() {
-                        Ok(()) => {
-                            debug!(
-                                elapsed_ms = started_at.elapsed().as_millis(),
-                                "force_flush ok"
-                            );
-                            export_state = ExportState::Connected;
-                        }
-                        Err(err) => {
-                            let err_msg = err.to_string();
-                            warn!(
-                                err = err_msg.as_str(),
-                                "Exporter flush failed while draining reconnect buffer"
-                            );
-                            export_state = ExportState::Reconnecting;
-                        }
-                    }
-                }
-                Err(err) => {
-                    let err_msg = err.to_string();
-                    debug!(
-                        elapsed_ms = started_at.elapsed().as_millis(),
-                        "force_flush err"
-                    );
-                    warn!(err = err_msg.as_str(), "Exporter still unavailable");
-                    export_state = ExportState::Reconnecting;
-                }
-            }
-        } else {
-            instruments.record(
-                &interval.snapshot,
-                &interval.derived,
-                cfg.include_process_metrics,
-            );
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "metrics recorded"
-            );
-
-            match provider.force_flush() {
-                Ok(()) => {
-                    debug!(
-                        elapsed_ms = started_at.elapsed().as_millis(),
-                        "force_flush ok"
-                    );
-                    match export_state {
-                        ExportState::Pending => info!("Connected Successfully"),
-                        ExportState::Reconnecting => info!("Reconnected Successfully"),
-                        ExportState::Connected => {}
-                    }
-                    export_state = ExportState::Connected;
-                }
-                Err(err) => {
-                    let err_msg = err.to_string();
-
-                    debug!(
-                        elapsed_ms = started_at.elapsed().as_millis(),
-                        "force_flush err"
-                    );
-
-                    match export_state {
-                        ExportState::Connected => {
-                            warn!(
-                                err = err_msg.as_str(),
-                                "Exporter flush failed; reconnecting"
-                            );
-                        }
-                        ExportState::Pending | ExportState::Reconnecting => {
-                            warn!(err = err_msg.as_str(), "Exporter still unavailable");
-                        }
-                    }
-
-                    export_state = ExportState::Reconnecting;
-                }
-            }
-        };
-
+        instruments.record(&snap, &derived, cfg.include_process_metrics);
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
-            "poll tick done"
+            "metrics recorded"
         );
+
+        match provider.force_flush() {
+            Ok(()) => {
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush ok"
+                );
+                match export_state {
+                    ExportState::Pending => info!("Connected Successfully"),
+                    ExportState::Reconnecting => info!("Reconnected Successfully"),
+                    ExportState::Connected => {}
+                }
+                export_state = ExportState::Connected;
+            }
+            Err(err) => {
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush err"
+                );
+                match export_state {
+                    ExportState::Connected => {
+                        warn!(error = %err, "Exporter flush failed; reconnecting")
+                    }
+                    ExportState::Pending | ExportState::Reconnecting => {
+                        warn!(error = %err, "Exporter still unavailable")
+                    }
+                }
+                export_state = ExportState::Reconnecting;
+            }
+        }
+
+        debug!(elapsed_ms = started_at.elapsed().as_millis(), "poll tick done");
 
         let elapsed = started_at.elapsed();
         if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {
@@ -226,12 +119,7 @@ fn main() -> Result<()> {
     }
 
     if let Err(err) = provider.shutdown() {
-        let err_msg = err.to_string();
-        warn!(
-            err = err_msg.as_str(),
-            "Ojo provider shutdown encountered an error"
-        );
+        warn!(error = %err, "Ojo provider shutdown encountered an error");
     }
-
     Ok(())
 }
