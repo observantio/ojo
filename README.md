@@ -1,57 +1,55 @@
-# Ojo - Powerful OpenTelemtry Agent for Deep Analysis
+# Ojo — OpenTelemetry Host Metrics Agent
 
-Ojo is a lightweight host metrics agent written in Rust.
-It collects system and process metrics and exports them via OpenTelemetry OTLP.
+Ojo is a lightweight host metrics agent written in Rust that collects system and process metrics and exports them via OpenTelemetry OTLP.
 
-Supported collectors:
+![Demo](assets/collector.gif)
+
+## Supported Platforms
+
 - Linux
 - Windows
-- Solaris (in-progress and platform-constrained)
-
-![Demo Ojo](assets/collector.gif)
+- Solaris _(in progress, platform-constrained)_
 
 ## What Ojo Does
 
 - Polls host metrics on a fixed interval
-- Optionally includes per-process metrics
-- Computes deltas/rates where needed
-- Exports to any OTLP-compatible backend (directly or through OpenTelemetry Collector)
+- Optionally collects per-process metrics
+- Computes deltas and rates where applicable
+- Exports to any OTLP-compatible backend directly or through an OpenTelemetry Collector
 
 ## Repository Layout
 
-- `src/main.rs`: runtime loop, flush/reconnect behavior
-- `src/config.rs`: YAML/env config loader and validation
-- `src/linuxcollect.rs`: Linux collector
-- `src/wincollect.rs`: Windows collector
-- `src/solarcollect.rs`: Solaris collector
-- `src/delta.rs`: delta/rate derivation
-- `src/metrics.rs`: OTEL metric instruments and recording
-- `linux.yaml`: Linux config example
-- `windows.yaml`: Windows config example
-- `otel.yaml`: OpenTelemetry Collector example
-- `docker.dev/`: QA Dockerfiles and compose services
+```
+src/main.rs           Runtime loop, flush and reconnect behavior
+src/config.rs         YAML/env config loader and validation
+src/linuxcollect.rs   Linux collector
+src/wincollect.rs     Windows collector
+src/solarcollect.rs   Solaris collector
+src/delta.rs          Delta and rate derivation
+src/metrics.rs        OTEL metric instruments and recording
+linux.yaml            Linux config example
+windows.yaml          Windows config example
+otel.yaml             OpenTelemetry Collector example
+docker.dev/           QA Dockerfiles and Compose services
+```
 
 ## Quick Start
 
-### 1. Pick a config file
+**1. Pick a config**
 
-Use one of the included examples:
-- `linux.yaml`
-- `windows.yaml`
+Use one of the included examples: `linux.yaml` or `windows.yaml`.
 
-### 2. Run Ojo
+**2. Run**
 
 ```bash
 cargo run -- --config linux.yaml
 ```
 
-Or on Windows:
-
 ```bash
 cargo run -- --config windows.yaml
 ```
 
-### 3. Dump one snapshot for debugging
+**3. Dump a snapshot for debugging**
 
 ```bash
 cargo run -- --config linux.yaml --dump-snapshot
@@ -59,31 +57,15 @@ cargo run -- --config linux.yaml --dump-snapshot
 
 ## Configuration
 
-Top-level sections:
-- `service`
-- `collection`
-- `export`
-- `metrics`
-
-### service
-
 ```yaml
 service:
   name: linux
   instance_id: linux-0001
-```
 
-### collection
-
-```yaml
 collection:
   poll_interval_secs: 5
   include_process_metrics: true
-```
 
-### export
-
-```yaml
 export:
   otlp:
     endpoint: "http://127.0.0.1:4355/v1/metrics"
@@ -95,26 +77,21 @@ export:
     timeout_secs: 10
 ```
 
-## Metric Selection (New)
+## Metric Selection
 
-If `metrics` is omitted, Ojo exports all metrics.
+If `metrics` is omitted, all metrics are exported.
 
-You can select metric groups in three ways.
-
-### 1) Single group
-
+**Single group**
 ```yaml
 metrics: cpu
 ```
 
-### 2) Multiple groups
-
+**Multiple groups**
 ```yaml
 metrics: [cpu, memory, disk]
 ```
 
-### 3) Advanced section form
-
+**Advanced**
 ```yaml
 metrics:
   groups: [cpu, memory]
@@ -124,113 +101,78 @@ metrics:
 
 Rules:
 - `groups` expands to metric-name prefixes
-- `include`/`exclude` are prefix-based
+- `include` and `exclude` are prefix-based
 - `exclude` wins over `include`
-- If `metrics` is not defined, all metrics are exported
+- Unknown groups cause a fast-fail config error
 
-Supported groups:
-- `cpu`
-- `memory`
-- `disk`
-- `network`
-- `process`
-- `filesystem`
-- `linux`
-- `windows`
-- `host`
-
-If an unknown group is configured, Ojo fails fast with a config error.
+Supported groups: `cpu`, `memory`, `disk`, `network`, `process`, `filesystem`, `linux`, `windows`, `host`
 
 ## Environment Variables
 
-Important env overrides:
-- `PROC_OTEL_CONFIG`
-- `PROC_POLL_INTERVAL_SECS`
-- `PROC_INCLUDE_PROCESS_METRICS`
-- `OTEL_EXPORTER_OTLP_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_PROTOCOL`
-- `OTEL_EXPORTER_OTLP_HEADERS`
-- `OTEL_EXPORTER_OTLP_COMPRESSION`
-- `OTEL_EXPORTER_OTLP_TIMEOUT`
+| Variable | Description |
+|---|---|
+| `PROC_OTEL_CONFIG` | Config file path override |
+| `PROC_POLL_INTERVAL_SECS` | Poll interval override |
+| `PROC_INCLUDE_PROCESS_METRICS` | Enable process metrics |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol |
+| `OTEL_EXPORTER_OTLP_HEADERS` | OTLP headers |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` | OTLP compression |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | OTLP timeout |
 
 ## OpenTelemetry Collector
 
 A sample collector config is included in `otel.yaml`.
 
-Typical flow:
-1. Start collector
-2. Point Ojo `export.otlp.endpoint` to collector OTLP endpoint
+1. Start the collector
+2. Point `export.otlp.endpoint` to its OTLP endpoint
 3. Run Ojo
 
 ## Docker QA
-
-QA services are defined in `docker.dev/docker-compose.yml`.
-
-Run a Linux QA service example:
 
 ```bash
 docker compose -f docker.dev/docker-compose.yml run --rm qa-ubuntu-2204
 ```
 
-Run Windows GNU cross-target check JSON output:
-
 ```bash
 docker compose -f docker.dev/docker-compose.yml run --rm qa-windows-2022-gnu
 ```
 
-This writes:
-- `tests/qa/windows-2022-check.json`
+The Windows GNU check writes output to `tests/qa/windows-2022-check.json`.
 
-## Build and Release (GitHub Actions)
+## Build and Release
 
-This repo uses a workflow (`.github/workflows/ci.yml`) that runs on:
-- `push` to tags matching `v*` (e.g. `v0.0.1`)
-- `workflow_dispatch` manual run
+Releases are published via `.github/workflows/ci.yml` on `v*` tag push or manual dispatch.
 
-It builds:
-- modern builds (always):
-  - `linux-x86_64` → `x86_64-unknown-linux-gnu`
-  - `windows-x86_64` → `x86_64-pc-windows-gnu`
-- optional legacy builds (manual dispatch with `build_legacy_linux=true` / `build_legacy_windows=true`):
-  - `linux-legacy-x86_64` → `x86_64` Linux with `RUSTFLAGS='-C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2'`
-  - `windows-legacy-i686` → `i686-pc-windows-gnu`
+**Artifacts built on every release:**
 
-Release step behavior fixed to allow skipped legacy jobs:
-- `if: ${{ !failure() && !cancelled() }}`
+| Artifact | Target |
+|---|---|
+| `ojo-{version}-linux-x86_64` | `x86_64-unknown-linux-gnu` |
+| `ojo-{version}-linux-aarch64` | `aarch64-unknown-linux-gnu` |
+| `ojo-{version}-windows-x86_64.exe` | `x86_64-pc-windows-gnu` |
 
-### Run a release build locally
+**Optional legacy artifacts (manual dispatch only):**
 
-Create and push a tag:
+| Artifact | Target |
+|---|---|
+| `ojo-{version}-linux-x86_64-legacy` | x86_64 Linux, SSE4.2/AVX/AVX2 disabled |
+| `ojo-{version}-windows-i686-legacy.exe` | `i686-pc-windows-gnu` |
 
-```bash
-git tag v0.0.1
-git push origin v0.0.1
-```
-
-Or trigger manually in GitHub Actions with `workflow_dispatch` and provide `version`, plus optional legacy flags.
-
-### Download and run binary from a release
-
-Linux:
+**Download and run — Linux:**
 
 ```bash
-curl -L https://github.com/<org>/<repo>/releases/download/v0.0.1/ojo-v0.0.1-linux-x86_64 -o ojo
+curl -L https://github.com/observantio/ojo/releases/download/v0.0.1/ojo-v0.0.1-linux-aarch64 -o ojo
 chmod +x ojo
-./ojo
+./ojo --config linux.yaml
 ```
 
-Windows (PowerShell):
+**Download and run — Windows (PowerShell):**
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/<org>/<repo>/releases/download/v0.0.1/ojo-v0.0.1-windows-x86_64.exe -OutFile ojo.exe
-.\ojo.exe
+Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0.1/ojo-v0.0.1-windows-x86_64.exe -OutFile ojo.exe
+.\ojo.exe --config windows.yaml
 ```
-
-### GitHub token requirements
-
-No manual secrets are needed for workflow operations shown here:
-- `GITHUB_TOKEN` is provided by default and works with `softprops/action-gh-release`, `actions/upload-artifact`, and `actions/download-artifact`
-- only custom registry or non-default publishing would require additional secrets
 
 ## Build and Validate
 
@@ -243,32 +185,18 @@ cargo test
 ## Platform Notes
 
 - Linux-only metrics are omitted on Windows by design
-- Unsupported metrics are omitted rather than forced to zero
-- Windows uses synthetic load under `windows.load.synthetic.*` (not Linux loadavg equivalent)
-- Windows process handle count is mapped as compatibility for open-file-descriptor style views
+- Unsupported metrics are omitted rather than zeroed
+- Windows uses `windows.load.synthetic.*` instead of Linux loadavg
+- Windows process handle count is mapped for open-file-descriptor compatibility
 
 ## Troubleshooting
 
-### No metrics exported
+**No metrics exported**
+- Verify `endpoint` and `protocol` match your backend (`grpc` vs `http/protobuf`)
+- Check collector or backend availability
+- Enable debug logging: `RUST_LOG=debug cargo run -- --config linux.yaml`
 
-- Verify endpoint/protocol match backend (`grpc` vs `http/protobuf`)
-- Check collector/backend availability
-- Enable debug logs:
-
-```bash
-RUST_LOG=debug cargo run -- --config linux.yaml
-```
-
-### Process metrics missing
-
+**Process metrics missing**
 - Ensure `collection.include_process_metrics: true`
-- Verify permissions
-- Check `metrics` filters are not excluding `process.`
-
-## Development Notes
-
-- Keep collector behavior best-effort and explicit in support-state metadata
-- Prefer adding schema/compat notes rather than silently changing semantics
-- Validate with `cargo check` for host and cross-target when touching platform code
-
-
+- Verify process permissions
+- Check that `metrics` filters are not excluding `process.`
