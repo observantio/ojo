@@ -1,34 +1,194 @@
-name: Windows Snapshot Build & Artifact
+name: Build and Release
 
 on:
   push:
-  pull_request:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version/tag (example: v0.1.0)"
+        required: true
+        type: string
+      build_legacy_linux:
+        description: "Also build legacy Linux artifact"
+        required: false
+        default: false
+        type: boolean
+      build_legacy_windows:
+        description: "Also build legacy Windows artifact"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  build-windows:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-22.04
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${{ github.ref_name }}"
+          fi
 
+          if [ -z "$version" ]; then
+            echo "Release version is empty" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+  build-modern:
+    name: Build ${{ matrix.id }}
+    runs-on: ubuntu-22.04
+    needs: resolve-version
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022]
+        include:
+          - id: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+          - id: windows-x86_64
+            target: x86_64-pc-windows-gnu
+            platform: windows
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Install MinGW toolchains
+        if: matrix.platform == 'windows'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --target "${{ matrix.target }}"
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.value }}"
+          mkdir -p dist
+
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            cp "target/${{ matrix.target }}/release/ojo.exe" "dist/ojo-${VERSION}-${{ matrix.id }}.exe"
+          else
+            cp "target/${{ matrix.target }}/release/ojo" "dist/ojo-${VERSION}-${{ matrix.id }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-${{ needs.resolve-version.outputs.value }}
+          path: dist/*
+          if-no-files-found: error
+
+  build-legacy-linux:
+    name: Build linux-legacy-x86_64
+    runs-on: ubuntu-22.04
+    needs: resolve-version
+    if: github.event_name == 'workflow_dispatch' && inputs.build_legacy_linux
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          targets: x86_64-unknown-linux-gnu
 
       - uses: Swatinem/rust-cache@v2
-
-      - name: Dump snapshot JSON
-        shell: pwsh
-        run: cargo run --release -- --dump-snapshot | Out-File -Encoding utf8 "snapshot-${{ matrix.os }}.json"
-
-      - name: Upload snapshot artifact
-        uses: actions/upload-artifact@v4
         with:
-          name: snapshot-${{ matrix.os }}
-          path: snapshot-${{ matrix.os }}.json
+          key: x86_64-unknown-linux-gnu-legacy
+
+      - name: Build legacy Linux release
+        env:
+          RUSTFLAGS: -C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.value }}"
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-gnu/release/ojo "dist/ojo-${VERSION}-linux-legacy-x86_64"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-legacy-x86_64-${{ needs.resolve-version.outputs.value }}
+          path: dist/*
+          if-no-files-found: error
+
+  build-legacy-windows:
+    name: Build windows-legacy-i686
+    runs-on: ubuntu-22.04
+    needs: resolve-version
+    if: github.event_name == 'workflow_dispatch' && inputs.build_legacy_windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW toolchains
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: i686-pc-windows-gnu-legacy
+
+      - name: Build legacy Windows release
+        run: cargo build --release --target i686-pc-windows-gnu
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.value }}"
+          mkdir -p dist
+          cp target/i686-pc-windows-gnu/release/ojo.exe "dist/ojo-${VERSION}-windows-legacy-i686.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-legacy-i686-${{ needs.resolve-version.outputs.value }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-22.04
+    needs:
+      - resolve-version
+      - build-modern
+      - build-legacy-linux
+      - build-legacy-windows
+    if: ${{ !failure() && !cancelled() }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.value }}
+          name: ${{ needs.resolve-version.outputs.value }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/**/*
