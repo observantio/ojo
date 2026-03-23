@@ -17,9 +17,9 @@ All notable changes to this project will be documented in this file.
 - **Extension metric contracts** — `tests/qa_extension_metric_contracts.rs` (and related smoke tests) for extension namespaces.
 - Quality gates workflow (`.github/workflows/quality.yml`) for pull requests and `main` pushes:
   - `cargo fmt --all -- --check`
-  - `cargo check --all-targets`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo test --all-targets --all-features`
+  - `cargo check --workspace --all-targets`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace --all-targets --all-features`
   - cross-target check for `x86_64-pc-windows-gnu`
 - Coverage enforcement in CI using `cargo-llvm-cov` with a line threshold gate on `host-collectors` only (workspace-wide % is too low for a 70% bar without broad integration tests):
   - `cargo llvm-cov -p host-collectors --all-features --all-targets --summary-only --fail-under-lines 70`
@@ -32,6 +32,9 @@ All notable changes to this project will be documented in this file.
 
 
 ### Changed
+- **`host-collectors` tests:** Added coverage for `build_meter_provider` (gRPC with Tokio runtime, HTTP/protobuf, unknown protocol error, export interval), `hostname()`, and extra `default_protocol_for_endpoint` cases; `tokio` dev-dependency for gRPC exporter tests. Line coverage for the crate is now ~95% under `llvm-cov` (meets the 70% CI gate; earlier runs were ~42% with only three small tests).
+- **Clippy (Rust 1.94):** Removed redundant `as u64` casts on `libc::statvfs` fields in `src/linux/slab_filesystem_collector.rs` (`clippy::unnecessary_cast`). NFS client `unix.rs`: `map_or(false, …)` → `is_some_and(…)` (`clippy::unnecessary_map_or`).
+- **CI quality workflow:** `cargo check`, `cargo clippy`, and `cargo test` now pass `--workspace` so all extension crates are linted and tested like local `cargo clippy --workspace`.
 - CI coverage (`quality.yml`): `cargo llvm-cov` now uses `-p host-collectors` for `--fail-under-lines 70`. Workspace-wide coverage was ~4% (most crates are binaries with little test execution), so the previous command always failed CI; `rustfmt` output applied so `cargo fmt --check` passes.
 - Removed duplicate process-count alias emission (`system.processes.count`) in favor of canonical `system.process.count`.
 - Added explicit `system.os_type` to snapshot model and collectors to improve OS-aware metric gating.

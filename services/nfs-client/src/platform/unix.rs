@@ -37,7 +37,7 @@ fn collect_mounts_from_proc_mounts() -> Option<u64> {
         .filter(|line| {
             line.split_whitespace()
                 .nth(2)
-                .map_or(false, |fstype| fstype == "nfs" || fstype == "nfs4")
+                .is_some_and(|fstype| fstype == "nfs" || fstype == "nfs4")
         })
         .count() as u64;
     Some(count)

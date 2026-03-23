@@ -107,11 +107,11 @@ fn collect_filesystem_stats(mounts: &[MountSnapshot]) -> BTreeMap<String, u64> {
             stat.f_frsize
         } else {
             stat.f_bsize
-        } as u64;
+        };
 
-        let total_bytes = (stat.f_blocks as u64).saturating_mul(frsize);
-        let free_bytes = (stat.f_bfree as u64).saturating_mul(frsize);
-        let avail_bytes = (stat.f_bavail as u64).saturating_mul(frsize);
+        let total_bytes = stat.f_blocks.saturating_mul(frsize);
+        let free_bytes = stat.f_bfree.saturating_mul(frsize);
+        let avail_bytes = stat.f_bavail.saturating_mul(frsize);
         let used_bytes = total_bytes.saturating_sub(free_bytes);
         let used_bytes_user_visible = total_bytes.saturating_sub(avail_bytes);
         let reserved_bytes = free_bytes.saturating_sub(avail_bytes);
@@ -142,23 +142,23 @@ fn collect_filesystem_stats(mounts: &[MountSnapshot]) -> BTreeMap<String, u64> {
         );
         out.insert(
             key_pipe3(&mount.mountpoint, "blocks", "value"),
-            stat.f_blocks as u64,
+            stat.f_blocks,
         );
         out.insert(
             key_pipe3(&mount.mountpoint, "bfree", "value"),
-            stat.f_bfree as u64,
+            stat.f_bfree,
         );
         out.insert(
             key_pipe3(&mount.mountpoint, "bavail", "value"),
-            stat.f_bavail as u64,
+            stat.f_bavail,
         );
         out.insert(
             key_pipe3(&mount.mountpoint, "files", "value"),
-            stat.f_files as u64,
+            stat.f_files,
         );
         out.insert(
             key_pipe3(&mount.mountpoint, "ffree", "value"),
-            stat.f_ffree as u64,
+            stat.f_ffree,
         );
     }
 
