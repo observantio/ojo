@@ -26,6 +26,7 @@ impl ProcMetrics {
     }
 
     fn record_stat(&self, snap: &Snapshot) {
+        let is_linux = is_linux_like(snap);
         self.record_u64(
             "system.boot.time",
             &self.boot_time_epoch_secs,
@@ -89,11 +90,13 @@ impl ProcMetrics {
                 );
             }
         }
-        for (key, value) in &snap.net_stat {
-            let Some(attrs) = netstat_attrs(key) else {
-                continue;
-            };
-            self.record_u64("system.linux.netstat", &self.netstat_value, *value, &attrs);
+        if is_linux {
+            for (key, value) in &snap.net_stat {
+                let Some(attrs) = netstat_attrs(key) else {
+                    continue;
+                };
+                self.record_u64("system.linux.netstat", &self.netstat_value, *value, &attrs);
+            }
         }
         for (key, value) in &snap.sockets {
             self.record_u64(
@@ -133,7 +136,7 @@ impl ProcMetrics {
     }
 
     fn record_linux_extended(&self, snap: &Snapshot) {
-        if snap.system.is_windows {
+        if !is_linux_like(snap) {
             return;
         }
 
@@ -191,7 +194,7 @@ impl ProcMetrics {
     }
 
     fn record_linux_proc(&self, snap: &Snapshot, derived: &DerivedMetrics) {
-        if snap.system.is_windows {
+        if !is_linux_like(snap) {
             return;
         }
         for (key, value) in &derived.linux_interrupts_delta {
@@ -318,7 +321,7 @@ impl ProcMetrics {
     }
 
     fn record_net_kernel(&self, snap: &Snapshot, derived: &DerivedMetrics) {
-        if snap.system.is_windows {
+        if !is_linux_like(snap) {
             return;
         }
         self.record_f64(

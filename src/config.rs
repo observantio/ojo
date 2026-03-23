@@ -11,6 +11,9 @@ pub struct Config {
     pub instance_id: String,
     pub poll_interval: Duration,
     pub include_process_metrics: bool,
+    pub process_include_pid_label: bool,
+    pub process_include_command_label: bool,
+    pub process_include_state_label: bool,
     pub otlp_endpoint: String,
     pub otlp_protocol: String,
     pub otlp_headers: BTreeMap<String, String>,
@@ -40,6 +43,9 @@ struct ServiceSection {
 struct CollectionSection {
     poll_interval_secs: Option<u64>,
     include_process_metrics: Option<bool>,
+    process_include_pid_label: Option<bool>,
+    process_include_command_label: Option<bool>,
+    process_include_state_label: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -136,6 +142,18 @@ impl Config {
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 })
                 .unwrap_or(false),
+            process_include_pid_label: collection
+                .process_include_pid_label
+                .or_else(|| parse_bool_env("PROC_PROCESS_INCLUDE_PID_LABEL"))
+                .unwrap_or(false),
+            process_include_command_label: collection
+                .process_include_command_label
+                .or_else(|| parse_bool_env("PROC_PROCESS_INCLUDE_COMMAND_LABEL"))
+                .unwrap_or(true),
+            process_include_state_label: collection
+                .process_include_state_label
+                .or_else(|| parse_bool_env("PROC_PROCESS_INCLUDE_STATE_LABEL"))
+                .unwrap_or(true),
             otlp_endpoint,
             otlp_protocol,
             otlp_headers,
@@ -177,25 +195,35 @@ impl Config {
                 .collect::<Vec<_>>()
                 .join(",");
             env::set_var("OTEL_EXPORTER_OTLP_HEADERS", headers);
+        } else {
+            env::remove_var("OTEL_EXPORTER_OTLP_HEADERS");
         }
 
         if let Some(compression) = &self.otlp_compression {
             env::set_var("OTEL_EXPORTER_OTLP_COMPRESSION", compression);
+        } else {
+            env::remove_var("OTEL_EXPORTER_OTLP_COMPRESSION");
         }
         if let Some(timeout) = self.otlp_timeout {
             env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", timeout.as_secs().to_string());
+        } else {
+            env::remove_var("OTEL_EXPORTER_OTLP_TIMEOUT");
         }
         if let Some(interval) = self.export_interval {
             env::set_var(
                 "OTEL_METRIC_EXPORT_INTERVAL",
                 interval.as_millis().to_string(),
             );
+        } else {
+            env::remove_var("OTEL_METRIC_EXPORT_INTERVAL");
         }
         if let Some(timeout) = self.export_timeout {
             env::set_var(
                 "OTEL_METRIC_EXPORT_TIMEOUT",
                 timeout.as_millis().to_string(),
             );
+        } else {
+            env::remove_var("OTEL_METRIC_EXPORT_TIMEOUT");
         }
     }
 }
@@ -299,6 +327,18 @@ fn hostname_fallback() -> String {
         .unwrap_or_else(|_| "unknown-host".to_string())
 }
 
+fn parse_bool_env(name: &str) -> Option<bool> {
+    let value = env::var(name).ok()?;
+    let v = value.trim();
+    if v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes") {
+        return Some(true);
+    }
+    if v == "0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("no") {
+        return Some(false);
+    }
+    None
+}
+
 fn default_protocol_for_endpoint(endpoint: Option<&str>) -> String {
     match endpoint {
         Some(value) if has_non_root_path(value) => "http/protobuf".to_string(),
@@ -313,4 +353,32 @@ fn has_non_root_path(endpoint: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{default_protocol_for_endpoint, has_non_root_path};
+
+    #[test]
+    fn detects_non_root_http_path() {
+        assert!(has_non_root_path("http://127.0.0.1:4318/v1/metrics"));
+        assert!(has_non_root_path("https://collector.example.com/otlp"));
+        assert!(!has_non_root_path("http://127.0.0.1:4317"));
+        assert!(!has_non_root_path("https://collector.example.com"));
+    }
+
+    #[test]
+    fn defaults_to_http_protobuf_for_path_endpoints() {
+        let protocol = default_protocol_for_endpoint(Some("http://127.0.0.1:4318/v1/metrics"));
+        assert_eq!(protocol, "http/protobuf");
+    }
+
+    #[test]
+    fn defaults_to_grpc_for_root_or_missing_path_endpoints() {
+        assert_eq!(
+            default_protocol_for_endpoint(Some("http://127.0.0.1:4317")),
+            "grpc"
+        );
+        assert_eq!(default_protocol_for_endpoint(None), "grpc");
+    }
 }

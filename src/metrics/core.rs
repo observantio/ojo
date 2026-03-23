@@ -9,8 +9,6 @@ use opentelemetry::metrics::{Counter, Gauge, Meter};
 use opentelemetry::KeyValue;
 use std::sync::Arc;
 
-// Recommended semantic conventions (OTEL) for metric attributes.
-// These are kept in addition to existing attribute keys for backwards compatibility.
 pub const ATTR_CPU_MODE: &str = "cpu.mode";
 pub const ATTR_SYSTEM_DEVICE: &str = "system.device";
 pub const ATTR_NETWORK_INTERFACE: &str = "network.interface.name";
@@ -19,6 +17,23 @@ pub const ATTR_NETWORK_IO_DIRECTION: &str = "network.io.direction";
 pub const ATTR_PROCESS_PID: &str = "process.pid";
 pub const ATTR_PROCESS_COMMAND: &str = "process.command";
 pub const ATTR_PROCESS_STATE: &str = "process.state";
+
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessLabelConfig {
+    pub include_pid: bool,
+    pub include_command: bool,
+    pub include_state: bool,
+}
+
+impl Default for ProcessLabelConfig {
+    fn default() -> Self {
+        Self {
+            include_pid: false,
+            include_command: true,
+            include_state: true,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct MetricFilter {
@@ -93,8 +108,14 @@ fn kib_to_bytes(kib: u64) -> u64 {
     kib.saturating_mul(1024)
 }
 
+#[inline]
+fn is_linux_like(snap: &Snapshot) -> bool {
+    matches!(snap.system.os_type.as_str(), "linux" | "android")
+}
+
 pub struct ProcMetrics {
     filter: MetricFilter,
+    process_labels: ProcessLabelConfig,
     pub otel_system_cpu_time: Counter<f64>,
     pub otel_system_interrupts: Counter<u64>,
     pub otel_system_softirqs: Counter<u64>,
@@ -106,7 +127,6 @@ pub struct ProcMetrics {
     pub otel_system_pressure_stall_time: Counter<f64>,
     pub otel_system_uptime: Gauge<f64>,
     pub otel_system_process_count: Gauge<u64>,
-    pub otel_system_processes: Gauge<u64>,
     pub otel_system_pid_max: Gauge<u64>,
     pub otel_system_entropy: Gauge<u64>,
     pub otel_system_pressure: Gauge<f64>,

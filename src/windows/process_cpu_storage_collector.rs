@@ -394,6 +394,7 @@ pub fn collect_system(process_info_buffer: Option<&[u8]>) -> Result<SystemSnapsh
     debug!("wincollect: collect_system done");
     Ok(SystemSnapshot {
         is_windows: true,
+        os_type: "windows".to_string(),
         ticks_per_second: 10_000_000,
         boot_time_epoch_secs: boot_epoch,
         uptime_secs,

@@ -7,15 +7,15 @@ mod linux;
 mod metrics;
 mod model;
 mod otel;
-#[cfg(target_os = "windows")]
-mod windows;
 #[cfg(target_os = "solaris")]
 mod solaris;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use anyhow::Result;
 use config::Config;
 use delta::PrevState;
-use metrics::{MetricFilter, ProcMetrics};
+use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig};
 use opentelemetry::global;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -48,6 +48,11 @@ fn main() -> Result<()> {
     let instruments = ProcMetrics::new(
         meter,
         MetricFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone()),
+        ProcessLabelConfig {
+            include_pid: cfg.process_include_pid_label,
+            include_command: cfg.process_include_command_label,
+            include_state: cfg.process_include_state_label,
+        },
     );
 
     let running = Arc::new(AtomicBool::new(true));
@@ -110,7 +115,10 @@ fn main() -> Result<()> {
             }
         }
 
-        debug!(elapsed_ms = started_at.elapsed().as_millis(), "poll tick done");
+        debug!(
+            elapsed_ms = started_at.elapsed().as_millis(),
+            "poll tick done"
+        );
 
         let elapsed = started_at.elapsed();
         if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {

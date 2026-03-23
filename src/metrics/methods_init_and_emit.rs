@@ -1,7 +1,8 @@
 impl ProcMetrics {
-    pub fn new(meter: Meter, filter: MetricFilter) -> Self {
+    pub fn new(meter: Meter, filter: MetricFilter, process_labels: ProcessLabelConfig) -> Self {
         Self {
             filter,
+            process_labels,
             otel_system_cpu_time: meter
                 .f64_counter("system.cpu.time")
                 .with_unit("s")
@@ -54,11 +55,6 @@ impl ProcMetrics {
                 .build(),
             otel_system_process_count: meter
                 .u64_gauge("system.process.count")
-                .with_unit("{process}")
-                .with_description("Current process count by state.")
-                .build(),
-            otel_system_processes: meter
-                .u64_gauge("system.processes.count")
                 .with_unit("{process}")
                 .with_description("Current process count by state.")
                 .build(),
@@ -522,6 +518,28 @@ impl ProcMetrics {
                 .with_unit("By")
                 .build(),
         }
+    }
+
+    #[inline]
+    fn process_base_attrs(&self, proc: &ProcessSnapshot) -> Vec<KeyValue> {
+        let mut attrs = Vec::with_capacity(3);
+        if self.process_labels.include_pid {
+            attrs.push(KeyValue::new(ATTR_PROCESS_PID, proc.pid as i64));
+        }
+        if self.process_labels.include_command {
+            attrs.push(KeyValue::new(ATTR_PROCESS_COMMAND, proc.comm.clone()));
+        }
+        if self.process_labels.include_state {
+            attrs.push(KeyValue::new(ATTR_PROCESS_STATE, proc.state.clone()));
+        }
+        attrs
+    }
+
+    #[inline]
+    fn process_attrs_with(&self, proc: &ProcessSnapshot, extras: &[KeyValue]) -> Vec<KeyValue> {
+        let mut attrs = self.process_base_attrs(proc);
+        attrs.extend_from_slice(extras);
+        attrs
     }
 
     #[inline]

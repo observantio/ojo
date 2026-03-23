@@ -47,6 +47,7 @@ impl ProcMetrics {
 
     fn record_system(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         let is_windows = snap.system.is_windows;
+        let is_linux = is_linux_like(snap);
         self.record_f64(
             "system.uptime",
             &self.otel_system_uptime,
@@ -60,22 +61,10 @@ impl ProcMetrics {
             snap.system.process_count,
             &[KeyValue::new("state", "all")],
         );
-        self.record_u64(
-            "system.processes.count",
-            &self.otel_system_processes,
-            snap.system.process_count,
-            &[KeyValue::new("state", "all")],
-        );
 
         self.record_u64(
             "system.process.count",
             &self.otel_system_process_count,
-            non_negative_u64(snap.system.procs_running),
-            &[KeyValue::new("state", "running")],
-        );
-        self.record_u64(
-            "system.processes.count",
-            &self.otel_system_processes,
             non_negative_u64(snap.system.procs_running),
             &[KeyValue::new("state", "running")],
         );
@@ -86,15 +75,9 @@ impl ProcMetrics {
                 non_negative_u64(snap.system.procs_blocked),
                 &[KeyValue::new("state", "blocked")],
             );
-            self.record_u64(
-                "system.processes.count",
-                &self.otel_system_processes,
-                non_negative_u64(snap.system.procs_blocked),
-                &[KeyValue::new("state", "blocked")],
-            );
         }
 
-        if !is_windows {
+        if is_linux {
             self.record_u64(
                 "system.linux.pid.max",
                 &self.otel_system_pid_max,

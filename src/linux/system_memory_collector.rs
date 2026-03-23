@@ -45,6 +45,7 @@ fn collect_system(cache: &mut ReadCache, process_count: Option<u64>) -> Result<S
 
     Ok(SystemSnapshot {
         is_windows: false,
+        os_type: std::env::consts::OS.to_string(),
         ticks_per_second: procfs::ticks_per_second(),
         cpu_cycle_utilization: None,
         boot_time_epoch_secs: stat.btime,

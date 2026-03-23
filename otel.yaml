@@ -24,7 +24,7 @@ exporters:
   prometheusremotewrite/mimir:
     endpoint: "http://localhost:4320/mimir/api/v1/push"
     headers:
-      x-otlp-token: "bo_-jbqByyziOxjMlhX70ZqaRQqwOyzqGRr-anqV1141_A"
+      x-otlp-token: "${MIMIR_OTLP_TOKEN}"
     tls:
       insecure: true
     retry_on_failure:

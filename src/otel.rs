@@ -17,7 +17,7 @@ pub fn init_meter_provider(cfg: &Config) -> Result<SdkMeterProvider> {
                 .with_http_client(Client::new())
                 .with_protocol(Protocol::HttpBinary)
                 .with_endpoint(cfg.otlp_endpoint.clone());
-            if let Some(timeout) = cfg.export_timeout {
+            if let Some(timeout) = cfg.otlp_timeout {
                 builder = builder.with_timeout(timeout);
             }
             builder.build()?
@@ -26,7 +26,7 @@ pub fn init_meter_provider(cfg: &Config) -> Result<SdkMeterProvider> {
             let mut builder = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
                 .with_endpoint(cfg.otlp_endpoint.clone());
-            if let Some(timeout) = cfg.export_timeout {
+            if let Some(timeout) = cfg.otlp_timeout {
                 builder = builder.with_timeout(timeout);
             }
             builder.build()?

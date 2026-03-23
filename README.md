@@ -20,17 +20,19 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 ## Repository Layout
 
 ```
-src/main.rs           Runtime loop, flush and reconnect behavior
-src/config.rs         YAML/env config loader and validation
-src/linuxcollect.rs   Linux collector
-src/wincollect.rs     Windows collector
-src/solarcollect.rs   Solaris collector
-src/delta.rs          Delta and rate derivation
-src/metrics.rs        OTEL metric instruments and recording
-linux.yaml            Linux config example
-windows.yaml          Windows config example
-otel.yaml             OpenTelemetry Collector example
-docker.dev/           QA Dockerfiles and Compose services
+src/main.rs                  Runtime loop and exporter flush behavior
+src/config.rs                YAML/env config loader and validation
+src/linux/                   Linux collector modules
+src/windows/                 Windows collector modules
+src/solaris/                 Solaris collector modules
+src/delta.rs                 Delta and rate derivation
+src/metrics/                 OTel metric instruments and recording
+linux.yaml                   Linux config example
+windows.yaml                 Windows config example
+otel.yaml                    OpenTelemetry Collector example
+tests/qa_json_schema.rs      QA snapshot schema tests
+tests/qa_platform_metric_contracts.rs  Platform metric namespace tests
+docker.dev/                  QA Dockerfiles and Compose services
 ```
 
 ## Quick Start
@@ -65,6 +67,10 @@ service:
 collection:
   poll_interval_secs: 5
   include_process_metrics: true
+  # Low-cardinality defaults for process labels.
+  process_include_pid_label: false
+  process_include_command_label: true
+  process_include_state_label: true
 
 export:
   otlp:
@@ -81,31 +87,16 @@ export:
 
 If `metrics` is omitted, all metrics are exported.
 
-**Single group**
-```yaml
-metrics: cpu
-```
-
-**Multiple groups**
-```yaml
-metrics: [cpu, memory, disk]
-```
-
-**Advanced**
 ```yaml
 metrics:
-  groups: [cpu, memory]
-  include: [system.linux.net.]
-  exclude: [process.]
+  include: [system., process.]
+  exclude: [process.linux.]
 ```
 
 Rules:
-- `groups` expands to metric-name prefixes
 - `include` and `exclude` are prefix-based
 - `exclude` wins over `include`
-- Unknown groups cause a fast-fail config error
-
-Supported groups: `cpu`, `memory`, `disk`, `network`, `process`, `filesystem`, `linux`, `windows`, `host`
+- an empty `include` means include all metrics
 
 ## Environment Variables
 
@@ -114,6 +105,9 @@ Supported groups: `cpu`, `memory`, `disk`, `network`, `process`, `filesystem`, `
 | `PROC_OTEL_CONFIG` | Config file path override |
 | `PROC_POLL_INTERVAL_SECS` | Poll interval override |
 | `PROC_INCLUDE_PROCESS_METRICS` | Enable process metrics |
+| `PROC_PROCESS_INCLUDE_PID_LABEL` | Include `process.pid` attribute on per-process metrics |
+| `PROC_PROCESS_INCLUDE_COMMAND_LABEL` | Include `process.command` attribute on per-process metrics |
+| `PROC_PROCESS_INCLUDE_STATE_LABEL` | Include `process.state` attribute on per-process metrics |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol |
 | `OTEL_EXPORTER_OTLP_HEADERS` | OTLP headers |
@@ -180,6 +174,7 @@ Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0
 cargo check
 cargo check --target x86_64-pc-windows-gnu
 cargo test
+cargo llvm-cov --workspace --all-features --all-targets --summary-only --fail-under-lines 70
 ```
 
 ## Platform Notes

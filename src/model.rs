@@ -168,6 +168,7 @@ pub struct SoftnetCpuSnapshot {
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SystemSnapshot {
     pub is_windows: bool,
+    pub os_type: String,
     pub ticks_per_second: u64,
     pub cpu_cycle_utilization: Option<f64>,
     pub boot_time_epoch_secs: u64,

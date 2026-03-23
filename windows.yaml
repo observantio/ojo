@@ -5,6 +5,9 @@ service:
 collection:
   poll_interval_secs: 5
   include_process_metrics: true
+  process_include_pid_label: true
+  process_include_command_label: true
+  process_include_state_label: true
 
 export:
   otlp:
@@ -16,11 +19,11 @@ export:
     timeout_secs: 10
     
 # Optional metric selector. If omitted, Ojo exports all metrics.
-# Supported groups: cpu, memory, disk, network, process, filesystem, linux, windows, host
-# Examples:
-# metrics: cpu
-# metrics: [cpu, memory, disk]
+# Rules:
+# - include/exclude are prefix-based
+# - exclude wins over include
+# - include omitted/empty means include all
+# Example:
 # metrics:
-#   groups: [cpu, windows]
-#   include: [system.windows.]
-#   exclude: [process.]
+#   include: [system., process.]
+#   exclude: [process.linux.]

@@ -79,6 +79,7 @@ fn collect_system(kstats: &KstatMap, process_count: Option<u64>) -> Result<Syste
 
     Ok(SystemSnapshot {
         is_windows: false,
+        os_type: "solaris".to_string(),
         ticks_per_second,
         cpu_cycle_utilization: None,
         boot_time_epoch_secs: boot_time,

@@ -2,7 +2,7 @@
 
 This folder contains reproducible QA scripts and output artifacts.
 
-- `tests/scripts/qa_sweep.sh`: local sweep (fmt, check, test, clippy, windows-target check)
+- `tests/scripts/qa_sweep.sh`: local snapshot capture (`--dump-snapshot` to `tests/qa/local.json`)
 - `tests/scripts/run_container_qa.sh`: container runner that writes distro QA output files
 - `tests/qa/*.qa.txt`: generated QA outputs
 - `tests/qa_json_schema.rs`: validates QA JSON schema, namespaces, and semantic tags

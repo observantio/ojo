@@ -11,7 +11,7 @@ impl ProcMetrics {
             load.fifteen,
             &[],
         );
-        if !snap.system.is_windows {
+        if is_linux_like(snap) {
             self.record_u64(
                 "system.linux.load.runnable",
                 &self.load_runnable,

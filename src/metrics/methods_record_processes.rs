@@ -1,23 +1,12 @@
 impl ProcMetrics {
     fn record_processes(&self, snap: &Snapshot, derived: &DerivedMetrics) {
         let is_windows = snap.system.is_windows;
+        let is_linux = is_linux_like(snap);
         for proc in &snap.processes {
             if proc.comm.is_empty() {
                 continue;
             }
-
-            let pid = proc.pid.to_string();
-            let comm = proc.comm.clone();
-
-            let process_pid_kv = KeyValue::new(ATTR_PROCESS_PID, pid.clone());
-            let process_command_kv = KeyValue::new(ATTR_PROCESS_COMMAND, comm.clone());
-            let process_state_kv = KeyValue::new(ATTR_PROCESS_STATE, proc.state.clone());
-
-            let base_attrs = [
-                process_pid_kv.clone(),
-                process_command_kv.clone(),
-                process_state_kv,
-            ];
+            let base_attrs = self.process_base_attrs(proc);
 
             if let Some(cpu) = derived.process_cpu_ratio.get(&proc.pid) {
                 self.record_f64(
@@ -127,12 +116,14 @@ impl ProcMetrics {
                     proc.priority,
                     &base_attrs,
                 );
-                self.record_i64(
-                    "process.linux.nice",
-                    &self.process_nice,
-                    proc.nice,
-                    &base_attrs,
-                );
+                if is_linux {
+                    self.record_i64(
+                        "process.linux.nice",
+                        &self.process_nice,
+                        proc.nice,
+                        &base_attrs,
+                    );
+                }
                 self.record_u64(
                     "process.memory.virtual",
                     &self.process_vsize_bytes,
@@ -156,13 +147,15 @@ impl ProcMetrics {
                         &base_attrs,
                     );
                 }
-                if let Some(value) = proc.cancelled_write_bytes {
-                    self.record_i64(
-                        "process.linux.io.cancelled_write_bytes",
-                        &self.process_cancelled_write_bytes,
-                        value,
-                        &base_attrs,
-                    );
+                if is_linux {
+                    if let Some(value) = proc.cancelled_write_bytes {
+                        self.record_i64(
+                            "process.linux.io.cancelled_write_bytes",
+                            &self.process_cancelled_write_bytes,
+                            value,
+                            &base_attrs,
+                        );
+                    }
                 }
                 if let Some(value) = proc.vm_size_kib {
                     self.record_u64(
@@ -183,147 +176,118 @@ impl ProcMetrics {
             }
 
             if let Some(value) = derived.process_cpu_user_delta_secs.get(&proc.pid) {
+                let attrs = self.process_attrs_with(proc, &[KeyValue::new(ATTR_CPU_MODE, "user")]);
                 self.add_f64(
                     "process.cpu.time",
                     &self.otel_process_cpu_time,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_CPU_MODE, "user"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_cpu_system_delta_secs.get(&proc.pid) {
+                let attrs =
+                    self.process_attrs_with(proc, &[KeyValue::new(ATTR_CPU_MODE, "system")]);
                 self.add_f64(
                     "process.cpu.time",
                     &self.otel_process_cpu_time,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_CPU_MODE, "system"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_read_bytes_delta.get(&proc.pid) {
+                let attrs =
+                    self.process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "read")]);
                 self.add_u64(
                     "process.disk.io",
                     &self.otel_process_io,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_write_bytes_delta.get(&proc.pid) {
+                let attrs = self
+                    .process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "write")]);
                 self.add_u64(
                     "process.disk.io",
                     &self.otel_process_io,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_read_chars_delta.get(&proc.pid) {
+                let attrs =
+                    self.process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "read")]);
                 self.add_u64(
                     "process.io.chars",
                     &self.otel_process_io_chars,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_write_chars_delta.get(&proc.pid) {
+                let attrs = self
+                    .process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "write")]);
                 self.add_u64(
                     "process.io.chars",
                     &self.otel_process_io_chars,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_syscr_delta.get(&proc.pid) {
+                let attrs =
+                    self.process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "read")]);
                 self.add_u64(
                     "process.io.syscalls",
                     &self.otel_process_io_syscalls,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "read"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_syscw_delta.get(&proc.pid) {
+                let attrs = self
+                    .process_attrs_with(proc, &[KeyValue::new(ATTR_DISK_IO_DIRECTION, "write")]);
                 self.add_u64(
                     "process.io.syscalls",
                     &self.otel_process_io_syscalls,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new(ATTR_DISK_IO_DIRECTION, "write"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_voluntary_ctxt_delta.get(&proc.pid) {
+                let attrs = self.process_attrs_with(proc, &[KeyValue::new("type", "voluntary")]);
                 self.add_u64(
                     "process.context_switches",
                     &self.otel_process_context_switches,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new("type", "voluntary"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_nonvoluntary_ctxt_delta.get(&proc.pid) {
+                let attrs = self.process_attrs_with(proc, &[KeyValue::new("type", "involuntary")]);
                 self.add_u64(
                     "process.context_switches",
                     &self.otel_process_context_switches,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new("type", "involuntary"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_minor_faults_delta.get(&proc.pid) {
+                let attrs = self.process_attrs_with(proc, &[KeyValue::new("type", "minor")]);
                 self.add_u64(
                     "process.paging.faults",
                     &self.otel_process_page_faults,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new("type", "minor"),
-                    ],
+                    &attrs,
                 );
             }
             if let Some(value) = derived.process_major_faults_delta.get(&proc.pid) {
+                let attrs = self.process_attrs_with(proc, &[KeyValue::new("type", "major")]);
                 self.add_u64(
                     "process.paging.faults",
                     &self.otel_process_page_faults,
                     *value,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new("type", "major"),
-                    ],
+                    &attrs,
                 );
             }
 
@@ -363,7 +327,7 @@ impl ProcMetrics {
                 start_time_unix,
                 &base_attrs,
             );
-            if !is_windows {
+            if is_linux {
                 self.record_u64(
                     "process.linux.start_time",
                     &self.otel_process_start_time_ticks,
@@ -372,29 +336,26 @@ impl ProcMetrics {
                 );
             }
 
-            if !is_windows {
+            if is_linux {
                 if let Some(value) = proc.rt_priority {
+                    let attrs = self.process_attrs_with(
+                        proc,
+                        &[KeyValue::new("field", "rt_priority")],
+                    );
                     self.record_u64(
                         "process.linux.scheduler",
                         &self.otel_process_sched_priority,
                         value,
-                        &[
-                            process_pid_kv.clone(),
-                            process_command_kv.clone(),
-                            KeyValue::new("field", "rt_priority"),
-                        ],
+                        &attrs,
                     );
                 }
                 if let Some(value) = proc.policy {
+                    let attrs = self.process_attrs_with(proc, &[KeyValue::new("field", "policy")]);
                     self.record_u64(
                         "process.linux.scheduler",
                         &self.otel_process_sched_priority,
                         value,
-                        &[
-                            process_pid_kv.clone(),
-                            process_command_kv.clone(),
-                            KeyValue::new("field", "policy"),
-                        ],
+                        &attrs,
                     );
                 }
             }
@@ -404,11 +365,7 @@ impl ProcMetrics {
                     "process.memory.usage",
                     &self.otel_process_memory_usage,
                     rss_bytes,
-                    &[
-                        process_pid_kv.clone(),
-                        process_command_kv.clone(),
-                        KeyValue::new("type", "rss"),
-                    ],
+                    &self.process_attrs_with(proc, &[KeyValue::new("type", "rss")]),
                 );
             }
 
@@ -416,11 +373,7 @@ impl ProcMetrics {
                 "process.memory.usage",
                 &self.otel_process_memory_usage,
                 proc.virtual_size_bytes.unwrap_or(proc.vsize_bytes),
-                &[
-                    process_pid_kv.clone(),
-                    process_command_kv.clone(),
-                    KeyValue::new("type", "virtual"),
-                ],
+                &self.process_attrs_with(proc, &[KeyValue::new("type", "virtual")]),
             );
 
             if is_windows {
@@ -436,11 +389,7 @@ impl ProcMetrics {
                             "process.memory.usage",
                             &self.otel_process_memory_usage,
                             value,
-                            &[
-                                process_pid_kv.clone(),
-                                process_command_kv.clone(),
-                                KeyValue::new("type", kind),
-                            ],
+                            &self.process_attrs_with(proc, &[KeyValue::new("type", kind)]),
                         );
                     }
                 }
@@ -461,11 +410,7 @@ impl ProcMetrics {
                             "process.memory.usage",
                             &self.otel_process_memory_usage,
                             kib_to_bytes(value),
-                            &[
-                                process_pid_kv.clone(),
-                                process_command_kv.clone(),
-                                KeyValue::new("type", kind),
-                            ],
+                            &self.process_attrs_with(proc, &[KeyValue::new("type", kind)]),
                         );
                     }
                 }
