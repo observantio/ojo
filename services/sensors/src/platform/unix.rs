@@ -21,13 +21,21 @@ pub(crate) fn collect_snapshot() -> SensorSnapshot {
 }
 
 fn collect_temps(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
-    let Ok(entries) = fs::read_dir(hwmon) else { return };
+    let Ok(entries) = fs::read_dir(hwmon) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        let Some(rest) = name_str.strip_prefix("temp") else { continue };
-        let Some(idx_str) = rest.strip_suffix("_input") else { continue };
-        if idx_str.parse::<u32>().is_err() { continue }
+        let Some(rest) = name_str.strip_prefix("temp") else {
+            continue;
+        };
+        let Some(idx_str) = rest.strip_suffix("_input") else {
+            continue;
+        };
+        if idx_str.parse::<u32>().is_err() {
+            continue;
+        }
         if let Some(value) = read_scaled(&entry.path(), 1000.0) {
             let label = read_label(hwmon, &format!("temp{idx_str}_label"))
                 .unwrap_or_else(|| format!("temp{idx_str}"));
@@ -43,13 +51,21 @@ fn collect_temps(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
 }
 
 fn collect_fans(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
-    let Ok(entries) = fs::read_dir(hwmon) else { return };
+    let Ok(entries) = fs::read_dir(hwmon) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        let Some(rest) = name_str.strip_prefix("fan") else { continue };
-        let Some(idx_str) = rest.strip_suffix("_input") else { continue };
-        if idx_str.parse::<u32>().is_err() { continue }
+        let Some(rest) = name_str.strip_prefix("fan") else {
+            continue;
+        };
+        let Some(idx_str) = rest.strip_suffix("_input") else {
+            continue;
+        };
+        if idx_str.parse::<u32>().is_err() {
+            continue;
+        }
         if let Some(value) = read_scaled(&entry.path(), 1.0) {
             let label = read_label(hwmon, &format!("fan{idx_str}_label"))
                 .unwrap_or_else(|| format!("fan{idx_str}"));
@@ -65,13 +81,21 @@ fn collect_fans(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
 }
 
 fn collect_voltages(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
-    let Ok(entries) = fs::read_dir(hwmon) else { return };
+    let Ok(entries) = fs::read_dir(hwmon) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        let Some(rest) = name_str.strip_prefix("in") else { continue };
-        let Some(idx_str) = rest.strip_suffix("_input") else { continue };
-        if idx_str.parse::<u32>().is_err() { continue }
+        let Some(rest) = name_str.strip_prefix("in") else {
+            continue;
+        };
+        let Some(idx_str) = rest.strip_suffix("_input") else {
+            continue;
+        };
+        if idx_str.parse::<u32>().is_err() {
+            continue;
+        }
         if let Some(value) = read_scaled(&entry.path(), 1000.0) {
             let label = read_label(hwmon, &format!("in{idx_str}_label"))
                 .unwrap_or_else(|| format!("in{idx_str}"));
@@ -89,7 +113,11 @@ fn collect_voltages(hwmon: &Path, chip: &str, snap: &mut SensorSnapshot) {
 fn read_label(hwmon: &Path, label_file: &str) -> Option<String> {
     let s = fs::read_to_string(hwmon.join(label_file)).ok()?;
     let trimmed = s.trim();
-    if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn read_scaled(path: &Path, scale: f64) -> Option<f64> {

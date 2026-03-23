@@ -428,7 +428,10 @@ fn record_snapshot(
         let attrs = [
             KeyValue::new("container.id", sample.id.clone()),
             KeyValue::new("container.name", container_name_label(&sample)),
-            KeyValue::new("container.image", non_empty_or(&sample.image, "unknown-image")),
+            KeyValue::new(
+                "container.image",
+                non_empty_or(&sample.image, "unknown-image"),
+            ),
             KeyValue::new("container.state", non_empty_or(&sample.state, "unknown")),
         ];
         record_f64(

@@ -192,7 +192,10 @@ fn main() -> Result<()> {
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
         match provider.force_flush() {
             Ok(()) => {
-                debug!(elapsed_ms = started_at.elapsed().as_millis(), "force_flush ok");
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush ok"
+                );
                 match export_state {
                     ExportState::Pending => info!("Connected Successfully"),
                     ExportState::Reconnecting => info!("Reconnected Successfully"),
@@ -201,7 +204,10 @@ fn main() -> Result<()> {
                 export_state = ExportState::Connected;
             }
             Err(err) => {
-                debug!(elapsed_ms = started_at.elapsed().as_millis(), "force_flush err");
+                debug!(
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    "force_flush err"
+                );
                 match export_state {
                     ExportState::Connected => {
                         warn!(error = %err, "Exporter flush failed; reconnecting")

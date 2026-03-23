@@ -70,15 +70,15 @@ pub fn build_meter_provider(settings: &OtlpSettings) -> Result<SdkMeterProvider>
             }
             builder.build()?
         }
-        "grpc" => {
-            opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_endpoint(settings.otlp_endpoint.clone())
-                .with_timeout(timeout)
-                .build()?
-        }
+        "grpc" => opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .with_endpoint(settings.otlp_endpoint.clone())
+            .with_timeout(timeout)
+            .build()?,
         other => {
-            anyhow::bail!("unsupported OTLP protocol: {other:?}; expected \"http/protobuf\" or \"grpc\"");
+            anyhow::bail!(
+                "unsupported OTLP protocol: {other:?}; expected \"http/protobuf\" or \"grpc\""
+            );
         }
     };
 

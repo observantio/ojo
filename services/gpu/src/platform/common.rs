@@ -39,7 +39,10 @@ fn collect_nvidia_smi() -> Option<Vec<GpuSample>> {
         let temp = parts[4].parse::<f64>().unwrap_or(0.0);
         let power = parts[5].parse::<f64>().unwrap_or(0.0);
         let throttled = {
-            let raw = parts[6].trim().trim_start_matches("0x").trim_start_matches("0X");
+            let raw = parts[6]
+                .trim()
+                .trim_start_matches("0x")
+                .trim_start_matches("0X");
             u64::from_str_radix(raw, 16).unwrap_or(0) != 0
         };
 

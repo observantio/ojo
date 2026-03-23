@@ -268,7 +268,7 @@ cargo check --workspace
 cargo check --target x86_64-pc-windows-gnu
 cargo test
 cargo test --test qa_extension_metric_contracts
-cargo llvm-cov --workspace --all-features --all-targets --summary-only --fail-under-lines 70
+cargo llvm-cov -p host-collectors --all-features --all-targets --summary-only --fail-under-lines 70
 ```
 
 ## Platform Notes

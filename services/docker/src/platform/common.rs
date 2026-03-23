@@ -110,9 +110,7 @@ fn docker_ps_summary() -> DockerSummary {
             summary.stopped += 1;
         }
         if !id.is_empty() {
-            summary
-                .by_id
-                .insert(id.to_string(), (name, image, state));
+            summary.by_id.insert(id.to_string(), (name, image, state));
         }
     }
     summary

@@ -39,7 +39,11 @@ fn collect_temperatures() -> Vec<SensorSample> {
         .filter_map(|(i, raw)| {
             raw.parse::<f64>().ok().and_then(|v| {
                 let celsius = (v / 10.0) - 273.15;
-                if celsius < -40.0 || celsius > 150.0 { None } else { Some((i, celsius)) }
+                if celsius < -40.0 || celsius > 150.0 {
+                    None
+                } else {
+                    Some((i, celsius))
+                }
             })
         })
         .map(|(i, celsius)| SensorSample {
