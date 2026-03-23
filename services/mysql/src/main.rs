@@ -47,7 +47,11 @@ struct Config {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct MysqlConfig {
     pub(crate) executable: String,
-    pub(crate) uri: Option<String>,
+    pub(crate) host: Option<String>,
+    pub(crate) port: Option<u16>,
+    pub(crate) user: Option<String>,
+    pub(crate) password: Option<String>,
+    pub(crate) database: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -190,7 +194,12 @@ fn main() -> Result<()> {
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.mysql);
-        let rates = prev.derive(&snapshot);
+        let rates = if snapshot.available {
+            prev.derive(&snapshot)
+        } else {
+            prev.last = None;
+            MysqlRates::default()
+        };
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
         match provider.force_flush() {
@@ -226,9 +235,9 @@ fn main() -> Result<()> {
         if cfg.once {
             break;
         }
-        let elapsed = started_at.elapsed();
-        if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {
-            thread::sleep(cfg.poll_interval - elapsed);
+        let deadline = started_at + cfg.poll_interval;
+        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(500));
         }
     }
 
@@ -348,7 +357,11 @@ struct CollectionSection {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct MysqlSection {
     executable: Option<String>,
-    uri: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+    user: Option<String>,
+    password: Option<String>,
+    database: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -414,7 +427,7 @@ impl Config {
             instance_id: service
                 .instance_id
                 .unwrap_or_else(host_collectors::hostname),
-            poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(10)),
+            poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(10).max(1)),
             otlp_endpoint,
             otlp_protocol,
             otlp_headers: otlp.headers.unwrap_or_default(),
@@ -428,7 +441,11 @@ impl Config {
             metrics_exclude: metrics.exclude.unwrap_or_default(),
             mysql: MysqlConfig {
                 executable: mysql.executable.unwrap_or_else(|| "mysql".to_string()),
-                uri: mysql.uri.filter(|value| !value.trim().is_empty()),
+                host: mysql.host.filter(|v| !v.trim().is_empty()),
+                port: mysql.port,
+                user: mysql.user.filter(|v| !v.trim().is_empty()),
+                password: mysql.password.filter(|v| !v.trim().is_empty()),
+                database: mysql.database.filter(|v| !v.trim().is_empty()),
             },
             once,
         })

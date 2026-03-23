@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Extension services (six OTLP sidecars)** — workspace members under `services/` that ship metrics independently of the main agent:
+  - `ojo-docker` — Docker container stats (`system.docker.*`)
+  - `ojo-gpu` — NVIDIA GPU stats (`system.gpu.*`)
+  - `ojo-sensors` — hardware sensors (`system.sensor.*`)
+  - `ojo-mysql` — MySQL server stats (`system.mysql.*`)
+  - `ojo-postgres` — PostgreSQL stats (`system.postgres.*`)
+  - `ojo-nfs-client` — NFS client RPC stats (`system.nfs_client.*`)
+- **`crates/host-collectors`** — shared OTLP meter provider setup, metric prefix filtering, and hostname helpers for the main agent and all sidecars.
+- **Grafana dashboards** in `grafana/` for each extension (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`).
+- **Extension metric contracts** — `tests/qa_extension_metric_contracts.rs` (and related smoke tests) for extension namespaces.
 - Quality gates workflow (`.github/workflows/quality.yml`) for pull requests and `main` pushes:
   - `cargo fmt --all -- --check`
   - `cargo check --all-targets`
@@ -20,12 +30,19 @@ All notable changes to this project will be documented in this file.
   - `collection.process_include_state_label`
   - plus env overrides `PROC_PROCESS_INCLUDE_*`.
 
+
 ### Changed
 - Removed duplicate process-count alias emission (`system.processes.count`) in favor of canonical `system.process.count`.
 - Added explicit `system.os_type` to snapshot model and collectors to improve OS-aware metric gating.
 - Restricted Linux-prefixed metric families to Linux/Android code paths so Solaris does not emit Linux namespaces.
 - Refreshed documentation and sample configs (`README.md`, `linux.yaml`, `windows.yaml`, `tests/README.md`) to match current behavior and filtering semantics.
 - Replaced tokenized sample header in `otel.yaml` with an environment placeholder (`${MIMIR_OTLP_TOKEN}`).
+
+### Documentation
+- **`README.md`** — major update for extensions and operators:
+  - New **“Optional extension services (sidecars)”** section: table of all six services with Cargo package names, example YAML paths, metric prefixes, `host-collectors` and Grafana pointers, `cargo build -p` / `cargo run -p` examples, and clarification that release archives ship the main `ojo` binary (extensions built from source or separate release assets).
+  - Repository layout and **Metric selection** guidance extended for MySQL, Postgres, and NFS client prefixes.
+  - Deployment patterns already mention extension sidecars alongside the core agent.
 
 ## [0.0.1] - 2026-03-21
 

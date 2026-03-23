@@ -13,7 +13,6 @@ use std::time::Duration;
 use reqwest::blocking::Client;
 
 pub const METRIC_PREFIX_SYSTEM: &str = "system.";
-pub const METRIC_PREFIX_PROCESS: &str = "process.";
 
 #[derive(Clone, Debug)]
 pub struct PrefixFilter {
@@ -26,6 +25,7 @@ impl PrefixFilter {
         Self { include, exclude }
     }
 
+    #[must_use]
     pub fn allows(&self, name: &str) -> bool {
         let include_match =
             self.include.is_empty() || self.include.iter().any(|p| name.starts_with(p));
@@ -47,81 +47,38 @@ pub struct OtlpSettings {
     pub export_timeout: Option<Duration>,
 }
 
-impl OtlpSettings {
-    pub fn apply_env(&self) {
-        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", &self.otlp_endpoint);
-        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", &self.otlp_protocol);
-
-        if !self.otlp_headers.is_empty() {
-            let headers = self
-                .otlp_headers
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join(",");
-            std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", headers);
-        } else {
-            std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS");
-        }
-
-        if let Some(compression) = &self.otlp_compression {
-            std::env::set_var("OTEL_EXPORTER_OTLP_COMPRESSION", compression);
-        } else {
-            std::env::remove_var("OTEL_EXPORTER_OTLP_COMPRESSION");
-        }
-
-        if let Some(timeout) = self.otlp_timeout {
-            std::env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", timeout.as_secs().to_string());
-        } else {
-            std::env::remove_var("OTEL_EXPORTER_OTLP_TIMEOUT");
-        }
-
-        if let Some(interval) = self.export_interval {
-            std::env::set_var(
-                "OTEL_METRIC_EXPORT_INTERVAL",
-                interval.as_millis().to_string(),
-            );
-        } else {
-            std::env::remove_var("OTEL_METRIC_EXPORT_INTERVAL");
-        }
-
-        if let Some(timeout) = self.export_timeout {
-            std::env::set_var(
-                "OTEL_METRIC_EXPORT_TIMEOUT",
-                timeout.as_millis().to_string(),
-            );
-        } else {
-            std::env::remove_var("OTEL_METRIC_EXPORT_TIMEOUT");
-        }
-    }
-}
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn build_meter_provider(settings: &OtlpSettings) -> Result<SdkMeterProvider> {
-    settings.apply_env();
+    let timeout = settings.otlp_timeout.unwrap_or(DEFAULT_TIMEOUT);
 
     let exporter = match settings.otlp_protocol.as_str() {
         "http/protobuf" => {
             let mut builder = opentelemetry_otlp::MetricExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
-                .with_endpoint(settings.otlp_endpoint.clone());
+                .with_endpoint(settings.otlp_endpoint.clone())
+                .with_timeout(timeout);
             #[cfg(not(target_os = "solaris"))]
             {
-                builder = builder.with_http_client(Client::new());
-            }
-            if let Some(timeout) = settings.otlp_timeout {
-                builder = builder.with_timeout(timeout);
+                builder = builder.with_http_client(
+                    reqwest::blocking::Client::builder()
+                        .timeout(timeout)
+                        .build()
+                        .unwrap_or_else(|_| Client::new()),
+                );
             }
             builder.build()?
         }
-        _ => {
-            let mut builder = opentelemetry_otlp::MetricExporter::builder()
+        "grpc" => {
+            opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
-                .with_endpoint(settings.otlp_endpoint.clone());
-            if let Some(timeout) = settings.otlp_timeout {
-                builder = builder.with_timeout(timeout);
-            }
-            builder.build()?
+                .with_endpoint(settings.otlp_endpoint.clone())
+                .with_timeout(timeout)
+                .build()?
+        }
+        other => {
+            anyhow::bail!("unsupported OTLP protocol: {other:?}; expected \"http/protobuf\" or \"grpc\"");
         }
     };
 
@@ -158,7 +115,7 @@ pub fn init_meter_provider(settings: &OtlpSettings) -> Result<SdkMeterProvider> 
 pub fn hostname() -> String {
     std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "unknown-host".to_string())
+        .unwrap_or_else(|_| gethostname::gethostname().to_string_lossy().into_owned())
 }
 
 pub fn default_protocol_for_endpoint(endpoint: Option<&str>) -> String {

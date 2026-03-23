@@ -7,8 +7,11 @@ collection:
 
 mysql:
   executable: mysql
-  # Optional connection URI, e.g. mysql://user:pass@127.0.0.1:3306
-  uri: ""
+  # host: 127.0.0.1
+  # port: 3306
+  # user: root
+  # password: ""
+  # database: ""
 
 export:
   otlp:

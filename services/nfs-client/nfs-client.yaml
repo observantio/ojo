@@ -7,7 +7,7 @@ collection:
 
 nfs_client:
   # Optional executable override for nfsstat/nfsadmin based probing.
-  executable: ""
+  # executable: nfsstat
 
 export:
   otlp:

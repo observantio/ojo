@@ -1,11 +1,3 @@
-#[cfg(target_os = "windows")]
-mod windows;
+mod common;
 
-#[cfg(not(target_os = "windows"))]
-mod linux;
-
-#[cfg(target_os = "windows")]
-pub(crate) use windows::collect_snapshot;
-
-#[cfg(not(target_os = "windows"))]
-pub(crate) use linux::collect_snapshot;
+pub(crate) use common::collect_snapshot;

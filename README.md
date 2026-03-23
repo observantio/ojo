@@ -18,6 +18,23 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 - Exports to any OTLP-compatible backend directly or through an OpenTelemetry Collector
 - Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, and NFS client stats
 
+## Optional extension services (sidecars)
+
+These binaries are separate workspace crates under `services/<name>/`. Each runs independently, reads its own YAML (next to the binary or via `--config`), and exports OTLP metrics to the same endpoint as the main `ojo` agent. Build from the repo root with `cargo build -p <package> --release` or use `cargo run -p <package>` as below.
+
+| Service | Cargo package | Example config | Metric prefix (examples) |
+|--------|-----------------|----------------|--------------------------|
+| Docker | `ojo-docker` | `services/docker/docker.yaml` | `system.docker.*` |
+| GPU (NVIDIA) | `ojo-gpu` | `services/gpu/gpu.yaml` | `system.gpu.*` |
+| Sensors | `ojo-sensors` | `services/sensors/sensors.yaml` | `system.sensor.*` |
+| MySQL | `ojo-mysql` | `services/mysql/mysql.yaml` | `system.mysql.*` |
+| Postgres | `ojo-postgres` | `services/postgres/postgres.yaml` | `system.postgres.*` |
+| NFS client | `ojo-nfs-client` | `services/nfs-client/nfs-client.yaml` | `system.nfs_client.*` |
+
+Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`).
+
+Release archives for the **main** `ojo` agent list the core binary only; to run an extension, build from source or add the corresponding crate to your release pipeline.
+
 ## Repository Layout
 
 ```
@@ -162,6 +179,9 @@ Extension naming guidance:
 - Docker metrics use `system.docker.*`
 - GPU metrics use `system.gpu.*`
 - Sensor metrics use `system.sensor.*`
+- MySQL metrics use `system.mysql.*`
+- Postgres metrics use `system.postgres.*`
+- NFS client metrics use `system.nfs_client.*`
 - Keep custom extensions under `system.*` / `process.*` to preserve QA naming contracts
 
 ## Environment Variables

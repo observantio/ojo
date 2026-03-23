@@ -192,10 +192,7 @@ fn main() -> Result<()> {
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
         match provider.force_flush() {
             Ok(()) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush ok"
-                );
+                debug!(elapsed_ms = started_at.elapsed().as_millis(), "force_flush ok");
                 match export_state {
                     ExportState::Pending => info!("Connected Successfully"),
                     ExportState::Reconnecting => info!("Reconnected Successfully"),
@@ -204,10 +201,7 @@ fn main() -> Result<()> {
                 export_state = ExportState::Connected;
             }
             Err(err) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush err"
-                );
+                debug!(elapsed_ms = started_at.elapsed().as_millis(), "force_flush err");
                 match export_state {
                     ExportState::Connected => {
                         warn!(error = %err, "Exporter flush failed; reconnecting")
@@ -222,9 +216,9 @@ fn main() -> Result<()> {
         if cfg.once {
             break;
         }
-        let elapsed = started_at.elapsed();
-        if elapsed < cfg.poll_interval && running.load(Ordering::SeqCst) {
-            thread::sleep(cfg.poll_interval - elapsed);
+        let deadline = started_at + cfg.poll_interval;
+        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(500));
         }
     }
 
@@ -363,7 +357,7 @@ impl Config {
             instance_id: service
                 .instance_id
                 .unwrap_or_else(host_collectors::hostname),
-            poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(15)),
+            poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(15).max(1)),
             include_sensor_labels: sensors.include_sensor_labels.unwrap_or(false),
             max_labeled_sensors: sensors.max_labeled_sensors.unwrap_or(32),
             otlp_endpoint,
