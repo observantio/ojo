@@ -1,0 +1,23 @@
+service:
+  name: ojo-sensors
+  instance_id: sensors-0001
+
+collection:
+  poll_interval_secs: 15
+
+sensors:
+  include_sensor_labels: false
+  max_labeled_sensors: 32
+
+export:
+  otlp:
+    endpoint: "http://127.0.0.1:4355/v1/metrics"
+    protocol: http/protobuf
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include: [system.sensor.]
+  exclude: []

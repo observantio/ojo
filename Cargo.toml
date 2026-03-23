@@ -3,6 +3,19 @@ name = "ojo"
 version = "0.0.1"
 edition = "2021"
 
+[workspace]
+resolver = "2"
+members = [
+  ".",
+  "crates/host-collectors",
+  "services/docker",
+  "services/gpu",
+  "services/sensors",
+  "services/mysql",
+  "services/postgres",
+  "services/nfs-client",
+]
+
 [dependencies]
 anyhow = "1"
 ctrlc = "3"
@@ -26,6 +39,7 @@ opentelemetry-otlp = { version = "0.31", features = [
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+host-collectors = { path = "crates/host-collectors" }
 
 [target.'cfg(not(target_os = "solaris"))'.dependencies]
 reqwest = { version = "0.12", default-features = false, features = [

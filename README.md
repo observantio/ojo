@@ -16,6 +16,7 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 - Optionally collects per-process metrics
 - Computes deltas and rates where applicable
 - Exports to any OTLP-compatible backend directly or through an OpenTelemetry Collector
+- Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, and NFS client stats
 
 ## Repository Layout
 
@@ -29,9 +30,29 @@ src/delta.rs                 Delta and rate derivation
 src/metrics/                 OTel metric instruments and recording
 linux.yaml                   Linux config example
 windows.yaml                 Windows config example
+services/docker/docker.yaml  Docker extension config example
+services/gpu/gpu.yaml        GPU extension config example
+services/sensors/sensors.yaml Sensor extension config example
+services/mysql/mysql.yaml    MySQL extension config example
+services/postgres/postgres.yaml Postgres extension config example
+services/nfs-client/nfs-client.yaml NFS client extension config example
+grafana/docker.json          Docker dashboard
+grafana/gpu.json             GPU dashboard
+grafana/sensors.json         Sensors dashboard
+grafana/mysql.json           MySQL dashboard
+grafana/postgres.json        Postgres dashboard
+grafana/nfs-client.json      NFS client dashboard
 otel.yaml                    OpenTelemetry Collector example
 tests/qa_json_schema.rs      QA snapshot schema tests
 tests/qa_platform_metric_contracts.rs  Platform metric namespace tests
+tests/qa_extension_metric_contracts.rs Extension metric contract tests
+services/docker/             Docker sidecar service crate
+services/gpu/                GPU sidecar service crate
+services/sensors/            Sensor sidecar service crate
+services/mysql/              MySQL sidecar service crate
+services/postgres/           Postgres sidecar service crate
+services/nfs-client/         NFS client sidecar service crate
+crates/host-collectors/      Shared OTLP and metric helper crate
 docker.dev/                  QA Dockerfiles and Compose services
 ```
 
@@ -49,6 +70,45 @@ cargo run -- --config linux.yaml
 
 ```bash
 cargo run -- --config windows.yaml
+```
+
+**Optional extension services**
+
+```bash
+cargo run -p ojo-docker -- --config services/docker/docker.yaml
+```
+
+```bash
+cargo run -p ojo-gpu -- --config services/gpu/gpu.yaml
+```
+
+```bash
+cargo run -p ojo-sensors -- --config services/sensors/sensors.yaml
+```
+
+```bash
+cargo run -p ojo-mysql -- --config services/mysql/mysql.yaml
+```
+
+```bash
+cargo run -p ojo-postgres -- --config services/postgres/postgres.yaml
+```
+
+```bash
+cargo run -p ojo-nfs-client -- --config services/nfs-client/nfs-client.yaml
+```
+
+Each extension can run independently and send OTLP metrics to the same collector endpoint as `ojo`.
+
+You can also run from each service folder:
+
+```bash
+cd services/docker && cargo run -- --config docker.yaml
+cd services/gpu && cargo run -- --config gpu.yaml
+cd services/sensors && cargo run -- --config sensors.yaml
+cd services/mysql && cargo run -- --config mysql.yaml
+cd services/postgres && cargo run -- --config postgres.yaml
+cd services/nfs-client && cargo run -- --config nfs-client.yaml
 ```
 
 **3. Dump a snapshot for debugging**
@@ -98,6 +158,12 @@ Rules:
 - `exclude` wins over `include`
 - an empty `include` means include all metrics
 
+Extension naming guidance:
+- Docker metrics use `system.docker.*`
+- GPU metrics use `system.gpu.*`
+- Sensor metrics use `system.sensor.*`
+- Keep custom extensions under `system.*` / `process.*` to preserve QA naming contracts
+
 ## Environment Variables
 
 | Variable | Description |
@@ -120,7 +186,13 @@ A sample collector config is included in `otel.yaml`.
 
 1. Start the collector
 2. Point `export.otlp.endpoint` to its OTLP endpoint
-3. Run Ojo
+3. Run Ojo and any extension sidecars you need
+
+Suggested deployment patterns:
+- Single host: run `ojo` + optional sidecars directly on the host
+- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors)
+- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client)
+- Centralized backend: route all producers through the same OTel Collector
 
 ## Docker QA
 
@@ -172,8 +244,10 @@ Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0
 
 ```bash
 cargo check
+cargo check --workspace
 cargo check --target x86_64-pc-windows-gnu
 cargo test
+cargo test --test qa_extension_metric_contracts
 cargo llvm-cov --workspace --all-features --all-targets --summary-only --fail-under-lines 70
 ```
 

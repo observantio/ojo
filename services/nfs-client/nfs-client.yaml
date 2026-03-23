@@ -1,0 +1,23 @@
+service:
+  name: ojo-nfs-client
+  instance_id: nfs-client-0001
+
+collection:
+  poll_interval_secs: 10
+
+nfs_client:
+  # Optional executable override for nfsstat/nfsadmin based probing.
+  executable: ""
+
+export:
+  otlp:
+    endpoint: "http://127.0.0.1:4355/v1/metrics"
+    protocol: http/protobuf
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include: [system.nfs_client.]
+  exclude: []

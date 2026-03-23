@@ -1,0 +1,24 @@
+service:
+  name: ojo-postgres
+  instance_id: postgres-0001
+
+collection:
+  poll_interval_secs: 10
+
+postgres:
+  executable: psql
+  # Optional connection URI, e.g. postgresql://user:pass@127.0.0.1:5432/postgres
+  uri: ""
+
+export:
+  otlp:
+    endpoint: "http://127.0.0.1:4355/v1/metrics"
+    protocol: http/protobuf
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include: [system.postgres.]
+  exclude: []
