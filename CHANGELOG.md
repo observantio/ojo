@@ -34,7 +34,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **`host-collectors` tests:** Added coverage for `build_meter_provider` (gRPC with Tokio runtime, HTTP/protobuf, unknown protocol error, export interval), `hostname()`, and extra `default_protocol_for_endpoint` cases; `tokio` dev-dependency for gRPC exporter tests. Line coverage for the crate is now ~95% under `llvm-cov` (meets the 70% CI gate; earlier runs were ~42% with only three small tests).
 - **Clippy (Rust 1.94):** Removed redundant `as u64` casts on `libc::statvfs` fields in `src/linux/slab_filesystem_collector.rs` (`clippy::unnecessary_cast`). NFS client `unix.rs`: `map_or(false, …)` → `is_some_and(…)` (`clippy::unnecessary_map_or`).
-- **CI quality workflow:** `cargo check`, `cargo clippy`, and `cargo test` now pass `--workspace` so all extension crates are linted and tested like local `cargo clippy --workspace`.
+- **CI quality workflow:** `cargo check`, `cargo clippy`, and `cargo test` now pass `--workspace` so all extension crates are linted and tested like local `cargo clippy --workspace`. Windows GNU cross-check installs `gcc-mingw-w64-x86-64` (for `ring` / rustls) and runs `cargo check --workspace --all-targets --target x86_64-pc-windows-gnu`.
 - CI coverage (`quality.yml`): `cargo llvm-cov` now uses `-p host-collectors` for `--fail-under-lines 70`. Workspace-wide coverage was ~4% (most crates are binaries with little test execution), so the previous command always failed CI; `rustfmt` output applied so `cargo fmt --check` passes.
 - Removed duplicate process-count alias emission (`system.processes.count`) in favor of canonical `system.process.count`.
 - Added explicit `system.os_type` to snapshot model and collectors to improve OS-aware metric gating.

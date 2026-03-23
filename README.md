@@ -265,11 +265,13 @@ Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0
 ```bash
 cargo check
 cargo check --workspace
-cargo check --target x86_64-pc-windows-gnu
+cargo check --workspace --target x86_64-pc-windows-gnu
 cargo test
 cargo test --test qa_extension_metric_contracts
 cargo llvm-cov -p host-collectors --all-features --all-targets --summary-only --fail-under-lines 70
 ```
+
+Cross-checking to `x86_64-pc-windows-gnu` from Linux requires a MinGW toolchain (e.g. Debian/Ubuntu: `sudo apt-get install gcc-mingw-w64-x86-64`) so crates like `ring` can compile C code for the Windows target.
 
 ## Platform Notes
 
