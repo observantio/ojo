@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-gnu, i686-pc-windows-gnu
 
       - uses: Swatinem/rust-cache@v2
 
@@ -37,10 +37,13 @@ jobs:
         run: cargo test --workspace --all-targets --all-features
 
       - name: Install MinGW (Windows GNU cross compiler)
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
 
       - name: Cross target check (Windows GNU)
         run: cargo check --workspace --all-targets --target x86_64-pc-windows-gnu
+
+      - name: Cross target check (Windows GNU legacy i686)
+        run: cargo check --workspace --all-targets --target i686-pc-windows-gnu
 
   coverage:
     name: Coverage (line threshold)
