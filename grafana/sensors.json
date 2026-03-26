@@ -40,7 +40,7 @@
         "name": "sensorLabel",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_sensor_temperature_celsius{sensor_label!=\"\"}, sensor_label)",
+        "query": "label_values(system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label!=\"\"}, sensor_label)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -91,7 +91,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (sensor_label) (system_sensor_temperature_celsius{sensor_label!=\"\",sensor_label=~\"$sensorLabel\"})",
+          "expr": "avg by (sensor_label) (system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label!=\"\",sensor_label=~\"$sensorLabel\"}) or label_replace(avg(system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label=\"\"}), \"sensor_label\", \"aggregate\", \"__name__\", \".*\")",
           "legendFormat": "{{sensor_label}}"
         }
       ],

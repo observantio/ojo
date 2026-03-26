@@ -40,7 +40,7 @@
         "name": "gpuName",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_gpu_utilization_ratio{gpu_name!=\"\"}, gpu_name)",
+        "query": "label_values(system_gpu_utilization_ratio{service_name=~\"$service\",gpu_name!=\"\"}, gpu_name)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -90,7 +90,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * avg by (gpu_name) (system_gpu_utilization_ratio{gpu_name!=\"\",gpu_name=~\"$gpuName\"})",
+          "expr": "100 * avg by (gpu_name) (system_gpu_utilization_ratio{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
@@ -105,7 +105,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_temperature_celsius{gpu_name!=\"\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_temperature_celsius{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
@@ -120,7 +120,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_memory_used_bytes{gpu_name!=\"\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_memory_used_bytes{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
@@ -135,7 +135,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_memory_total_bytes{gpu_name!=\"\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_memory_total_bytes{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],

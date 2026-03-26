@@ -6,7 +6,7 @@ collection:
   poll_interval_secs: 15
 
 sensors:
-  include_sensor_labels: false
+  include_sensor_labels: true
   max_labeled_sensors: 32
 
 export:
