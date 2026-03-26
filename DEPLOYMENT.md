@@ -22,7 +22,14 @@ docker run --rm -it \
   --config /etc/otelcol-contrib/config.yaml
 ```
 
-If your Docker daemon requires elevated privileges, use:
+If you have `otelcol-contrib` installed locally, you can run it directly:
+
+```bash
+export MIMIR_OTLP_TOKEN="<token from watchdog>"
+sudo otelcol-contrib --config otel.yaml
+```
+
+If you prefer Docker and your Docker daemon requires elevated privileges, use:
 
 ```bash
 export MIMIR_OTLP_TOKEN="<token from watchdog>"
