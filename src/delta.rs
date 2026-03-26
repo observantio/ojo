@@ -547,3 +547,105 @@ impl PrevState {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PrevState;
+    use crate::model::{CpuTimes, Snapshot};
+    use std::time::Duration;
+
+    fn approx_eq(left: f64, right: f64) {
+        let diff = (left - right).abs();
+        assert!(diff < 1e-9, "left={left}, right={right}, diff={diff}");
+    }
+
+    #[test]
+    fn first_sample_returns_empty_derived_and_sets_previous_state() {
+        let mut state = PrevState::default();
+        let current = Snapshot::default();
+
+        let out = state.derive(&current, Duration::from_secs(1));
+
+        assert_eq!(out.cpu_utilization_ratio, 0.0);
+        assert!(state.last.is_some());
+    }
+
+    #[test]
+    fn cpu_cycle_utilization_overrides_tick_based_ratio() {
+        let mut state = PrevState {
+            last: Some(Snapshot::default()),
+        };
+
+        let mut current = Snapshot::default();
+        current.system.cpu_cycle_utilization = Some(0.73);
+        current.system.cpu_total = CpuTimes {
+            user: 100,
+            nice: 0,
+            system: 0,
+            idle: 100,
+            iowait: 0,
+            irq: 0,
+            softirq: 0,
+            steal: 0,
+            guest: 0,
+            guest_nice: 0,
+        };
+
+        let out = state.derive(&current, Duration::from_secs(1));
+        approx_eq(out.cpu_utilization_ratio, 0.73);
+    }
+
+    #[test]
+    fn cpu_utilization_falls_back_to_delta_ratio_when_cycle_utilization_missing() {
+        let mut prev = Snapshot::default();
+        prev.system.cpu_total = CpuTimes {
+            user: 10,
+            nice: 0,
+            system: 10,
+            idle: 80,
+            iowait: 0,
+            irq: 0,
+            softirq: 0,
+            steal: 0,
+            guest: 0,
+            guest_nice: 0,
+        };
+
+        let mut current = Snapshot::default();
+        current.system.ticks_per_second = 100;
+        current.system.cpu_total = CpuTimes {
+            user: 20,
+            nice: 0,
+            system: 20,
+            idle: 100,
+            iowait: 0,
+            irq: 0,
+            softirq: 0,
+            steal: 0,
+            guest: 0,
+            guest_nice: 0,
+        };
+
+        let mut state = PrevState { last: Some(prev) };
+
+        let out = state.derive(&current, Duration::from_secs(2));
+        approx_eq(out.cpu_utilization_ratio, 0.5);
+        assert_eq!(out.cpu_time_delta_secs.get("user").copied(), Some(0.1));
+    }
+
+    #[test]
+    fn vmstat_delta_ignores_negative_values() {
+        let mut prev = Snapshot::default();
+        prev.vmstat.insert("pgfault".to_string(), 100);
+
+        let mut current = Snapshot::default();
+        current.system.ticks_per_second = 100;
+        current.vmstat.insert("pgfault".to_string(), -1);
+
+        let mut state = PrevState { last: Some(prev) };
+        let out = state.derive(&current, Duration::from_secs(1));
+
+        assert_eq!(out.page_faults_delta, 0);
+        approx_eq(out.page_faults_per_sec, 0.0);
+    }
+}
