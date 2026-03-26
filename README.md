@@ -33,7 +33,7 @@ These binaries are separate workspace crates under `services/<name>/`. Each runs
 
 Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`).
 
-Release archives for the **main** `ojo` agent list the core binary only; to run an extension, build from source or add the corresponding crate to your release pipeline.
+Release archives include the main `ojo` agent and all sidecar services for Linux (`-unix`) and Windows (`-win`).
 
 ## Repository Layout
 
@@ -210,7 +210,6 @@ A sample collector config is included in `otel.yaml`.
 
 Suggested deployment patterns:
 - Single host: run `ojo` + optional sidecars directly on the host
-- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors)
 - Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client)
 - Centralized backend: route all producers through the same OTel Collector
 
@@ -219,46 +218,14 @@ Suggested deployment patterns:
 ```bash
 docker compose -f docker.dev/docker-compose.yml run --rm qa-ubuntu-2204
 ```
-
 ```bash
-docker compose -f docker.dev/docker-compose.yml run --rm qa-windows-2022-gnu
+docker compose up -d
+# if you want to run all the containers
 ```
-
-The Windows GNU check writes output to `tests/qa/windows-2022-check.json`.
 
 ## Build and Release
 
-Releases are published via `.github/workflows/ci.yml` on `v*` tag push or manual dispatch.
-
-**Artifacts built on every release:**
-
-| Artifact | Target |
-|---|---|
-| `ojo-{version}-linux-x86_64` | `x86_64-unknown-linux-gnu` |
-| `ojo-{version}-linux-aarch64` | `aarch64-unknown-linux-gnu` |
-| `ojo-{version}-windows-x86_64.exe` | `x86_64-pc-windows-gnu` |
-
-**Optional legacy artifacts (manual dispatch only):**
-
-| Artifact | Target |
-|---|---|
-| `ojo-{version}-linux-x86_64-legacy` | x86_64 Linux, SSE4.2/AVX/AVX2 disabled |
-| `ojo-{version}-windows-i686-legacy.exe` | `i686-pc-windows-gnu` |
-
-**Download and run — Linux:**
-
-```bash
-curl -L https://github.com/observantio/ojo/releases/download/v0.0.1/ojo-v0.0.1-linux-aarch64 -o ojo
-chmod +x ojo
-./ojo --config linux.yaml
-```
-
-**Download and run — Windows (PowerShell):**
-
-```powershell
-Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0.1/ojo-v0.0.1-windows-x86_64.exe -OutFile ojo.exe
-.\ojo.exe --config windows.yaml
-```
+Release details, artifact matrix, and download/run examples are in `DEPLOYMENT.md`.
 
 ## Build and Validate
 

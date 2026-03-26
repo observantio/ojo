@@ -40,7 +40,7 @@
         "name": "container",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_docker_container_cpu_ratio{container_name!=\"\"}, container_name)",
+        "query": "label_values(system_docker_container_cpu_ratio{service_name=~\"$service\",container_name!=\"\"}, container_name)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -89,7 +89,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count(count by (container_name) (system_docker_container_cpu_ratio{container_name!=\"\"}))"
+          "expr": "count(count by (container_name) (system_docker_container_cpu_ratio{service_name=~\"$service\",container_name!=\"\"}))"
         }
       ],
       "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 }
@@ -102,7 +102,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * avg by (container_name) (system_docker_container_cpu_ratio{container_name!=\"\",container_name=~\"$container\"})",
+          "expr": "100 * avg by (container_name) (system_docker_container_cpu_ratio{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"})",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -117,7 +117,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (container_name) (system_docker_container_memory_usage_bytes{container_name!=\"\",container_name=~\"$container\"})",
+          "expr": "avg by (container_name) (system_docker_container_memory_usage_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"})",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -132,7 +132,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (container_name) (system_docker_container_memory_limit_bytes{container_name!=\"\",container_name=~\"$container\"})",
+          "expr": "avg by (container_name) (system_docker_container_memory_limit_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"})",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -147,7 +147,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_name) (deriv(system_docker_container_network_rx_bytes{container_name!=\"\",container_name=~\"$container\"}[5m]))",
+          "expr": "sum by (container_name) (deriv(system_docker_container_network_rx_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"}[5m]))",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -162,7 +162,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_name) (deriv(system_docker_container_network_tx_bytes{container_name!=\"\",container_name=~\"$container\"}[5m]))",
+          "expr": "sum by (container_name) (deriv(system_docker_container_network_tx_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"}[5m]))",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -177,7 +177,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_name) (deriv(system_docker_container_block_read_bytes{container_name!=\"\",container_name=~\"$container\"}[5m]))",
+          "expr": "sum by (container_name) (deriv(system_docker_container_block_read_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"}[5m]))",
           "legendFormat": "{{container_name}}"
         }
       ],
@@ -192,7 +192,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_name) (deriv(system_docker_container_block_write_bytes{container_name!=\"\",container_name=~\"$container\"}[5m]))",
+          "expr": "sum by (container_name) (deriv(system_docker_container_block_write_bytes{service_name=~\"$service\",container_name!=\"\",container_name=~\"$container\"}[5m]))",
           "legendFormat": "{{container_name}}"
         }
       ],

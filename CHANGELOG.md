@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-03-26
+
 ### Added
 - **Extension services (six OTLP sidecars)** — workspace members under `services/` that ship metrics independently of the main agent:
   - `ojo-docker` — Docker container stats (`system.docker.*`)
@@ -32,6 +34,12 @@ All notable changes to this project will be documented in this file.
 
 
 ### Changed
+- **Release workflow (`.github/workflows/ci.yml`):** now publishes non-legacy release assets for:
+  - core `ojo` on Linux x86_64, Linux aarch64, and Windows x86_64
+  - all six extension services on Linux (`-unix`) and Windows (`-win`) with names like:
+    - `ojo-docker-unix-v0.0.2`
+    - `ojo-docker-win-v0.0.2.exe`
+    - and equivalent `ojo-gpu`, `ojo-sensors`, `ojo-mysql`, `ojo-postgres`, `ojo-nfs-client` assets
 - **`host-collectors` tests:** Added coverage for `build_meter_provider` (gRPC with Tokio runtime, HTTP/protobuf, unknown protocol error, export interval), `hostname()`, and extra `default_protocol_for_endpoint` cases; `tokio` dev-dependency for gRPC exporter tests. Line coverage for the crate is now ~95% under `llvm-cov` (meets the 70% CI gate; earlier runs were ~42% with only three small tests).
 - **Clippy (Rust 1.94):** Removed redundant `as u64` casts on `libc::statvfs` fields in `src/linux/slab_filesystem_collector.rs` (`clippy::unnecessary_cast`). NFS client `unix.rs`: `map_or(false, …)` → `is_some_and(…)` (`clippy::unnecessary_map_or`).
 - **CI quality workflow:** `cargo check`, `cargo clippy`, and `cargo test` now pass `--workspace` so all extension crates are linted and tested like local `cargo clippy --workspace`. Windows GNU cross-check installs `gcc-mingw-w64-x86-64` (for `ring` / rustls) and runs `cargo check --workspace --all-targets --target x86_64-pc-windows-gnu`.
@@ -44,9 +52,13 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 - **`README.md`** — major update for extensions and operators:
-  - New **“Optional extension services (sidecars)”** section: table of all six services with Cargo package names, example YAML paths, metric prefixes, `host-collectors` and Grafana pointers, `cargo build -p` / `cargo run -p` examples, and clarification that release archives ship the main `ojo` binary (extensions built from source or separate release assets).
+  - New **“Optional extension services (sidecars)”** section: table of all six services with Cargo package names, example YAML paths, metric prefixes, `host-collectors` and Grafana pointers, `cargo build -p` / `cargo run -p` examples, and release-asset naming for Linux (`-unix`) and Windows (`-win`).
   - Repository layout and **Metric selection** guidance extended for MySQL, Postgres, and NFS client prefixes.
-  - Deployment patterns already mention extension sidecars alongside the core agent.
+  - Deployment patterns and release/download examples updated for `v0.0.2`.
+- **`DEPLOYMENT.md`** — added dedicated deployment and release guide:
+  - release artifact matrix for core + sidecars
+  - quick download/run examples
+  - OpenTelemetry Collector prerequisite and Docker run command with `MIMIR_OTLP_TOKEN`
 
 ## [0.0.1] - 2026-03-21
 

@@ -7,19 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version/tag (example: v0.1.0)"
+        description: "Release version/tag (example: v0.0.2)"
         required: true
         type: string
-      build_legacy_linux:
-        description: "Also build legacy Linux artifact"
-        required: false
-        default: false
-        type: boolean
-      build_legacy_windows:
-        description: "Also build legacy Windows artifact"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -52,8 +42,8 @@ jobs:
 
           echo "value=$version" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build — ${{ matrix.name }}
+  build-core:
+    name: Build Core - ${{ matrix.name }}
     runs-on: ubuntu-22.04
     needs: resolve-version
     strategy:
@@ -64,32 +54,16 @@ jobs:
             id: linux-x86_64
             target: x86_64-unknown-linux-gnu
             platform: linux
-            legacy: false
 
           - name: Linux aarch64
             id: linux-aarch64
             target: aarch64-unknown-linux-gnu
             platform: linux
-            legacy: false
-
-          - name: Linux x86_64 (Legacy)
-            id: linux-x86_64-legacy
-            target: x86_64-unknown-linux-gnu
-            platform: linux
-            legacy: true
-            rustflags: "-C target-cpu=x86-64 -C target-feature=-sse4.2,-avx,-avx2"
 
           - name: Windows x86_64
             id: windows-x86_64
             target: x86_64-pc-windows-gnu
             platform: windows
-            legacy: false
-
-          - name: Windows i686 (Legacy)
-            id: windows-i686-legacy
-            target: i686-pc-windows-gnu
-            platform: windows
-            legacy: true
 
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +74,7 @@ jobs:
 
       - name: Install MinGW toolchains
         if: matrix.platform == 'windows'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -108,13 +82,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}${{ matrix.legacy && '-legacy' || '' }}
+          key: core-${{ matrix.target }}
 
       - name: Build
         env:
-          RUSTFLAGS: ${{ matrix.rustflags || '' }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --target "${{ matrix.target }}"
+        run: cargo build --release --target "${{ matrix.target }}" -p ojo
 
       - name: Package
         shell: bash
@@ -130,7 +103,106 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.id }}-${{ needs.resolve-version.outputs.value }}
+          name: core-${{ matrix.id }}-${{ needs.resolve-version.outputs.value }}
+          path: dist/*
+          if-no-files-found: error
+
+  build-services:
+    name: Build Service - ojo-${{ matrix.service }} (${{ matrix.platform }})
+    runs-on: ubuntu-22.04
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: docker
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: docker
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: gpu
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: gpu
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: sensors
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: sensors
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: mysql
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: mysql
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: postgres
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: postgres
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: nfs-client
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: nfs-client
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve service identifiers
+        id: service
+        shell: bash
+        run: |
+          SERVICE="${{ matrix.service }}"
+          PACKAGE="ojo-${SERVICE}"
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+          echo "binary=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Install MinGW toolchains
+        if: matrix.platform == 'win'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: svc-${{ matrix.target }}-${{ matrix.service }}
+
+      - name: Build
+        run: cargo build --release --target "${{ matrix.target }}" -p "${{ steps.service.outputs.package }}"
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.value }}"
+          BINARY="${{ steps.service.outputs.binary }}"
+          mkdir -p dist
+
+          cp "target/${{ matrix.target }}/release/${BINARY}${{ matrix.ext }}" "dist/${BINARY}-${{ matrix.platform }}-${VERSION}${{ matrix.ext }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-${{ matrix.service }}-${{ matrix.platform }}-${{ needs.resolve-version.outputs.value }}
           path: dist/*
           if-no-files-found: error
 
@@ -139,7 +211,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - resolve-version
-      - build
+      - build-core
+      - build-services
     if: ${{ !failure() && !cancelled() }}
     steps:
       - uses: actions/download-artifact@v4
