@@ -25,3 +25,14 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
 pub fn collect_snapshot(_include_process_metrics: bool) -> Result<Snapshot> {
     anyhow::bail!("unsupported target OS")
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[test]
+    fn collect_snapshot_smoke_linux_like() {
+        let snap = super::collect_snapshot(false).expect("collect snapshot");
+        assert!(!snap.system.os_type.trim().is_empty());
+        assert!(snap.system.ticks_per_second > 0);
+    }
+}

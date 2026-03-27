@@ -304,3 +304,103 @@ fn collect_cgroup_v1_dir(path: &Path, scope: &str, out: &mut BTreeMap<String, u6
         }
     }
 }
+
+#[cfg(test)]
+mod cgroup_tests {
+    use super::{collect_cgroup_v1_dir, collect_cgroup_v2_dir, collect_cgroup_v2_tree};
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ojo-{prefix}-{}-{nanos}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn collect_cgroup_v2_dir_parses_values_and_max_flags() {
+        let dir = temp_dir("cgv2");
+        fs::write(dir.join("memory.current"), "123\n").expect("write");
+        fs::write(dir.join("memory.swap.max"), "max\n").expect("write");
+        fs::write(dir.join("pids.max"), "max\n").expect("write");
+        fs::write(dir.join("cpu.max"), "max 100000\n").expect("write");
+        fs::write(dir.join("cpu.stat"), "usage_usec 7\nthrottled_usec max\n").expect("write");
+        fs::write(dir.join("memory.stat"), "anon 9\ninactive_file max\n").expect("write");
+        fs::write(dir.join("io.stat"), "8:0 rbytes=10 wbytes=max rios=2\n").expect("write");
+
+        let mut out = BTreeMap::new();
+        collect_cgroup_v2_dir(&dir, "v2/unit", &mut out);
+
+        assert_eq!(out.get("v2/unit|memory.current|value"), Some(&123));
+        assert_eq!(out.get("v2/unit|memory.swap.max|is_max"), Some(&1));
+        assert_eq!(out.get("v2/unit|pids.max|is_max"), Some(&1));
+        assert_eq!(out.get("v2/unit|cpu.max.quota|is_max"), Some(&1));
+        assert_eq!(out.get("v2/unit|cpu.max.period|value"), Some(&100000));
+        assert_eq!(out.get("v2/unit|cpu.stat|usage_usec"), Some(&7));
+        assert_eq!(out.get("v2/unit|cpu.stat|throttled_usec|is_max"), Some(&1));
+        assert_eq!(out.get("v2/unit|memory.stat|anon"), Some(&9));
+        assert_eq!(
+            out.get("v2/unit|memory.stat|inactive_file|is_max"),
+            Some(&1)
+        );
+        assert_eq!(out.get("v2/unit|io.stat|8:0|rbytes"), Some(&10));
+        assert_eq!(out.get("v2/unit|io.stat|8:0|wbytes.is_max"), Some(&1));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_cgroup_v1_dir_parses_values_and_blkio_entries() {
+        let dir = temp_dir("cgv1");
+        fs::write(dir.join("memory.usage_in_bytes"), "200\n").expect("write");
+        fs::write(dir.join("memory.limit_in_bytes"), "max\n").expect("write");
+        fs::write(dir.join("pids.max"), "max\n").expect("write");
+        fs::write(dir.join("cpu.shares"), "1024\n").expect("write");
+        fs::write(
+            dir.join("blkio.throttle.io_service_bytes"),
+            "8:0 Read 30\n8:0 Write max\n",
+        )
+        .expect("write");
+
+        let mut out = BTreeMap::new();
+        collect_cgroup_v1_dir(&dir, "v1/cpu/root", &mut out);
+
+        assert_eq!(out.get("v1/cpu/root|memory.usage_in_bytes|value"), Some(&200));
+        assert_eq!(out.get("v1/cpu/root|memory.limit_in_bytes|is_max"), Some(&1));
+        assert_eq!(out.get("v1/cpu/root|pids.max|is_max"), Some(&1));
+        assert_eq!(out.get("v1/cpu/root|cpu.shares|value"), Some(&1024));
+        assert_eq!(
+            out.get("v1/cpu/root|blkio.throttle.io_service_bytes|8:0|read"),
+            Some(&30)
+        );
+        assert_eq!(
+            out.get("v1/cpu/root|blkio.throttle.io_service_bytes|8:0|write.is_max"),
+            Some(&1)
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_cgroup_v2_tree_visits_root_and_child_dirs() {
+        let root = temp_dir("cgv2tree");
+        let child = root.join("workload");
+        fs::create_dir_all(&child).expect("create child");
+        fs::write(root.join("memory.current"), "11\n").expect("write root");
+        fs::write(child.join("memory.current"), "22\n").expect("write child");
+
+        let mut out = BTreeMap::new();
+        collect_cgroup_v2_tree(&root, &mut out);
+
+        assert_eq!(out.get("v2/root|memory.current|value"), Some(&11));
+        assert_eq!(out.get("v2/workload|memory.current|value"), Some(&22));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+}

@@ -2,6 +2,16 @@ fn collect_slabinfo() -> Result<BTreeMap<String, u64>> {
     let Ok(contents) = fs::read_to_string("/proc/slabinfo") else {
         return Ok(collect_slabinfo_sysfs());
     };
+    let out = parse_slabinfo_text(&contents);
+
+    if out.is_empty() {
+        Ok(collect_slabinfo_sysfs())
+    } else {
+        Ok(out)
+    }
+}
+
+fn parse_slabinfo_text(contents: &str) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
 
     for line in contents.lines() {
@@ -38,11 +48,7 @@ fn collect_slabinfo() -> Result<BTreeMap<String, u64>> {
         }
     }
 
-    if out.is_empty() {
-        Ok(collect_slabinfo_sysfs())
-    } else {
-        Ok(out)
-    }
+    out
 }
 
 fn collect_slabinfo_sysfs() -> BTreeMap<String, u64> {
@@ -163,4 +169,48 @@ fn collect_filesystem_stats(mounts: &[MountSnapshot]) -> BTreeMap<String, u64> {
     }
 
     out
+}
+
+#[cfg(test)]
+mod slab_filesystem_tests {
+    use super::{collect_filesystem_stats, parse_slabinfo_text};
+    use crate::model::MountSnapshot;
+
+    #[test]
+    fn parse_slabinfo_text_reads_core_and_optional_slab_fields() {
+        let text = "# comment\nkmalloc-64 1 2 64 8 1 : tunables 0 0 0 : slabdata 3 4 0\ninvalid\n";
+        let parsed = parse_slabinfo_text(text);
+
+        assert_eq!(parsed.get("kmalloc-64|active_objs|value"), Some(&1));
+        assert_eq!(parsed.get("kmalloc-64|num_objs|value"), Some(&2));
+        assert_eq!(parsed.get("kmalloc-64|objsize|bytes"), Some(&64));
+        assert_eq!(parsed.get("kmalloc-64|objperslab|value"), Some(&8));
+        assert_eq!(parsed.get("kmalloc-64|pagesperslab|value"), Some(&1));
+        assert_eq!(parsed.get("kmalloc-64|active_slabs|value"), Some(&0));
+        assert_eq!(parsed.get("kmalloc-64|num_slabs|value"), Some(&0));
+    }
+
+    #[test]
+    fn collect_filesystem_stats_covers_success_and_invalid_mountpoint_paths() {
+        let mounts = vec![
+            MountSnapshot {
+                device: "rootfs".to_string(),
+                mountpoint: "/".to_string(),
+                fs_type: "ext4".to_string(),
+                read_only: false,
+            },
+            MountSnapshot {
+                device: "none".to_string(),
+                mountpoint: "\0invalid".to_string(),
+                fs_type: "tmpfs".to_string(),
+                read_only: false,
+            },
+        ];
+
+        let out = collect_filesystem_stats(&mounts);
+        assert!(out.contains_key("/|total_bytes|value"));
+        assert!(out.contains_key("/|free_bytes|value"));
+        assert!(out.contains_key("/|files|value"));
+        assert!(!out.contains_key("\0invalid|total_bytes|value"));
+    }
 }
