@@ -101,3 +101,24 @@ pub fn collect_snapshot(include_process_metrics: bool) -> Result<Snapshot> {
         windows: None,
     })
 }
+
+#[cfg(test)]
+mod snapshot_tests {
+    #[test]
+    fn collect_snapshot_without_process_metrics_is_available() {
+        let snap = super::collect_snapshot(false).expect("snapshot without process metrics");
+
+        assert!(snap.support_state.contains_key("system.linux.cgroup.mode"));
+        assert!(!snap.metric_classification.is_empty());
+        assert!(snap.processes.is_empty());
+    }
+
+    #[test]
+    fn collect_snapshot_with_process_metrics_returns_consistent_shapes() {
+        let snap = super::collect_snapshot(true).expect("snapshot with process metrics");
+
+        assert!(snap.support_state.contains_key("system.linux.cgroup.mode"));
+        assert!(!snap.metric_classification.is_empty());
+        assert!(snap.system.process_count > 0);
+    }
+}
