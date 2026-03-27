@@ -568,3 +568,127 @@ fn page_size_bytes() -> u64 {
     procfs::page_size().max(1)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("ojo-core-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    #[test]
+    fn cgroup_mode_and_support_state_cover_variants() {
+        assert_eq!(CgroupMode::None.as_str(), "unsupported");
+        assert_eq!(CgroupMode::V1.as_str(), "v1");
+        assert_eq!(CgroupMode::V2.as_str(), "v2");
+        assert_eq!(CgroupMode::Hybrid.as_str(), "hybrid");
+
+        let meta_disabled = ProcessCollectionMeta {
+            fd_scan_enabled: false,
+        };
+        let state = linux_support_state(LinuxSupportInputs {
+            cgroup_mode: CgroupMode::V1,
+            psi_supported: false,
+            psi_irq_supported: false,
+            schedstat_supported: false,
+            process_meta: Some(&meta_disabled),
+            in_container: false,
+            system_ok: false,
+            memory_ok: false,
+            process_ok: false,
+        });
+        assert_eq!(
+            state.get("system.linux.pressure").map(String::as_str),
+            Some("unsupported_or_disabled")
+        );
+        assert_eq!(
+            state.get("snapshot.processes").map(String::as_str),
+            Some("fallback_empty_due_to_collection_failure")
+        );
+        assert_eq!(
+            state
+                .get("process.unix.file_descriptor.count.collection")
+                .map(String::as_str),
+            Some("disabled_for_scale_fd_count_omitted")
+        );
+    }
+
+    #[test]
+    fn read_cache_helpers_cover_common_parsing_paths() {
+        let dir = unique_temp_path("cache");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let bool_file = dir.join("bool");
+        let int_file = dir.join("int");
+        let bad_bool = dir.join("bad_bool");
+        fs::write(&bool_file, "1\n").expect("write bool");
+        fs::write(&int_file, "-42 trailing\n").expect("write int");
+        fs::write(&bad_bool, "maybe\n").expect("write bad bool");
+
+        let mut cache = ReadCache::default();
+        assert_eq!(cache.read_bool_num(&bool_file), Some(true));
+        assert_eq!(cache.read_i64_first(&int_file), Some(-42));
+        assert_eq!(cache.read_bool_num(&bad_bool), None);
+
+        fs::remove_file(bool_file).expect("cleanup bool");
+        fs::remove_file(int_file).expect("cleanup int");
+        fs::remove_file(bad_bool).expect("cleanup bad bool");
+        fs::remove_dir_all(dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn env_and_scope_helpers_cover_toggle_paths() {
+        let _guard = env_lock().lock().expect("env lock");
+
+        std::env::set_var("OJO_LINUX_INCLUDE_PSEUDO_FS", "yes");
+        std::env::set_var("OJO_LINUX_INCLUDE_VIRTUAL_INTERFACES", "on");
+        std::env::set_var("OJO_LINUX_INCLUDE_RAW_CGROUP_PATHS", "1");
+        assert!(include_pseudo_filesystems());
+        assert!(include_virtual_interfaces());
+        assert!(include_raw_cgroup_paths());
+        assert_eq!(normalize_cgroup_scope("v2/abc"), "v2/abc");
+
+        std::env::set_var("OJO_LINUX_INCLUDE_RAW_CGROUP_PATHS", "0");
+        assert_eq!(normalize_cgroup_scope(""), "root");
+        assert_eq!(
+            normalize_cgroup_scope("v2/0123456789abcdef0123456789abcdef"),
+            "v2/{id}"
+        );
+
+        std::env::remove_var("OJO_LINUX_INCLUDE_PSEUDO_FS");
+        std::env::remove_var("OJO_LINUX_INCLUDE_VIRTUAL_INTERFACES");
+        std::env::remove_var("OJO_LINUX_INCLUDE_RAW_CGROUP_PATHS");
+    }
+
+    #[test]
+    fn misc_helpers_cover_path_and_key_formatting() {
+        assert_eq!(parse_u64_with_max_flag("max"), (None, true));
+        assert_eq!(parse_u64_with_max_flag("42"), (Some(42), false));
+        assert_eq!(unescape_mount_field("/path\\040with\\040space"), "/path with space");
+        assert_eq!(key_dot2("a", "b"), "a.b");
+        assert_eq!(key_dot3("a", "b", "c"), "a.b.c");
+        assert_eq!(key_pipe2("irq", 3), "irq|3");
+        assert_eq!(key_pipe3("scope", "key", "value"), "scope|key|value");
+        assert_eq!(key_pipe4("a", "b", "c", 1), "a|b|c|1");
+        assert!(page_size_bytes() > 0);
+        let _ = read_primary_interfaces();
+    }
+
+    #[test]
+    fn read_cpu_frequency_returns_none_for_missing_cpu_directory() {
+        let mut cache = ReadCache::default();
+        assert_eq!(read_cpu_frequency_mhz(&mut cache, usize::MAX), None);
+    }
+}

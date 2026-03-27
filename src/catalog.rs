@@ -263,4 +263,12 @@ mod tests {
     fn runqueue_requires_cpu_scope() {
         assert!(runqueue_attrs("all|2").is_none());
     }
+
+    #[test]
+    fn rejects_malformed_pipe_separated_attributes() {
+        assert!(zoneinfo_attrs("node0|DMA").is_none());
+        assert!(buddyinfo_attrs("node0|DMA").is_none());
+        assert!(filesystem_attrs("/var|used").is_none());
+        assert!(cgroup_attrs("memory|memory.current").is_none());
+    }
 }
