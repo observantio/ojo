@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Expanded test coverage across core and sidecar services, including deterministic one-shot execution paths for integration-style `main` tests.
+- Added broader Linux collector helper tests (cgroup/support-state helpers, cache parsers, key formatting, scope normalization) and additional config/catalog edge-case tests.
+
+### Changed
+- Updated Linux snapshot support-state assertions to match current key naming (`system.linux.cgroup.mode`).
+- Improved config validation behavior to accept `PROC_POLL_INTERVAL_SECS` when YAML omits `collection.poll_interval_secs`.
+- Updated service and core test paths to avoid flaky Ctrl-C handler re-registration failures during repeated test runs.
+
+### Fixed
+- Resolved a Clippy warning in GPU platform tests (`bool_assert_comparison`) by switching to idiomatic boolean assertion style.
+
+### Documentation
+- Expanded deployment and README operator guidance with practical configuration/cardinality tuning details and a broader collected-metrics reference.
+
 ## [0.0.2] - 2026-03-26
 
 ### Added
