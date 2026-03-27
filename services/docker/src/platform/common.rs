@@ -211,3 +211,84 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_snapshot, resolve_summary_entry};
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("ojo-docker-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    #[test]
+    fn resolve_summary_entry_matches_exact_and_prefix_ids() {
+        let mut by_id = BTreeMap::new();
+        by_id.insert(
+            "abcdef123456".to_string(),
+            (
+                "/web".to_string(),
+                "nginx".to_string(),
+                "running".to_string(),
+            ),
+        );
+
+        let exact = resolve_summary_entry(&by_id, "abcdef123456");
+        assert_eq!(exact, Some(("/web", "nginx", "running")));
+
+        let prefix = resolve_summary_entry(&by_id, "abcdef");
+        assert_eq!(prefix, Some(("/web", "nginx", "running")));
+
+        let missing = resolve_summary_entry(&by_id, "xyz");
+        assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn collect_snapshot_parses_fake_docker_ps_and_stats_output() {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = unique_temp_dir("bin");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let docker = dir.join("docker");
+        fs::write(
+            &docker,
+            "#!/bin/sh\nif [ \"$1\" = \"ps\" ]; then\n  printf '{\"ID\":\"abcdef123456\",\"Names\":\"/web\",\"Image\":\"nginx:latest\",\"State\":\"running\"}\\n'\n  printf '{\"ID\":\"deadbeef\",\"Names\":\"/db\",\"Image\":\"postgres\",\"State\":\"exited\"}\\n'\nelif [ \"$1\" = \"stats\" ]; then\n  printf '{\"ID\":\"abcdef\",\"Name\":\"/web\",\"CPUPerc\":\"25%%\",\"MemUsage\":\"128MiB / 1GiB\",\"NetIO\":\"1MiB / 2MiB\",\"BlockIO\":\"3MiB / 4MiB\"}\\n'\nelse\n  exit 1\nfi\n",
+        )
+        .expect("write docker script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&docker).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&docker, perms).expect("chmod");
+        }
+
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+
+        let snap = collect_snapshot();
+        assert!(snap.available);
+        assert_eq!(snap.total, 2);
+        assert_eq!(snap.running, 1);
+        assert_eq!(snap.stopped, 1);
+        assert_eq!(snap.samples.len(), 1);
+        assert_eq!(snap.samples[0].name, "web");
+        assert_eq!(snap.samples[0].image, "nginx:latest");
+        assert_eq!(snap.samples[0].state, "running");
+
+        std::env::set_var("PATH", old_path);
+        fs::remove_file(&docker).expect("cleanup docker script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+}

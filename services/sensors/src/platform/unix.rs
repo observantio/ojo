@@ -129,3 +129,63 @@ fn read_scaled(path: &Path, scale: f64) -> Option<f64> {
     }
     Some(scaled)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_fans, collect_temps, collect_voltages, read_label, read_scaled};
+    use crate::SensorSnapshot;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("ojo-sensors-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    #[test]
+    fn read_helpers_parse_expected_values() {
+        let dir = unique_temp_dir("helpers");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let value_file = dir.join("value");
+        fs::write(&value_file, "2500\n").expect("write value");
+        let nan_file = dir.join("nan");
+        fs::write(&nan_file, "NaN\n").expect("write nan");
+        let label_file = dir.join("temp1_label");
+        fs::write(&label_file, " CPU Temp \n").expect("write label");
+
+        assert_eq!(read_scaled(&value_file, 1000.0), Some(2.5));
+        assert_eq!(read_scaled(&nan_file, 1000.0), None);
+        assert_eq!(read_label(&dir, "temp1_label").as_deref(), Some("CPU Temp"));
+        assert_eq!(read_label(&dir, "missing_label"), None);
+
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn collect_helpers_populate_sensor_samples() {
+        let dir = unique_temp_dir("hwmon");
+        fs::create_dir_all(&dir).expect("mkdir");
+        fs::write(dir.join("temp1_input"), "42000\n").expect("write temp");
+        fs::write(dir.join("temp1_label"), "Package id 0\n").expect("write temp label");
+        fs::write(dir.join("fan1_input"), "1200\n").expect("write fan");
+        fs::write(dir.join("in1_input"), "1100\n").expect("write voltage");
+
+        let mut snap = SensorSnapshot::default();
+        collect_temps(&dir, "chip0", &mut snap);
+        collect_fans(&dir, "chip0", &mut snap);
+        collect_voltages(&dir, "chip0", &mut snap);
+
+        assert!(snap.available);
+        assert_eq!(snap.temperatures.len(), 1);
+        assert_eq!(snap.fans.len(), 1);
+        assert_eq!(snap.voltages.len(), 1);
+        assert_eq!(snap.temperatures[0].label, "Package id 0");
+        assert_eq!(snap.fans[0].label, "fan1");
+        assert_eq!(snap.voltages[0].label, "in1");
+
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+}

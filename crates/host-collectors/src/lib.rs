@@ -9,9 +9,6 @@ use opentelemetry_sdk::{
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-#[cfg(not(target_os = "solaris"))]
-use reqwest::blocking::Client;
-
 pub const METRIC_PREFIX_SYSTEM: &str = "system.";
 
 #[derive(Clone, Debug)]
@@ -64,8 +61,7 @@ pub fn build_meter_provider(settings: &OtlpSettings) -> Result<SdkMeterProvider>
                 builder = builder.with_http_client(
                     reqwest::blocking::Client::builder()
                         .timeout(timeout)
-                        .build()
-                        .unwrap_or_else(|_| Client::new()),
+                        .build()?,
                 );
             }
             builder.build()?
@@ -137,8 +133,8 @@ fn has_non_root_path(endpoint: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_meter_provider, default_protocol_for_endpoint, hostname, OtlpSettings, PrefixFilter,
-        METRIC_PREFIX_SYSTEM,
+        build_meter_provider, default_protocol_for_endpoint, hostname, init_meter_provider,
+        OtlpSettings, PrefixFilter, METRIC_PREFIX_SYSTEM,
     };
     use std::collections::BTreeMap;
     use std::time::Duration;
@@ -169,6 +165,13 @@ mod tests {
     }
 
     #[test]
+    fn prefix_filter_allows_when_include_is_empty() {
+        let filter = PrefixFilter::new(vec![], vec!["system.sensor.".to_string()]);
+        assert!(filter.allows("system.cpu.usage"));
+        assert!(!filter.allows("system.sensor.temperature.celsius"));
+    }
+
+    #[test]
     fn default_protocol_is_http_for_path_endpoint() {
         let protocol = default_protocol_for_endpoint(Some("http://127.0.0.1:4318/v1/metrics"));
         assert_eq!(protocol, "http/protobuf");
@@ -190,6 +193,14 @@ mod tests {
     fn default_protocol_host_only_endpoint_is_grpc() {
         assert_eq!(
             default_protocol_for_endpoint(Some("http://127.0.0.1:4317")),
+            "grpc"
+        );
+    }
+
+    #[test]
+    fn default_protocol_without_scheme_uses_grpc() {
+        assert_eq!(
+            default_protocol_for_endpoint(Some("127.0.0.1:4318/v1/metrics")),
             "grpc"
         );
     }
@@ -237,5 +248,51 @@ mod tests {
             let result = build_meter_provider(&settings);
             assert!(result.is_ok(), "periodic reader with interval: {result:?}");
         });
+    }
+
+    #[test]
+    fn init_meter_provider_sets_global_provider() {
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let settings = test_settings("grpc");
+        rt.block_on(async {
+            let result = init_meter_provider(&settings);
+            assert!(result.is_ok(), "init meter provider: {result:?}");
+        });
+    }
+
+    #[test]
+    fn build_meter_provider_grpc_invalid_endpoint_returns_error() {
+        let mut settings = test_settings("grpc");
+        settings.otlp_endpoint = "not a valid endpoint".to_string();
+        let err = build_meter_provider(&settings).unwrap_err();
+        assert!(!err.to_string().trim().is_empty());
+    }
+
+    #[test]
+    fn build_meter_provider_http_invalid_endpoint_returns_error() {
+        let mut settings = test_settings("http/protobuf");
+        settings.otlp_endpoint = "http:// bad-endpoint".to_string();
+        let err = build_meter_provider(&settings).unwrap_err();
+        assert!(!err.to_string().trim().is_empty());
+    }
+
+    #[test]
+    fn build_meter_provider_http_extreme_timeout_uses_safe_client_path() {
+        let mut settings = test_settings("http/protobuf");
+        settings.otlp_endpoint = "http://127.0.0.1:4318/v1/metrics".to_string();
+        settings.otlp_timeout = Some(Duration::MAX);
+        let result = build_meter_provider(&settings);
+        assert!(
+            result.is_ok(),
+            "http exporter with extreme timeout: {result:?}"
+        );
+    }
+
+    #[test]
+    fn init_meter_provider_propagates_build_errors() {
+        let mut settings = test_settings("grpc");
+        settings.otlp_endpoint = "not a valid endpoint".to_string();
+        let err = init_meter_provider(&settings).unwrap_err();
+        assert!(!err.to_string().trim().is_empty());
     }
 }

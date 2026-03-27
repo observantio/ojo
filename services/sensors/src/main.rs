@@ -134,6 +134,32 @@ enum ExportState {
     Reconnecting,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEvent {
+    None,
+    Connected,
+    Reconnected,
+    Reconnecting,
+    StillUnavailable,
+}
+
+fn advance_export_state(current: ExportState, flush_succeeded: bool) -> (ExportState, FlushEvent) {
+    if flush_succeeded {
+        let event = match current {
+            ExportState::Pending => FlushEvent::Connected,
+            ExportState::Reconnecting => FlushEvent::Reconnected,
+            ExportState::Connected => FlushEvent::None,
+        };
+        (ExportState::Connected, event)
+    } else {
+        let event = match current {
+            ExportState::Connected => FlushEvent::Reconnecting,
+            ExportState::Pending | ExportState::Reconnecting => FlushEvent::StillUnavailable,
+        };
+        (ExportState::Reconnecting, event)
+    }
+}
+
 impl Instruments {
     fn new(meter: &opentelemetry::metrics::Meter) -> Self {
         Self {
@@ -190,35 +216,38 @@ fn main() -> Result<()> {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot();
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
-        match provider.force_flush() {
-            Ok(()) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush ok"
-                );
-                match export_state {
-                    ExportState::Pending => info!("Connected Successfully"),
-                    ExportState::Reconnecting => info!("Reconnected Successfully"),
-                    ExportState::Connected => {}
+        let flush_result = provider.force_flush();
+        if flush_result.is_ok() {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush ok"
+            );
+        } else {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush err"
+            );
+        }
+
+        let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
+        if let Err(err) = flush_result {
+            match event {
+                FlushEvent::Reconnecting => {
+                    warn!(error = %err, "Exporter flush failed; reconnecting")
                 }
-                export_state = ExportState::Connected;
+                FlushEvent::StillUnavailable => {
+                    warn!(error = %err, "Exporter still unavailable")
+                }
+                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
             }
-            Err(err) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush err"
-                );
-                match export_state {
-                    ExportState::Connected => {
-                        warn!(error = %err, "Exporter flush failed; reconnecting")
-                    }
-                    ExportState::Pending | ExportState::Reconnecting => {
-                        warn!(error = %err, "Exporter still unavailable")
-                    }
-                }
-                export_state = ExportState::Reconnecting;
+        } else {
+            match event {
+                FlushEvent::Connected => info!("Connected Successfully"),
+                FlushEvent::Reconnected => info!("Reconnected Successfully"),
+                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
             }
         }
+        export_state = next_state;
         if cfg.once {
             break;
         }
@@ -330,7 +359,16 @@ fn cap_samples_for_labels(samples: &[SensorSample], limit: usize) -> Vec<SensorS
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
-        let once = args.iter().any(|arg| arg == "--once");
+        let once = args.iter().any(|arg| arg == "--once")
+            || env::var("OJO_RUN_ONCE")
+                .ok()
+                .map(|v| {
+                    matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(false);
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -429,7 +467,31 @@ fn record_f64(
 
 #[cfg(test)]
 mod tests {
-    use super::{cap_samples_for_labels, SensorSample, METRICS};
+    use super::{
+        advance_export_state, cap_samples_for_labels, load_yaml_config_file, record_snapshot,
+        resolve_default_config_path, Config, ExportState, FlushEvent, Instruments, SensorSample,
+        SensorSnapshot, METRICS,
+    };
+    use host_collectors::PrefixFilter;
+    use std::fs;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ojo-sensors-main-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn metric_contract_uses_supported_namespaces() {
@@ -459,5 +521,119 @@ mod tests {
         assert_eq!(capped.len(), 2);
         assert_eq!(capped[0].label, "a");
         assert_eq!(capped[1].label, "m");
+    }
+
+    #[test]
+    fn resolve_and_load_yaml_config_file_cover_common_paths() {
+        let local = unique_temp_path("local.yaml");
+        fs::write(&local, "service: {}\n").expect("write local");
+        let resolved =
+            resolve_default_config_path(local.to_string_lossy().as_ref(), "fallback.yaml");
+        assert_eq!(resolved, local.to_string_lossy());
+        fs::remove_file(&local).expect("cleanup local");
+
+        let missing = unique_temp_path("missing.yaml");
+        let err = load_yaml_config_file(missing.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.to_string().contains("was not found"), "{err}");
+    }
+
+    #[test]
+    fn config_load_and_record_snapshot_cover_main_paths() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("config.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: sensors-svc\n  instance_id: sensors-01\ncollection:\n  poll_interval_secs: 2\nsensors:\n  include_sensor_labels: true\n  max_labeled_sensors: 2\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_SENSORS_CONFIG", &path);
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317");
+        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+
+        let cfg = Config::load().expect("load config");
+        assert_eq!(cfg.service_name, "sensors-svc");
+        assert_eq!(cfg.instance_id, "sensors-01");
+        assert_eq!(cfg.otlp_protocol, "grpc");
+
+        let meter = opentelemetry::global::meter("sensors-test-meter");
+        let instruments = Instruments::new(&meter);
+        let filter = PrefixFilter::new(vec!["system.sensor.".to_string()], vec![]);
+        record_snapshot(&instruments, &filter, &cfg, &SensorSnapshot::default());
+
+        let snapshot = SensorSnapshot {
+            available: true,
+            temperatures: vec![SensorSample {
+                chip: "chip0".to_string(),
+                kind: "temperature".to_string(),
+                label: "temp1".to_string(),
+                value: 42.0,
+            }],
+            fans: vec![SensorSample {
+                chip: "chip0".to_string(),
+                kind: "fan".to_string(),
+                label: "fan1".to_string(),
+                value: 1200.0,
+            }],
+            voltages: vec![SensorSample {
+                chip: "chip0".to_string(),
+                kind: "voltage".to_string(),
+                label: "in1".to_string(),
+                value: 1.2,
+            }],
+        };
+        record_snapshot(&instruments, &filter, &cfg, &snapshot);
+
+        std::env::remove_var("OJO_SENSORS_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn advance_export_state_covers_all_transitions() {
+        assert_eq!(
+            advance_export_state(ExportState::Pending, true),
+            (ExportState::Connected, FlushEvent::Connected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, true),
+            (ExportState::Connected, FlushEvent::Reconnected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, true),
+            (ExportState::Connected, FlushEvent::None)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, false),
+            (ExportState::Reconnecting, FlushEvent::Reconnecting)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Pending, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+    }
+
+    #[test]
+    fn main_runs_once_with_temp_config() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("main-once.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: sensors-main-test\n  instance_id: sensors-main-01\ncollection:\n  poll_interval_secs: 1\nsensors:\n  include_sensor_labels: false\n  max_labeled_sensors: 0\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_SENSORS_CONFIG", &path);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        let result = super::main();
+        assert!(result.is_ok(), "{result:?}");
+        std::env::remove_var("OJO_SENSORS_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
     }
 }

@@ -26,6 +26,32 @@ enum ExportState {
     Reconnecting,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEvent {
+    None,
+    Connected,
+    Reconnected,
+    Reconnecting,
+    StillUnavailable,
+}
+
+fn advance_export_state(current: ExportState, flush_succeeded: bool) -> (ExportState, FlushEvent) {
+    if flush_succeeded {
+        let event = match current {
+            ExportState::Pending => FlushEvent::Connected,
+            ExportState::Reconnecting => FlushEvent::Reconnected,
+            ExportState::Connected => FlushEvent::None,
+        };
+        (ExportState::Connected, event)
+    } else {
+        let event = match current {
+            ExportState::Connected => FlushEvent::Reconnecting,
+            ExportState::Pending | ExportState::Reconnecting => FlushEvent::StillUnavailable,
+        };
+        (ExportState::Reconnecting, event)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Config {
     service_name: String,
@@ -109,6 +135,15 @@ fn saturating_rate(previous: u64, current: u64, elapsed_secs: f64) -> f64 {
     (current - previous) as f64 / elapsed_secs
 }
 
+fn derive_rates_or_reset(prev: &mut PrevState, snapshot: &PostgresSnapshot) -> PostgresRates {
+    if snapshot.available {
+        prev.derive(snapshot)
+    } else {
+        prev.last = None;
+        PostgresRates::default()
+    }
+}
+
 struct Instruments {
     source_available: Gauge<u64>,
     up: Gauge<u64>,
@@ -183,43 +218,41 @@ fn main() -> Result<()> {
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.postgres);
-        let rates = if snapshot.available {
-            prev.derive(&snapshot)
-        } else {
-            prev.last = None;
-            PostgresRates::default()
-        };
+        let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
-        match provider.force_flush() {
-            Ok(()) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush ok"
-                );
-                match export_state {
-                    ExportState::Pending => info!("Connected Successfully"),
-                    ExportState::Reconnecting => info!("Reconnected Successfully"),
-                    ExportState::Connected => {}
+        let flush_result = provider.force_flush();
+        if flush_result.is_ok() {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush ok"
+            );
+        } else {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush err"
+            );
+        }
+
+        let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
+        if let Err(err) = flush_result {
+            match event {
+                FlushEvent::Reconnecting => {
+                    warn!(error = %err, "Exporter flush failed; reconnecting")
                 }
-                export_state = ExportState::Connected;
+                FlushEvent::StillUnavailable => {
+                    warn!(error = %err, "Exporter still unavailable")
+                }
+                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
             }
-            Err(err) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush err"
-                );
-                match export_state {
-                    ExportState::Connected => {
-                        warn!(error = %err, "Exporter flush failed; reconnecting")
-                    }
-                    ExportState::Pending | ExportState::Reconnecting => {
-                        warn!(error = %err, "Exporter still unavailable")
-                    }
-                }
-                export_state = ExportState::Reconnecting;
+        } else {
+            match event {
+                FlushEvent::Connected => info!("Connected Successfully"),
+                FlushEvent::Reconnected => info!("Reconnected Successfully"),
+                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
             }
         }
+        export_state = next_state;
         if cfg.once {
             break;
         }
@@ -372,7 +405,16 @@ struct MetricSection {
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
-        let once = args.iter().any(|arg| arg == "--once");
+        let once = args.iter().any(|arg| arg == "--once")
+            || env::var("OJO_RUN_ONCE")
+                .ok()
+                .map(|v| {
+                    matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(false);
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -445,4 +487,262 @@ fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
     }
     serde_yaml::from_str::<FileConfig>(&contents)
         .with_context(|| format!("failed to parse YAML in '{}'", config_path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_snapshot,
+        resolve_default_config_path, saturating_rate, Config, ExportState, FlushEvent, Instruments,
+        PostgresRates, PostgresSnapshot, PrevState,
+    };
+    use host_collectors::PrefixFilter;
+    use std::fs;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ojo-postgres-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn saturating_rate_handles_counter_reset_and_normal_rate() {
+        assert_eq!(saturating_rate(20, 10, 1.0), 0.0);
+        assert_eq!(saturating_rate(10, 30, 2.0), 10.0);
+    }
+
+    #[test]
+    fn prev_state_derive_initializes_and_then_computes_rates() {
+        let mut state = PrevState::default();
+        let first = PostgresSnapshot {
+            xact_commit_total: 100,
+            xact_rollback_total: 20,
+            ..PostgresSnapshot::default()
+        };
+        let rates = state.derive(&first);
+        assert_eq!(rates.commits_per_second, 0.0);
+        assert_eq!(rates.rollbacks_per_second, 0.0);
+
+        state.last = Some((first, Instant::now() - Duration::from_secs(2)));
+        let second = PostgresSnapshot {
+            xact_commit_total: 180,
+            xact_rollback_total: 30,
+            ..PostgresSnapshot::default()
+        };
+        let rates = state.derive(&second);
+        assert!(rates.commits_per_second > 30.0);
+        assert!(rates.rollbacks_per_second > 4.0);
+    }
+
+    #[test]
+    fn derive_rates_or_reset_resets_state_when_snapshot_unavailable() {
+        let mut state = PrevState::default();
+        let available = PostgresSnapshot {
+            available: true,
+            xact_commit_total: 10,
+            xact_rollback_total: 2,
+            ..PostgresSnapshot::default()
+        };
+        let _ = derive_rates_or_reset(&mut state, &available);
+        assert!(state.last.is_some());
+
+        let unavailable = PostgresSnapshot::default();
+        let rates = derive_rates_or_reset(&mut state, &unavailable);
+        assert_eq!(rates.commits_per_second, 0.0);
+        assert_eq!(rates.rollbacks_per_second, 0.0);
+        assert!(state.last.is_none());
+    }
+
+    #[test]
+    fn advance_export_state_covers_all_transitions() {
+        assert_eq!(
+            advance_export_state(ExportState::Pending, true),
+            (ExportState::Connected, FlushEvent::Connected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, true),
+            (ExportState::Connected, FlushEvent::Reconnected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, true),
+            (ExportState::Connected, FlushEvent::None)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, false),
+            (ExportState::Reconnecting, FlushEvent::Reconnecting)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Pending, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+    }
+
+    #[test]
+    fn resolve_default_config_path_prefers_local_file_when_present() {
+        let local = unique_temp_path("postgres-local.yaml");
+        fs::write(&local, "service: {}\n").expect("write local");
+        let chosen = resolve_default_config_path(local.to_string_lossy().as_ref(), "fallback.yaml");
+        assert_eq!(chosen, local.to_string_lossy());
+        fs::remove_file(&local).expect("cleanup local");
+
+        let missing = unique_temp_path("postgres-missing.yaml");
+        let chosen =
+            resolve_default_config_path(missing.to_string_lossy().as_ref(), "fallback.yaml");
+        assert_eq!(chosen, "fallback.yaml");
+    }
+
+    #[test]
+    fn load_yaml_config_file_handles_missing_empty_and_valid_yaml() {
+        let missing = unique_temp_path("postgres-missing-config.yaml");
+        let missing_err = load_yaml_config_file(missing.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            missing_err.to_string().contains("was not found"),
+            "{missing_err}"
+        );
+
+        let empty = unique_temp_path("postgres-empty-config.yaml");
+        fs::write(&empty, " \n").expect("write empty");
+        let empty_err = load_yaml_config_file(empty.to_string_lossy().as_ref()).unwrap_err();
+        assert!(empty_err.to_string().contains("is empty"), "{empty_err}");
+        fs::remove_file(&empty).expect("cleanup empty");
+
+        let valid = unique_temp_path("postgres-valid-config.yaml");
+        fs::write(
+            &valid,
+            "service:\n  name: ojo-postgres\n  instance_id: pg-1\ncollection:\n  poll_interval_secs: 2\npostgres:\n  executable: psql\n",
+        )
+        .expect("write valid");
+        let parsed = load_yaml_config_file(valid.to_string_lossy().as_ref());
+        assert!(parsed.is_ok(), "{parsed:?}");
+        fs::remove_file(&valid).expect("cleanup valid");
+    }
+
+    #[test]
+    fn config_load_reads_yaml_and_applies_defaults() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("postgres-load.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: pg-svc\n  instance_id: pg-01\ncollection:\n  poll_interval_secs: 1\npostgres:\n  executable: psql\n  uri: '  '\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_POSTGRES_CONFIG", &path);
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+        let cfg = Config::load().expect("load config");
+        assert_eq!(cfg.service_name, "pg-svc");
+        assert_eq!(cfg.instance_id, "pg-01");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+        assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4318/v1/metrics");
+        assert_eq!(cfg.otlp_protocol, "http/protobuf");
+        assert_eq!(cfg.metrics_include, vec!["system.postgres.".to_string()]);
+        assert!(cfg.postgres.uri.is_none());
+        assert_eq!(cfg.postgres.executable, "psql");
+
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn config_load_uses_otlp_env_fallback_when_export_section_missing() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("postgres-env-load.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: pg-svc\n  instance_id: pg-01\ncollection:\n  poll_interval_secs: 2\npostgres:\n  executable: psql\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_POSTGRES_CONFIG", &path);
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317");
+        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+
+        let cfg = Config::load().expect("load config");
+        assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4317");
+        assert_eq!(cfg.otlp_protocol, "grpc");
+
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn record_snapshot_handles_unavailable_and_available_samples() {
+        let meter = opentelemetry::global::meter("postgres-test-meter");
+        let instruments = Instruments::new(&meter);
+        let filter = PrefixFilter::new(vec!["system.postgres.".to_string()], vec![]);
+
+        let unavailable = PostgresSnapshot::default();
+        record_snapshot(
+            &instruments,
+            &filter,
+            &unavailable,
+            &PostgresRates::default(),
+        );
+
+        let available = PostgresSnapshot {
+            available: true,
+            up: true,
+            connections: 5,
+            xact_commit_total: 100,
+            xact_rollback_total: 3,
+            deadlocks_total: 1,
+            blks_read_total: 20,
+            blks_hit_total: 90,
+        };
+        let rates = PostgresRates {
+            commits_per_second: 8.0,
+            rollbacks_per_second: 0.2,
+        };
+        record_snapshot(&instruments, &filter, &available, &rates);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_platform_collect_snapshot_wrapper_is_callable() {
+        let cfg = super::PostgresConfig {
+            executable: "/definitely/missing/psql".to_string(),
+            ..super::PostgresConfig::default()
+        };
+        let snap = super::platform::collect_snapshot(&cfg);
+        assert!(!snap.available);
+    }
+
+    #[test]
+    fn main_runs_once_with_temp_config() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("postgres-main-once.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: postgres-main-test\n  instance_id: postgres-main-01\ncollection:\n  poll_interval_secs: 1\npostgres:\n  executable: /definitely/missing/psql\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_POSTGRES_CONFIG", &path);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        let result = super::main();
+        assert!(result.is_ok(), "{result:?}");
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
+    }
 }

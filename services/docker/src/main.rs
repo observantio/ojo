@@ -197,6 +197,32 @@ enum ExportState {
     Reconnecting,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEvent {
+    None,
+    Connected,
+    Reconnected,
+    Reconnecting,
+    StillUnavailable,
+}
+
+fn advance_export_state(current: ExportState, flush_succeeded: bool) -> (ExportState, FlushEvent) {
+    if flush_succeeded {
+        let event = match current {
+            ExportState::Pending => FlushEvent::Connected,
+            ExportState::Reconnecting => FlushEvent::Reconnected,
+            ExportState::Connected => FlushEvent::None,
+        };
+        (ExportState::Connected, event)
+    } else {
+        let event = match current {
+            ExportState::Connected => FlushEvent::Reconnecting,
+            ExportState::Pending | ExportState::Reconnecting => FlushEvent::StillUnavailable,
+        };
+        (ExportState::Reconnecting, event)
+    }
+}
+
 impl Instruments {
     fn new(meter: &Meter) -> Self {
         Self {
@@ -270,35 +296,38 @@ fn main() -> Result<()> {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot();
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
-        match provider.force_flush() {
-            Ok(()) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush ok"
-                );
-                match export_state {
-                    ExportState::Pending => info!("Connected Successfully"),
-                    ExportState::Reconnecting => info!("Reconnected Successfully"),
-                    ExportState::Connected => {}
+        let flush_result = provider.force_flush();
+        if flush_result.is_ok() {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush ok"
+            );
+        } else {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush err"
+            );
+        }
+
+        let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
+        if let Err(err) = flush_result {
+            match event {
+                FlushEvent::Reconnecting => {
+                    warn!(error = %err, "Exporter flush failed; reconnecting")
                 }
-                export_state = ExportState::Connected;
+                FlushEvent::StillUnavailable => {
+                    warn!(error = %err, "Exporter still unavailable")
+                }
+                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
             }
-            Err(err) => {
-                debug!(
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "force_flush err"
-                );
-                match export_state {
-                    ExportState::Connected => {
-                        warn!(error = %err, "Exporter flush failed; reconnecting")
-                    }
-                    ExportState::Pending | ExportState::Reconnecting => {
-                        warn!(error = %err, "Exporter still unavailable")
-                    }
-                }
-                export_state = ExportState::Reconnecting;
+        } else {
+            match event {
+                FlushEvent::Connected => info!("Connected Successfully"),
+                FlushEvent::Reconnected => info!("Reconnected Successfully"),
+                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
             }
         }
+        export_state = next_state;
         if cfg.once {
             break;
         }
@@ -561,7 +590,16 @@ pub(crate) fn parse_size_to_bytes(text: &str) -> f64 {
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
-        let once = args.iter().any(|arg| arg == "--once");
+        let once = args.iter().any(|arg| arg == "--once")
+            || env::var("OJO_RUN_ONCE")
+                .ok()
+                .map(|v| {
+                    matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(false);
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -661,9 +699,32 @@ fn record_f64(
 #[cfg(test)]
 mod tests {
     use super::{
-        cap_samples_for_labels, parse_pair_bytes, parse_percent, parse_size_to_bytes, DockerSample,
-        METRICS,
+        advance_export_state, cap_samples_for_labels, container_name_label, load_yaml_config_file,
+        non_empty_or, parse_pair_bytes, parse_percent, parse_size_to_bytes, record_snapshot,
+        resolve_default_config_path, Config, DockerSample, DockerSnapshot, ExportState, FlushEvent,
+        Instruments, METRICS,
     };
+    use host_collectors::PrefixFilter;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ojo-docker-main-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn metric_names_use_system_namespace() {
@@ -702,5 +763,172 @@ mod tests {
         assert!(a > 1_000_000.0);
         assert!(b > a);
         assert!(parse_size_to_bytes("12kB") > 10_000.0);
+    }
+
+    #[test]
+    fn container_name_and_fallback_helpers_handle_empty_values() {
+        let sample = DockerSample {
+            id: "abcdef1234567890".to_string(),
+            name: " ".to_string(),
+            ..DockerSample::default()
+        };
+        assert_eq!(container_name_label(&sample), "abcdef123456");
+        assert_eq!(non_empty_or("  ", "fallback"), "fallback");
+        assert_eq!(non_empty_or(" value ", "fallback"), "value");
+    }
+
+    #[test]
+    fn resolve_and_load_yaml_config_file_cover_common_paths() {
+        let local = unique_temp_path("local.yaml");
+        fs::write(&local, "service: {}\n").expect("write local");
+        let resolved =
+            resolve_default_config_path(local.to_string_lossy().as_ref(), "fallback.yaml");
+        assert_eq!(resolved, local.to_string_lossy());
+        fs::remove_file(&local).expect("cleanup local");
+
+        let missing = unique_temp_path("missing.yaml");
+        let err = load_yaml_config_file(missing.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.to_string().contains("was not found"), "{err}");
+
+        let empty = unique_temp_path("empty.yaml");
+        fs::write(&empty, "\n").expect("write empty");
+        let err = load_yaml_config_file(empty.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.to_string().contains("is empty"), "{err}");
+        fs::remove_file(&empty).expect("cleanup empty");
+    }
+
+    #[test]
+    fn config_load_uses_file_and_env_fallbacks() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("config.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: docker-svc\n  instance_id: docker-01\ncollection:\n  poll_interval_secs: 2\ndocker:\n  include_container_labels: true\n  max_labeled_containers: 3\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_DOCKER_CONFIG", &path);
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317");
+        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+
+        let cfg = Config::load().expect("load config");
+        assert_eq!(cfg.service_name, "docker-svc");
+        assert_eq!(cfg.instance_id, "docker-01");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(2));
+        assert!(cfg.include_labels);
+        assert_eq!(cfg.max_labeled_containers, 3);
+        assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4317");
+        assert_eq!(cfg.otlp_protocol, "grpc");
+
+        std::env::remove_var("OJO_DOCKER_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn record_snapshot_covers_available_unavailable_and_labeled_paths() {
+        let meter = opentelemetry::global::meter("docker-test-meter");
+        let instruments = Instruments::new(&meter);
+        let filter = PrefixFilter::new(vec!["system.docker.".to_string()], vec![]);
+
+        let cfg = Config {
+            service_name: "svc".to_string(),
+            instance_id: "inst".to_string(),
+            poll_interval: Duration::from_secs(1),
+            include_labels: true,
+            max_labeled_containers: 2,
+            otlp_endpoint: "http://127.0.0.1:4318/v1/metrics".to_string(),
+            otlp_protocol: "http/protobuf".to_string(),
+            otlp_headers: BTreeMap::new(),
+            otlp_compression: None,
+            otlp_timeout: None,
+            export_interval: None,
+            export_timeout: None,
+            metrics_include: vec![],
+            metrics_exclude: vec![],
+            once: true,
+        };
+
+        let unavailable = DockerSnapshot::default();
+        record_snapshot(&instruments, &filter, &cfg, &unavailable);
+
+        let available_empty = DockerSnapshot {
+            available: true,
+            total: 1,
+            running: 1,
+            stopped: 0,
+            samples: vec![],
+        };
+        record_snapshot(&instruments, &filter, &cfg, &available_empty);
+
+        let sample = DockerSample {
+            id: "abcdef123456".to_string(),
+            name: "web".to_string(),
+            image: "nginx".to_string(),
+            state: "running".to_string(),
+            cpu_ratio: 0.5,
+            mem_usage_bytes: 1024.0,
+            mem_limit_bytes: 2048.0,
+            net_rx_bytes: 100.0,
+            net_tx_bytes: 200.0,
+            block_read_bytes: 50.0,
+            block_write_bytes: 60.0,
+        };
+        let available = DockerSnapshot {
+            available: true,
+            total: 1,
+            running: 1,
+            stopped: 0,
+            samples: vec![sample],
+        };
+        record_snapshot(&instruments, &filter, &cfg, &available);
+    }
+
+    #[test]
+    fn advance_export_state_covers_all_transitions() {
+        assert_eq!(
+            advance_export_state(ExportState::Pending, true),
+            (ExportState::Connected, FlushEvent::Connected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, true),
+            (ExportState::Connected, FlushEvent::Reconnected)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, true),
+            (ExportState::Connected, FlushEvent::None)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Connected, false),
+            (ExportState::Reconnecting, FlushEvent::Reconnecting)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Pending, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+        assert_eq!(
+            advance_export_state(ExportState::Reconnecting, false),
+            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+        );
+    }
+
+    #[test]
+    fn main_runs_once_with_temp_config() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("main-once.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: docker-main-test\n  instance_id: docker-main-01\ncollection:\n  poll_interval_secs: 1\ndocker:\n  include_container_labels: false\n  max_labeled_containers: 0\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_DOCKER_CONFIG", &path);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        let result = super::main();
+        assert!(result.is_ok(), "{result:?}");
+        std::env::remove_var("OJO_DOCKER_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
     }
 }

@@ -1,5 +1,4 @@
 use crate::{MysqlConfig, MysqlSnapshot};
-use std::collections::BTreeMap;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
@@ -43,7 +42,11 @@ pub(super) fn collect_snapshot_impl(cfg: &MysqlConfig, default_executable: &str)
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    let mut values = BTreeMap::new();
+    parse_mysql_status_output(&text)
+}
+
+fn parse_mysql_status_output(text: &str) -> MysqlSnapshot {
+    let mut values = std::collections::BTreeMap::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let mut parts = line.split('\t');
         let key = parts.next().unwrap_or_default().trim();
@@ -107,5 +110,66 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
                 return None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_snapshot_impl, parse_mysql_status_output, parse_u64, run_with_timeout};
+    use crate::MysqlConfig;
+    use std::process::Command;
+    use std::time::Duration;
+
+    #[test]
+    fn parse_u64_handles_missing_and_invalid_values() {
+        assert_eq!(parse_u64(None), 0);
+        assert_eq!(parse_u64(Some(&"not-a-number".to_string())), 0);
+        assert_eq!(parse_u64(Some(&" 42 ".to_string())), 42);
+    }
+
+    #[test]
+    fn collect_snapshot_impl_returns_default_when_command_cannot_spawn() {
+        let cfg = MysqlConfig {
+            executable: "/definitely/missing/mysql".to_string(),
+            ..MysqlConfig::default()
+        };
+        let snap = collect_snapshot_impl(&cfg, "mysql");
+        assert!(!snap.available);
+        assert_eq!(snap.queries_total, 0);
+    }
+
+    #[test]
+    fn parse_mysql_status_output_parses_expected_tabular_output() {
+        let text = "Threads_connected\t12\nThreads_running\t3\nQueries\t200\nSlow_queries\t4\nBytes_received\t500\nBytes_sent\t700\n";
+        let snap = parse_mysql_status_output(text);
+
+        assert!(snap.available);
+        assert!(snap.up);
+        assert_eq!(snap.connections, 12);
+        assert_eq!(snap.threads_running, 3);
+        assert_eq!(snap.queries_total, 200);
+        assert_eq!(snap.slow_queries_total, 4);
+        assert_eq!(snap.bytes_received_total, 500);
+        assert_eq!(snap.bytes_sent_total, 700);
+    }
+
+    #[test]
+    fn parse_mysql_status_output_returns_default_for_empty_text() {
+        let snap = parse_mysql_status_output("\n\n");
+        assert!(!snap.available);
+        assert_eq!(snap.queries_total, 0);
+    }
+
+    #[test]
+    fn run_with_timeout_covers_success_and_timeout_paths() {
+        let mut ok_cmd = Command::new("sh");
+        ok_cmd.args(["-c", "printf 'ok'"]);
+        let output = run_with_timeout(ok_cmd, Duration::from_secs(1)).expect("expected output");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+
+        let mut slow_cmd = Command::new("sh");
+        slow_cmd.args(["-c", "sleep 1"]);
+        assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
     }
 }
