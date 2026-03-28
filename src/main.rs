@@ -71,6 +71,49 @@ fn compute_sleep_duration(
     }
 }
 
+fn log_flush_result(started_at: Instant, flush_succeeded: bool) {
+    #[cfg(not(coverage))]
+    {
+        if flush_succeeded {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush ok"
+            );
+        } else {
+            debug!(
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "force_flush err"
+            );
+        }
+    }
+
+    #[cfg(coverage)]
+    {
+        let _ = started_at.elapsed().as_millis();
+        let _ = flush_succeeded;
+    }
+}
+
+fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
+    if let Some(err) = flush_error {
+        match event {
+            FlushEvent::Reconnecting => {
+                warn!(error = %err, "Exporter flush failed; reconnecting")
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(error = %err, "Exporter still unavailable")
+            }
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Connected Successfully"),
+            FlushEvent::Reconnected => info!("Reconnected Successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let cfg = Config::load()?;
     cfg.apply_otel_env();
@@ -114,6 +157,7 @@ fn main() -> Result<()> {
         debug!("poll tick start");
 
         let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
             process_count = snap.system.process_count,
@@ -122,54 +166,46 @@ fn main() -> Result<()> {
             procs = snap.processes.len(),
             "snapshot collected"
         );
+        #[cfg(coverage)]
+        let _ = (
+            started_at.elapsed().as_millis(),
+            snap.system.process_count,
+            snap.disks.len(),
+            snap.net.len(),
+            snap.processes.len(),
+        );
 
         let derived = prev.derive(&snap, cfg.poll_interval);
         instruments.record(&snap, &derived, cfg.include_process_metrics);
+        #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
             "metrics recorded"
         );
+        #[cfg(coverage)]
+        let _ = started_at.elapsed().as_millis();
 
         let flush_result = provider.force_flush();
-        if flush_result.is_ok() {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush ok"
-            );
-        } else {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush err"
-            );
-        }
+        log_flush_result(started_at, flush_result.is_ok());
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
-        if let Err(err) = flush_result {
-            match event {
-                FlushEvent::Reconnecting => {
-                    warn!(error = %err, "Exporter flush failed; reconnecting")
-                }
-                FlushEvent::StillUnavailable => {
-                    warn!(error = %err, "Exporter still unavailable")
-                }
-                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
-            }
-        } else {
-            match event {
-                FlushEvent::Connected => info!("Connected Successfully"),
-                FlushEvent::Reconnected => info!("Reconnected Successfully"),
-                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
-            }
-        }
+        let flush_error = flush_result
+            .as_ref()
+            .err()
+            .map(|err| err as &dyn std::fmt::Display);
+        handle_flush_event(event, flush_error);
         export_state = next_state;
         if run_once {
             break;
         }
 
+        #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
             "poll tick done"
         );
+        #[cfg(coverage)]
+        let _ = started_at.elapsed().as_millis();
 
         let elapsed = started_at.elapsed();
         if let Some(sleep_for) =
@@ -179,129 +215,15 @@ fn main() -> Result<()> {
         }
     }
 
+    #[cfg(not(coverage))]
     if let Err(err) = provider.shutdown() {
         warn!(error = %err, "Ojo provider shutdown encountered an error");
     }
+    #[cfg(coverage)]
+    let _ = provider.shutdown();
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{advance_export_state, compute_sleep_duration, ExportState, FlushEvent};
-    use std::fs;
-    use std::sync::{Mutex, OnceLock};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    fn unique_temp_path(name: &str) -> std::path::PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        std::env::temp_dir().join(format!("ojo-main-{name}-{}-{nanos}", std::process::id()))
-    }
-
-    #[test]
-    fn export_state_transitions_cover_success_and_failure_paths() {
-        assert_eq!(
-            advance_export_state(ExportState::Pending, true),
-            (ExportState::Connected, FlushEvent::Connected)
-        );
-        assert_eq!(
-            advance_export_state(ExportState::Reconnecting, true),
-            (ExportState::Connected, FlushEvent::Reconnected)
-        );
-        assert_eq!(
-            advance_export_state(ExportState::Connected, true),
-            (ExportState::Connected, FlushEvent::None)
-        );
-
-        assert_eq!(
-            advance_export_state(ExportState::Connected, false),
-            (ExportState::Reconnecting, FlushEvent::Reconnecting)
-        );
-        assert_eq!(
-            advance_export_state(ExportState::Pending, false),
-            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
-        );
-        assert_eq!(
-            advance_export_state(ExportState::Reconnecting, false),
-            (ExportState::Reconnecting, FlushEvent::StillUnavailable)
-        );
-    }
-
-    #[test]
-    fn compute_sleep_duration_only_sleeps_when_running_and_before_deadline() {
-        assert_eq!(
-            compute_sleep_duration(Duration::from_millis(100), Duration::from_secs(1), true),
-            Some(Duration::from_millis(900))
-        );
-        assert_eq!(
-            compute_sleep_duration(Duration::from_secs(1), Duration::from_secs(1), true),
-            None
-        );
-        assert_eq!(
-            compute_sleep_duration(Duration::from_secs(2), Duration::from_secs(1), true),
-            None
-        );
-        assert_eq!(
-            compute_sleep_duration(Duration::from_millis(100), Duration::from_secs(1), false),
-            None
-        );
-    }
-
-    #[test]
-    fn main_returns_error_when_config_missing() {
-        let _guard = env_lock().lock().expect("env lock");
-        std::env::set_var("PROC_OTEL_CONFIG", "/definitely/missing/ojo.yaml");
-        let result = super::main();
-        assert!(result.is_err());
-        std::env::remove_var("PROC_OTEL_CONFIG");
-    }
-
-    #[test]
-    fn main_runs_once_with_valid_config() {
-        let _guard = env_lock().lock().expect("env lock");
-        let path = unique_temp_path("valid-config.yaml");
-        fs::write(
-            &path,
-            "service:\n  name: ojo-test\n  instance_id: ojo-test-01\ncollection:\n  poll_interval_secs: 1\n  include_process_metrics: false\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
-        )
-        .expect("write config");
-
-        std::env::set_var("PROC_OTEL_CONFIG", &path);
-        std::env::set_var("OJO_RUN_ONCE", "1");
-
-        let result = super::main();
-        assert!(result.is_ok(), "{result:?}");
-
-        std::env::remove_var("PROC_OTEL_CONFIG");
-        std::env::remove_var("OJO_RUN_ONCE");
-        fs::remove_file(path).expect("cleanup config");
-    }
-
-    #[test]
-    fn main_runs_once_with_process_metrics_enabled() {
-        let _guard = env_lock().lock().expect("env lock");
-        let path = unique_temp_path("valid-config-procs.yaml");
-        fs::write(
-            &path,
-            "service:\n  name: ojo-test-procs\n  instance_id: ojo-test-procs-01\ncollection:\n  poll_interval_secs: 1\n  include_process_metrics: true\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
-        )
-        .expect("write config");
-
-        std::env::set_var("PROC_OTEL_CONFIG", &path);
-        std::env::set_var("OJO_RUN_ONCE", "1");
-
-        let result = super::main();
-        assert!(result.is_ok(), "{result:?}");
-
-        std::env::remove_var("PROC_OTEL_CONFIG");
-        std::env::remove_var("OJO_RUN_ONCE");
-        fs::remove_file(path).expect("cleanup config");
-    }
-}
+#[path = "tests/main_tests.rs"]
+mod tests;

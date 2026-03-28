@@ -86,6 +86,67 @@ const NFS_CLIENT_METRICS: &[(&str, &str)] = &[
     ),
 ];
 
+const NGINX_METRICS: &[(&str, &str)] = &[
+    ("system.nginx.source.available", "state"),
+    ("system.nginx.up", "state"),
+    ("system.nginx.connections.active", "gauge"),
+    ("system.nginx.connections.reading", "gauge"),
+    ("system.nginx.connections.writing", "gauge"),
+    ("system.nginx.connections.waiting", "gauge"),
+    ("system.nginx.connections.accepted.total", "counter"),
+    ("system.nginx.connections.handled.total", "counter"),
+    ("system.nginx.requests.total", "counter"),
+    (
+        "system.nginx.connections.accepted.rate_per_second",
+        "gauge_derived",
+    ),
+    ("system.nginx.requests.rate_per_second", "gauge_derived"),
+];
+
+const REDIS_METRICS: &[(&str, &str)] = &[
+    ("system.redis.source.available", "state"),
+    ("system.redis.up", "state"),
+    ("system.redis.clients.connected", "gauge"),
+    ("system.redis.clients.blocked", "gauge"),
+    ("system.redis.memory.used.bytes", "gauge"),
+    ("system.redis.memory.max.bytes", "gauge"),
+    ("system.redis.uptime.seconds", "gauge"),
+    ("system.redis.commands.processed.total", "counter"),
+    ("system.redis.connections.received.total", "counter"),
+    ("system.redis.keyspace.hits.total", "counter"),
+    ("system.redis.keyspace.misses.total", "counter"),
+    ("system.redis.keys.expired.total", "counter"),
+    ("system.redis.keys.evicted.total", "counter"),
+    (
+        "system.redis.commands.processed.rate_per_second",
+        "gauge_derived",
+    ),
+    (
+        "system.redis.connections.received.rate_per_second",
+        "gauge_derived",
+    ),
+    ("system.redis.keyspace.hit.ratio", "gauge_ratio"),
+];
+
+const SYSTEMD_METRICS: &[(&str, &str)] = &[
+    ("system.systemd.source.available", "state"),
+    ("system.systemd.up", "state"),
+    ("system.systemd.units.total", "gauge"),
+    ("system.systemd.units.active", "gauge"),
+    ("system.systemd.units.inactive", "gauge"),
+    ("system.systemd.units.failed", "gauge"),
+    ("system.systemd.units.activating", "gauge"),
+    ("system.systemd.units.deactivating", "gauge"),
+    ("system.systemd.units.reloading", "gauge"),
+    ("system.systemd.units.not_found", "gauge"),
+    ("system.systemd.units.maintenance", "gauge"),
+    ("system.systemd.jobs.queued", "gauge"),
+    ("system.systemd.jobs.running", "gauge"),
+    ("system.systemd.failed_units.reported", "gauge"),
+    ("system.systemd.units.failed.ratio", "gauge_ratio"),
+    ("system.systemd.units.active.ratio", "gauge_ratio"),
+];
+
 #[test]
 fn extension_metric_namespaces_and_semantics_are_supported() {
     let allowed_semantics = BTreeSet::from([
@@ -105,6 +166,9 @@ fn extension_metric_namespaces_and_semantics_are_supported() {
         .chain(MYSQL_METRICS.iter())
         .chain(POSTGRES_METRICS.iter())
         .chain(NFS_CLIENT_METRICS.iter())
+        .chain(NGINX_METRICS.iter())
+        .chain(REDIS_METRICS.iter())
+        .chain(SYSTEMD_METRICS.iter())
     {
         assert!(
             name.starts_with("system."),
@@ -126,6 +190,9 @@ fn extension_metrics_cover_all_domains() {
         .chain(MYSQL_METRICS.iter())
         .chain(POSTGRES_METRICS.iter())
         .chain(NFS_CLIENT_METRICS.iter())
+        .chain(NGINX_METRICS.iter())
+        .chain(REDIS_METRICS.iter())
+        .chain(SYSTEMD_METRICS.iter())
         .map(|(name, _)| {
             let mut parts = name.split('.');
             format!(
@@ -141,6 +208,9 @@ fn extension_metrics_cover_all_domains() {
     assert!(namespaces.contains("system.mysql"));
     assert!(namespaces.contains("system.postgres"));
     assert!(namespaces.contains("system.nfs_client"));
+    assert!(namespaces.contains("system.nginx"));
+    assert!(namespaces.contains("system.redis"));
+    assert!(namespaces.contains("system.systemd"));
 }
 
 #[test]

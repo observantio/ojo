@@ -124,3 +124,35 @@ fn collect_schedstat_and_runqueue(
 
     Ok((out, runqueue_depth))
 }
+
+#[cfg(test)]
+mod scheduler_tests {
+    use super::{collect_netstat, collect_schedstat_and_runqueue, distribute_runnable};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn collect_netstat_and_schedstat_smoke() {
+        let net = collect_netstat().expect("collect netstat");
+        let _ = net.len();
+
+        let (sched, runqueue) = collect_schedstat_and_runqueue(4, 2.0).expect("collect schedstat");
+        let _ = sched.len();
+        assert!(runqueue.contains_key("global_estimated_runnable"));
+    }
+
+    #[test]
+    fn distribute_runnable_covers_weighted_and_even_paths() {
+        let mut weighted = BTreeMap::new();
+        weighted.insert(0usize, 10u64);
+        weighted.insert(1usize, 30u64);
+        let by_wait = distribute_runnable(2, 4.0, &weighted);
+        assert_eq!(by_wait.get("global_estimated_runnable"), Some(&4.0));
+        assert!(by_wait.get("cpu|0").copied().unwrap_or_default() < 2.0);
+        assert!(by_wait.get("cpu|1").copied().unwrap_or_default() > 2.0);
+
+        let even = distribute_runnable(2, -1.0, &BTreeMap::new());
+        assert_eq!(even.get("global_estimated_runnable"), Some(&0.0));
+        assert_eq!(even.get("cpu|0"), Some(&0.0));
+        assert_eq!(even.get("cpu|1"), Some(&0.0));
+    }
+}

@@ -307,7 +307,7 @@ fn collect_cgroup_v1_dir(path: &Path, scope: &str, out: &mut BTreeMap<String, u6
 
 #[cfg(test)]
 mod cgroup_tests {
-    use super::{collect_cgroup_v1_dir, collect_cgroup_v2_dir, collect_cgroup_v2_tree};
+    use super::{collect_cgroup, collect_cgroup_v1_dir, collect_cgroup_v2_dir, collect_cgroup_v2_tree};
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::PathBuf;
@@ -353,6 +353,12 @@ mod cgroup_tests {
         assert_eq!(out.get("v2/unit|io.stat|8:0|wbytes.is_max"), Some(&1));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_cgroup_smoke_runs_on_host_layout() {
+        let (metrics, _mode) = collect_cgroup().expect("collect cgroup");
+        let _ = metrics.len();
     }
 
     #[test]

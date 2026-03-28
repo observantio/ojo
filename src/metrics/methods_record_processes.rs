@@ -147,15 +147,13 @@ impl ProcMetrics {
                         &base_attrs,
                     );
                 }
-                if is_linux {
-                    if let Some(value) = proc.cancelled_write_bytes {
-                        self.record_i64(
-                            "process.linux.io.cancelled_write_bytes",
-                            &self.process_cancelled_write_bytes,
-                            value,
-                            &base_attrs,
-                        );
-                    }
+                if let (true, Some(value)) = (is_linux, proc.cancelled_write_bytes) {
+                    self.record_i64(
+                        "process.linux.io.cancelled_write_bytes",
+                        &self.process_cancelled_write_bytes,
+                        value,
+                        &base_attrs,
+                    );
                 }
                 if let Some(value) = proc.vm_size_kib {
                     self.record_u64(

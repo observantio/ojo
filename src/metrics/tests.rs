@@ -3,8 +3,9 @@ mod tests {
     use crate::metrics::{MetricFilter, ProcessLabelConfig};
     use crate::delta::DerivedMetrics;
     use crate::model::{
-        CpuInfoSnapshot, MountSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot,
-        SwapDeviceSnapshot, WindowsSnapshot,
+        CpuInfoSnapshot, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
+        NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot, SwapDeviceSnapshot,
+        WindowsSnapshot,
     };
 
     #[test]
@@ -34,6 +35,7 @@ mod tests {
     #[test]
     fn metric_filter_matches_exact_and_group_roots() {
         let filter = MetricFilter::new(vec!["system.cpu".to_string()], vec![]);
+        assert!(filter.enabled("system.cpu"));
         assert!(filter.enabled("system.cpu.time"));
         assert!(!filter.enabled("system.memory.total"));
 
@@ -76,11 +78,23 @@ mod tests {
             working_set_bytes: Some(4096),
             ..ProcessSnapshot::default()
         };
+        let win_no_working_set = ProcessSnapshot {
+            rss_pages: -1,
+            resident_bytes: None,
+            working_set_bytes: None,
+            ..ProcessSnapshot::default()
+        };
+        let resident_proc = ProcessSnapshot {
+            resident_bytes: Some(2048),
+            ..ProcessSnapshot::default()
+        };
         assert_eq!(super::non_negative_u64(-1_i64), 0);
         assert_eq!(super::non_negative_u64(7_i64), 7);
         assert_eq!(super::pages_to_bytes_4k(-1), 0);
         assert_eq!(super::pages_to_bytes_4k(2), 8192);
+        assert_eq!(super::process_rss_bytes(&resident_proc, true), Some(2048));
         assert_eq!(super::process_rss_bytes(&proc, true), Some(4096));
+        assert_eq!(super::process_rss_bytes(&win_no_working_set, true), None);
         assert_eq!(super::process_rss_bytes(&proc, false), None);
         assert_eq!(super::kib_to_bytes(2), 2048);
 
@@ -109,8 +123,53 @@ mod tests {
         linux_snap.system.ticks_per_second = 100;
         linux_snap.system.boot_time_epoch_secs = 1_000;
         linux_snap.system.forks_since_boot = Some(9);
+        linux_snap.system.process_count = 2;
         linux_snap.system.procs_running = 2;
         linux_snap.system.procs_blocked = 1;
+        linux_snap.load = Some(LoadSnapshot {
+            one: 1.0,
+            five: 0.5,
+            fifteen: 0.25,
+            runnable: 3,
+            entities: 10,
+            latest_pid: 123,
+        });
+        linux_snap.memory = MemorySnapshot {
+            mem_total_bytes: 16 * 1024,
+            mem_free_bytes: 4 * 1024,
+            mem_available_bytes: 8 * 1024,
+            buffers_bytes: Some(100),
+            cached_bytes: 200,
+            active_bytes: Some(300),
+            inactive_bytes: Some(400),
+            anon_pages_bytes: Some(500),
+            mapped_bytes: Some(600),
+            shmem_bytes: Some(700),
+            swap_total_bytes: 2048,
+            swap_free_bytes: 1024,
+            swap_cached_bytes: Some(50),
+            dirty_bytes: Some(60),
+            writeback_bytes: Some(70),
+            slab_bytes: Some(80),
+            sreclaimable_bytes: Some(90),
+            sunreclaim_bytes: Some(100),
+            page_tables_bytes: Some(110),
+            committed_as_bytes: 120,
+            commit_limit_bytes: 130,
+            kernel_stack_bytes: Some(140),
+            hugepages_total: Some(150),
+            hugepages_free: Some(151),
+            hugepage_size_bytes: Some(152),
+            anon_hugepages_bytes: Some(153),
+        };
+        linux_snap.support_state.insert(
+            "system.disk.io".to_string(),
+            "available".to_string(),
+        );
+        linux_snap.metric_classification.insert(
+            "system.disk.io".to_string(),
+            "counter".to_string(),
+        );
         linux_snap.pressure.insert("cpu.some.avg10".to_string(), 0.2);
         linux_snap.pressure.insert("invalid".to_string(), 0.1);
         linux_snap
@@ -144,7 +203,9 @@ mod tests {
         linux_snap
             .cgroup
             .insert("v2/root|io.stat|8:0|rbytes".to_string(), 9);
+        linux_snap.cgroup.insert("invalid".to_string(), 10);
         linux_snap.filesystem.insert("/|total_bytes|value".to_string(), 10);
+        linux_snap.filesystem.insert("invalid".to_string(), 11);
         linux_snap.swaps.push(SwapDeviceSnapshot {
             device: "/dev/sda2".to_string(),
             swap_type: "partition".to_string(),
@@ -155,9 +216,11 @@ mod tests {
         linux_snap
             .zoneinfo
             .insert("node0|DMA|nr_free_pages".to_string(), 11);
+        linux_snap.zoneinfo.insert("invalid".to_string(), 12);
         linux_snap
             .buddyinfo
             .insert("node0|DMA|0".to_string(), 12);
+        linux_snap.buddyinfo.insert("invalid".to_string(), 13);
         linux_snap.mounts.push(MountSnapshot {
             device: "/dev/sda1".to_string(),
             mountpoint: "/".to_string(),
@@ -177,6 +240,52 @@ mod tests {
             dropped: 1,
             time_squeezed: 2,
             ..SoftnetCpuSnapshot::default()
+        });
+        linux_snap.disks.push(DiskSnapshot {
+            name: "sda".to_string(),
+            has_counters: true,
+            reads: 100,
+            writes: 50,
+            sectors_read: 10_000,
+            sectors_written: 20_000,
+            time_reading_ms: 100,
+            time_writing_ms: 200,
+            in_progress: 1,
+            time_in_progress_ms: 300,
+            weighted_time_in_progress_ms: 400,
+            logical_block_size: Some(512),
+            physical_block_size: Some(4096),
+            rotational: Some(true),
+        });
+        linux_snap.net.push(NetDevSnapshot {
+            name: "eth0".to_string(),
+            stable_id: Some("eth0-stable".to_string()),
+            interface_index: Some(2),
+            interface_luid: Some(3),
+            is_virtual: Some(false),
+            is_loopback: Some(false),
+            is_physical: Some(true),
+            is_primary: Some(true),
+            mtu: Some(1500),
+            speed_mbps: Some(1000),
+            tx_queue_len: Some(100),
+            carrier_up: Some(true),
+            rx_bytes: 1000,
+            rx_packets: 10,
+            rx_errs: 1,
+            rx_drop: 1,
+            rx_fifo: 1,
+            rx_frame: 1,
+            rx_compressed: 1,
+            rx_multicast: 1,
+            tx_bytes: 2000,
+            tx_packets: 20,
+            tx_errs: 1,
+            tx_drop: 1,
+            tx_fifo: 1,
+            tx_colls: 1,
+            tx_carrier: 1,
+            tx_compressed: 1,
         });
         linux_snap.processes.push(ProcessSnapshot {
             pid: 10,
@@ -223,7 +332,34 @@ mod tests {
             ..ProcessSnapshot::default()
         });
 
-        let mut linux_derived = DerivedMetrics::default();
+        let mut linux_derived = DerivedMetrics {
+            cpu_utilization_ratio: 0.5,
+            ..DerivedMetrics::default()
+        };
+        linux_derived.cpu_time_delta_secs.insert("user", 1.0);
+        linux_derived.cpu_time_delta_secs.insert("iowait", 0.5);
+        linux_derived.per_cpu_utilization_ratio.push((0, 0.5));
+        linux_derived.per_cpu_iowait_ratio.push((0, 0.2));
+        linux_derived.per_cpu_system_ratio.push((0, 0.3));
+        linux_derived.interrupts_delta = 1;
+        linux_derived.softirqs_delta = 1;
+        linux_derived.context_switches_delta = 1;
+        linux_derived.forks_delta = 1;
+        linux_derived.page_faults_delta = 1;
+        linux_derived.major_page_faults_delta = 1;
+        linux_derived.page_ins_delta = 1;
+        linux_derived.page_outs_delta = 1;
+        linux_derived.swap_ins_delta = 1;
+        linux_derived.swap_outs_delta = 1;
+        linux_derived.memory_used_ratio = 0.3;
+        linux_derived.swap_used_ratio = 0.4;
+        linux_derived.dirty_writeback_ratio = 0.5;
+        linux_derived.page_faults_per_sec = 1.0;
+        linux_derived.major_page_faults_per_sec = 1.0;
+        linux_derived.page_ins_per_sec = 1.0;
+        linux_derived.page_outs_per_sec = 1.0;
+        linux_derived.swap_ins_per_sec = 1.0;
+        linux_derived.swap_outs_per_sec = 1.0;
         linux_derived
             .pressure_total_delta_secs
             .insert("cpu.some".to_string(), 0.1);
@@ -251,6 +387,116 @@ mod tests {
         linux_derived.softnet_dropped_per_sec = 7.0;
         linux_derived.softnet_time_squeezed_per_sec = 8.0;
         linux_derived.softnet_drop_ratio = 0.1;
+        linux_derived
+            .disk_read_bytes_per_sec
+            .insert("sda".to_string(), 1.0);
+        linux_derived
+            .disk_write_bytes_per_sec
+            .insert("sda".to_string(), 2.0);
+        linux_derived
+            .disk_total_bytes_per_sec
+            .insert("sda".to_string(), 3.0);
+        linux_derived
+            .disk_reads_per_sec
+            .insert("sda".to_string(), 4.0);
+        linux_derived
+            .disk_writes_per_sec
+            .insert("sda".to_string(), 5.0);
+        linux_derived.disk_total_iops.insert("sda".to_string(), 6.0);
+        linux_derived
+            .disk_read_await_ms
+            .insert("sda".to_string(), 7.0);
+        linux_derived
+            .disk_write_await_ms
+            .insert("sda".to_string(), 8.0);
+        linux_derived
+            .disk_avg_read_size_bytes
+            .insert("sda".to_string(), 9.0);
+        linux_derived
+            .disk_avg_write_size_bytes
+            .insert("sda".to_string(), 10.0);
+        linux_derived
+            .disk_utilization_ratio
+            .insert("sda".to_string(), 0.1);
+        linux_derived
+            .disk_queue_depth
+            .insert("sda".to_string(), 11.0);
+        linux_derived
+            .disk_read_bytes_delta
+            .insert("sda".to_string(), 12);
+        linux_derived
+            .disk_write_bytes_delta
+            .insert("sda".to_string(), 13);
+        linux_derived.disk_reads_delta.insert("sda".to_string(), 14);
+        linux_derived
+            .disk_writes_delta
+            .insert("sda".to_string(), 15);
+        linux_derived
+            .disk_read_time_delta_secs
+            .insert("sda".to_string(), 0.2);
+        linux_derived
+            .disk_write_time_delta_secs
+            .insert("sda".to_string(), 0.3);
+        linux_derived
+            .disk_io_time_delta_secs
+            .insert("sda".to_string(), 0.4);
+        linux_derived
+            .net_rx_bytes_per_sec
+            .insert("eth0".to_string(), 1.0);
+        linux_derived
+            .net_tx_bytes_per_sec
+            .insert("eth0".to_string(), 1.1);
+        linux_derived
+            .net_total_bytes_per_sec
+            .insert("eth0".to_string(), 1.2);
+        linux_derived
+            .net_rx_packets_per_sec
+            .insert("eth0".to_string(), 1.3);
+        linux_derived
+            .net_tx_packets_per_sec
+            .insert("eth0".to_string(), 1.4);
+        linux_derived
+            .net_rx_errs_per_sec
+            .insert("eth0".to_string(), 1.5);
+        linux_derived
+            .net_tx_errs_per_sec
+            .insert("eth0".to_string(), 1.6);
+        linux_derived
+            .net_rx_drop_per_sec
+            .insert("eth0".to_string(), 1.7);
+        linux_derived
+            .net_tx_drop_per_sec
+            .insert("eth0".to_string(), 1.8);
+        linux_derived
+            .net_rx_loss_ratio
+            .insert("eth0".to_string(), 0.1);
+        linux_derived
+            .net_tx_loss_ratio
+            .insert("eth0".to_string(), 0.2);
+        linux_derived
+            .net_rx_bytes_delta
+            .insert("eth0".to_string(), 2);
+        linux_derived
+            .net_tx_bytes_delta
+            .insert("eth0".to_string(), 3);
+        linux_derived
+            .net_rx_packets_delta
+            .insert("eth0".to_string(), 4);
+        linux_derived
+            .net_tx_packets_delta
+            .insert("eth0".to_string(), 5);
+        linux_derived
+            .net_rx_errs_delta
+            .insert("eth0".to_string(), 6);
+        linux_derived
+            .net_tx_errs_delta
+            .insert("eth0".to_string(), 7);
+        linux_derived
+            .net_rx_drop_delta
+            .insert("eth0".to_string(), 8);
+        linux_derived
+            .net_tx_drop_delta
+            .insert("eth0".to_string(), 9);
         linux_derived.process_cpu_ratio.insert(10, 0.5);
         linux_derived.process_cpu_user_delta_secs.insert(10, 0.2);
         linux_derived.process_cpu_system_delta_secs.insert(10, 0.1);
@@ -272,6 +518,14 @@ mod tests {
         windows_snap.system.is_windows = true;
         windows_snap.system.ticks_per_second = 100;
         windows_snap.system.boot_time_epoch_secs = 2_000;
+        windows_snap.load = Some(LoadSnapshot {
+            one: 2.0,
+            five: 1.5,
+            fifteen: 1.0,
+            runnable: 0,
+            entities: 0,
+            latest_pid: 0,
+        });
         windows_snap.vmstat.insert("pgfault".to_string(), 2);
         windows_snap.net_snmp.insert("Ip.InDiscards".to_string(), 1);
         windows_snap.sockets.insert("tcp".to_string(), 2);
@@ -301,7 +555,22 @@ mod tests {
         });
 
         let mut windows_derived = DerivedMetrics::default();
+        windows_derived.cpu_time_delta_secs.insert("iowait", 1.0);
+        windows_derived.cpu_time_delta_secs.insert("user", 1.0);
+        windows_derived.per_cpu_utilization_ratio.push((0, 0.2));
+        windows_derived.per_cpu_system_ratio.push((0, 0.1));
+        windows_derived.page_faults_delta = 1;
+        windows_derived.major_page_faults_delta = 1;
+        windows_derived.page_ins_delta = 1;
+        windows_derived.page_outs_delta = 1;
+        windows_derived.swap_ins_delta = 1;
+        windows_derived.swap_outs_delta = 1;
+        windows_derived.cpu_utilization_ratio = 0.2;
         windows_derived.process_cpu_ratio.insert(20, 0.25);
         metrics.record(&windows_snap, &windows_derived, true);
+
+        let mut no_load = linux_snap.clone();
+        no_load.load = None;
+        metrics.record(&no_load, &DerivedMetrics::default(), false);
     }
 }

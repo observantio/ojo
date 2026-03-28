@@ -25,6 +25,9 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let provider_mysql = build_meter_provider(&settings("ojo-mysql", "mysql-smoke"))?;
     let provider_postgres = build_meter_provider(&settings("ojo-postgres", "postgres-smoke"))?;
     let provider_nfs = build_meter_provider(&settings("ojo-nfs-client", "nfs-smoke"))?;
+    let provider_nginx = build_meter_provider(&settings("ojo-nginx", "nginx-smoke"))?;
+    let provider_redis = build_meter_provider(&settings("ojo-redis", "redis-smoke"))?;
+    let provider_systemd = build_meter_provider(&settings("ojo-systemd", "systemd-smoke"))?;
 
     let meter_docker = provider_docker.meter("ojo-docker-smoke");
     let meter_gpu = provider_gpu.meter("ojo-gpu-smoke");
@@ -32,6 +35,9 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let meter_mysql = provider_mysql.meter("ojo-mysql-smoke");
     let meter_postgres = provider_postgres.meter("ojo-postgres-smoke");
     let meter_nfs = provider_nfs.meter("ojo-nfs-smoke");
+    let meter_nginx = provider_nginx.meter("ojo-nginx-smoke");
+    let meter_redis = provider_redis.meter("ojo-redis-smoke");
+    let meter_systemd = provider_systemd.meter("ojo-systemd-smoke");
 
     let docker_gauge = meter_docker.f64_gauge("system.docker.smoke.value").build();
     let gpu_gauge = meter_gpu.f64_gauge("system.gpu.smoke.value").build();
@@ -41,6 +47,11 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
         .f64_gauge("system.postgres.smoke.value")
         .build();
     let nfs_gauge = meter_nfs.f64_gauge("system.nfs_client.smoke.value").build();
+    let nginx_gauge = meter_nginx.f64_gauge("system.nginx.smoke.value").build();
+    let redis_gauge = meter_redis.f64_gauge("system.redis.smoke.value").build();
+    let systemd_gauge = meter_systemd
+        .f64_gauge("system.systemd.smoke.value")
+        .build();
 
     docker_gauge.record(1.0, &[]);
     gpu_gauge.record(1.0, &[]);
@@ -48,6 +59,9 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     mysql_gauge.record(1.0, &[]);
     postgres_gauge.record(1.0, &[]);
     nfs_gauge.record(1.0, &[]);
+    nginx_gauge.record(1.0, &[]);
+    redis_gauge.record(1.0, &[]);
+    systemd_gauge.record(1.0, &[]);
 
     let _ = provider_docker.force_flush();
     let _ = provider_gpu.force_flush();
@@ -55,6 +69,9 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let _ = provider_mysql.force_flush();
     let _ = provider_postgres.force_flush();
     let _ = provider_nfs.force_flush();
+    let _ = provider_nginx.force_flush();
+    let _ = provider_redis.force_flush();
+    let _ = provider_systemd.force_flush();
 
     let _ = provider_docker.shutdown();
     let _ = provider_gpu.shutdown();
@@ -62,5 +79,8 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let _ = provider_mysql.shutdown();
     let _ = provider_postgres.shutdown();
     let _ = provider_nfs.shutdown();
+    let _ = provider_nginx.shutdown();
+    let _ = provider_redis.shutdown();
+    let _ = provider_systemd.shutdown();
     Ok(())
 }

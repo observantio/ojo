@@ -153,3 +153,19 @@ fn collect_softnet() -> Result<Vec<SoftnetCpuSnapshot>> {
         })
         .collect())
 }
+
+#[cfg(test)]
+mod kernel_net_tests {
+    use super::{
+        collect_interrupts, collect_net_snmp, collect_sockets, collect_softirqs, collect_softnet,
+    };
+
+    #[test]
+    fn kernel_net_collectors_smoke() {
+        let _ = collect_net_snmp().expect("collect net snmp");
+        let _ = collect_sockets().expect("collect sockets");
+        let _ = collect_interrupts().expect("collect interrupts");
+        let _ = collect_softirqs().expect("collect softirqs");
+        let _ = collect_softnet().expect("collect softnet");
+    }
+}

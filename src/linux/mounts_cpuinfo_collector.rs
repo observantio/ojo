@@ -174,3 +174,16 @@ fn collect_buddyinfo() -> Result<BTreeMap<String, u64>> {
 
     Ok(out)
 }
+
+#[cfg(test)]
+mod mounts_cpuinfo_tests {
+    use super::{collect_buddyinfo, collect_cpuinfo, collect_mounts, collect_zoneinfo, ReadCache};
+
+    #[test]
+    fn mounts_cpuinfo_collectors_smoke() {
+        let _ = collect_mounts().expect("collect mounts");
+        let _ = collect_cpuinfo(&mut ReadCache::default()).expect("collect cpuinfo");
+        let _ = collect_zoneinfo().expect("collect zoneinfo");
+        let _ = collect_buddyinfo().expect("collect buddyinfo");
+    }
+}

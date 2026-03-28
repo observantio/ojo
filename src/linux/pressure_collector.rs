@@ -87,3 +87,19 @@ fn collect_uptime_secs() -> Result<f64> {
         .and_then(|v| v.parse::<f64>().ok())
         .unwrap_or(0.0))
 }
+
+#[cfg(test)]
+mod pressure_collector_tests {
+    use super::{
+        collect_pressure, collect_pressure_totals, collect_proc_stat_totals, collect_uptime_secs,
+    };
+
+    #[test]
+    fn pressure_collectors_smoke() {
+        let _ = collect_pressure().expect("collect pressure");
+        let _ = collect_pressure_totals().expect("collect pressure totals");
+        let (_intr, _soft) = collect_proc_stat_totals().expect("collect proc stat totals");
+        let uptime = collect_uptime_secs().expect("collect uptime");
+        assert!(uptime >= 0.0);
+    }
+}

@@ -117,3 +117,25 @@ fn collect_processes(
 
     Ok((out, ProcessCollectionMeta { fd_scan_enabled }))
 }
+
+#[cfg(test)]
+mod process_collector_tests {
+    use super::{collect_processes, estimate_process_count_from_proc, should_scan_fd_counts, ReadCache};
+
+    #[test]
+    fn process_collector_smoke_and_scan_toggle_paths() {
+        std::env::remove_var("OJO_PROCESS_FD_SCAN");
+        let hint = estimate_process_count_from_proc().unwrap_or(0);
+        let _ = should_scan_fd_counts(hint);
+
+        std::env::set_var("OJO_PROCESS_FD_SCAN", "0");
+        assert!(!should_scan_fd_counts(0));
+        std::env::set_var("OJO_PROCESS_FD_SCAN", "1");
+        assert!(should_scan_fd_counts(usize::MAX));
+        std::env::remove_var("OJO_PROCESS_FD_SCAN");
+
+        let (procs, meta) = collect_processes(&mut ReadCache::default()).expect("collect processes");
+        let _ = procs.len();
+        let _ = meta.fd_scan_enabled;
+    }
+}
