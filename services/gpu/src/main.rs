@@ -556,4 +556,5 @@ fn record_f64(
 }
 
 #[cfg(test)]
+#[path = "tests/main_tests.rs"]
 mod tests;

@@ -1,4 +1,5 @@
-use crate::{MysqlConfig, MysqlSnapshot};
+use crate::{RedisConfig, RedisSnapshot};
+use std::collections::BTreeMap;
 use std::process::Child;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -6,74 +7,77 @@ use tracing::warn;
 
 const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub(super) fn collect_snapshot_impl(cfg: &MysqlConfig, default_executable: &str) -> MysqlSnapshot {
+pub(super) fn collect_snapshot_impl(cfg: &RedisConfig, default_executable: &str) -> RedisSnapshot {
     let executable = if cfg.executable.trim().is_empty() {
         default_executable
     } else {
         cfg.executable.as_str()
     };
+    if executable == default_executable {
+        if let Ok(info) = std::env::var("OJO_REDIS_INFO_STUB") {
+            return parse_redis_info(&info);
+        }
+    }
     let mut command = Command::new(executable);
-    command.args(["--batch", "--raw", "--skip-column-names"]);
     if let Some(host) = &cfg.host {
         command.args(["-h", host]);
     }
     if let Some(port) = cfg.port {
-        command.args(["-P", &port.to_string()]);
+        command.args(["-p", &port.to_string()]);
     }
-    if let Some(user) = &cfg.user {
-        command.args(["-u", user]);
+    if let Some(username) = &cfg.username {
+        command.args(["--user", username]);
     }
     if let Some(password) = &cfg.password {
-        command.arg(format!("-p{password}"));
+        command.args(["-a", password]);
     }
-    if let Some(database) = &cfg.database {
-        command.args(["-D", database]);
-    }
-    command.args([
-        "-e",
-        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected','Threads_running','Queries','Slow_queries','Bytes_received','Bytes_sent')",
-    ]);
+    command.args(["INFO"]);
 
     let maybe_output = run_with_timeout(command, CMD_TIMEOUT);
     let output = match maybe_output {
         Some(output) => output,
-        None => return MysqlSnapshot::default(),
+        None => return RedisSnapshot::default(),
     };
     if !output.status.success() {
-        warn!(stderr = %String::from_utf8_lossy(&output.stderr), "mysql command failed");
-        return MysqlSnapshot::default();
+        warn!(stderr = %String::from_utf8_lossy(&output.stderr), "redis info command failed");
+        return RedisSnapshot::default();
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    parse_mysql_status_output(&text)
+    parse_redis_info(&text)
 }
 
-fn parse_mysql_status_output(text: &str) -> MysqlSnapshot {
-    let mut values = std::collections::BTreeMap::new();
+fn parse_redis_info(text: &str) -> RedisSnapshot {
+    let mut map = BTreeMap::new();
     for line in text.lines() {
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let mut parts = line.split('\t');
-        let key = parts.next().unwrap_or_default().trim();
-        let value = parts.next().unwrap_or_default().trim();
-        if !key.is_empty() {
-            values.insert(key.to_string(), value.to_string());
-        }
-    }
-    if values.is_empty() {
-        return MysqlSnapshot::default();
+        let Some((key, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        map.insert(key.to_string(), value.to_string());
     }
 
-    MysqlSnapshot {
+    if map.is_empty() {
+        return RedisSnapshot::default();
+    }
+
+    RedisSnapshot {
         available: true,
         up: true,
-        connections: parse_u64(values.get("Threads_connected")),
-        threads_running: parse_u64(values.get("Threads_running")),
-        queries_total: parse_u64(values.get("Queries")),
-        slow_queries_total: parse_u64(values.get("Slow_queries")),
-        bytes_received_total: parse_u64(values.get("Bytes_received")),
-        bytes_sent_total: parse_u64(values.get("Bytes_sent")),
+        connected_clients: parse_u64(map.get("connected_clients")),
+        blocked_clients: parse_u64(map.get("blocked_clients")),
+        memory_used_bytes: parse_u64(map.get("used_memory")),
+        memory_max_bytes: parse_u64(map.get("maxmemory")),
+        uptime_seconds: parse_u64(map.get("uptime_in_seconds")),
+        commands_processed_total: parse_u64(map.get("total_commands_processed")),
+        connections_received_total: parse_u64(map.get("total_connections_received")),
+        keyspace_hits_total: parse_u64(map.get("keyspace_hits")),
+        keyspace_misses_total: parse_u64(map.get("keyspace_misses")),
+        expired_keys_total: parse_u64(map.get("expired_keys")),
+        evicted_keys_total: parse_u64(map.get("evicted_keys")),
     }
 }
 

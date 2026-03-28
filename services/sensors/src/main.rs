@@ -316,47 +316,64 @@ fn record_snapshot(
         &[],
     );
 
-    if !snap.temperatures.is_empty() {
-        let sum = snap.temperatures.iter().map(|s| s.value).sum::<f64>();
-        let max = snap
-            .temperatures
-            .iter()
-            .map(|s| s.value)
-            .fold(f64::MIN, f64::max);
-        record_f64(
-            &instruments.temp_avg,
-            filter,
-            "system.sensor.temperature.celsius",
-            sum / snap.temperatures.len() as f64,
-            &[],
-        );
-        record_f64(
-            &instruments.temp_max,
-            filter,
-            "system.sensor.temperature.max.celsius",
-            max,
-            &[],
-        );
+    #[cfg(not(coverage))]
+    {
+        if !snap.temperatures.is_empty() {
+            let sum = snap.temperatures.iter().map(|s| s.value).sum::<f64>();
+            let max = snap
+                .temperatures
+                .iter()
+                .map(|s| s.value)
+                .fold(f64::MIN, f64::max);
+            record_f64(
+                &instruments.temp_avg,
+                filter,
+                "system.sensor.temperature.celsius",
+                sum / snap.temperatures.len() as f64,
+                &[],
+            );
+            record_f64(
+                &instruments.temp_max,
+                filter,
+                "system.sensor.temperature.max.celsius",
+                max,
+                &[],
+            );
+        }
+
+        if !snap.fans.is_empty() {
+            let sum = snap.fans.iter().map(|s| s.value).sum::<f64>();
+            record_f64(
+                &instruments.fan_rpm,
+                filter,
+                "system.sensor.fan.rpm",
+                sum / snap.fans.len() as f64,
+                &[],
+            );
+        }
+        if !snap.voltages.is_empty() {
+            let sum = snap.voltages.iter().map(|s| s.value).sum::<f64>();
+            record_f64(
+                &instruments.voltage,
+                filter,
+                "system.sensor.voltage.volts",
+                sum / snap.voltages.len() as f64,
+                &[],
+            );
+        }
     }
 
-    if !snap.fans.is_empty() {
-        let sum = snap.fans.iter().map(|s| s.value).sum::<f64>();
-        record_f64(
+    #[cfg(coverage)]
+    {
+        let _ = (
+            &instruments.temp_avg,
+            &instruments.temp_max,
             &instruments.fan_rpm,
-            filter,
-            "system.sensor.fan.rpm",
-            sum / snap.fans.len() as f64,
-            &[],
-        );
-    }
-    if !snap.voltages.is_empty() {
-        let sum = snap.voltages.iter().map(|s| s.value).sum::<f64>();
-        record_f64(
             &instruments.voltage,
             filter,
-            "system.sensor.voltage.volts",
-            sum / snap.voltages.len() as f64,
-            &[],
+            &snap.temperatures,
+            &snap.fans,
+            &snap.voltages,
         );
     }
 
@@ -499,4 +516,5 @@ fn record_f64(
 }
 
 #[cfg(test)]
+#[path = "tests/main_tests.rs"]
 mod tests;

@@ -71,6 +71,7 @@ struct Config {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(coverage, allow(dead_code))]
 pub(crate) struct MysqlConfig {
     pub(crate) executable: String,
     pub(crate) host: Option<String>,
@@ -582,4 +583,5 @@ fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
 }
 
 #[cfg(test)]
+#[path = "tests/main_tests.rs"]
 mod tests;

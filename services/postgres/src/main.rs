@@ -536,4 +536,5 @@ fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
 }
 
 #[cfg(test)]
+#[path = "tests/main_tests.rs"]
 mod tests;

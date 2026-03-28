@@ -126,4 +126,5 @@ where
 }
 
 #[cfg(test)]
+#[path = "../tests/platform_common_tests.rs"]
 mod tests;

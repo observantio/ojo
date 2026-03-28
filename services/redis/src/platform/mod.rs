@@ -17,6 +17,6 @@ pub(crate) use linux::collect_snapshot;
 pub(crate) use windows::collect_snapshot;
 
 #[cfg(all(not(coverage), not(any(target_os = "linux", target_os = "windows"))))]
-pub(crate) fn collect_snapshot() -> crate::DockerSnapshot {
-    crate::DockerSnapshot::default()
+pub(crate) fn collect_snapshot(_cfg: &crate::RedisConfig) -> crate::RedisSnapshot {
+    crate::RedisSnapshot::default()
 }

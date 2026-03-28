@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
-use host_collectors::{init_meter_provider, OtlpSettings, PrefixFilter};
+use host_collectors::{
+    default_protocol_for_endpoint, init_meter_provider, OtlpSettings, PrefixFilter,
+};
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
 use serde::Deserialize;
@@ -10,6 +12,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tracing_subscriber::EnvFilter;
 
+mod platform;
+
 #[derive(Clone, Debug)]
 struct Config {
     service_name: String,
@@ -17,20 +21,174 @@ struct Config {
     poll_interval: Duration,
     otlp_endpoint: String,
     otlp_protocol: String,
+    otlp_headers: BTreeMap<String, String>,
+    otlp_compression: Option<String>,
+    otlp_timeout: Option<Duration>,
+    export_interval: Option<Duration>,
+    export_timeout: Option<Duration>,
     metrics_include: Vec<String>,
     metrics_exclude: Vec<String>,
+    redis: RedisConfig,
     once: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(coverage, allow(dead_code))]
+pub(crate) struct RedisConfig {
+    pub(crate) executable: String,
+    pub(crate) host: Option<String>,
+    pub(crate) port: Option<u16>,
+    pub(crate) username: Option<String>,
+    pub(crate) password: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RedisSnapshot {
+    pub(crate) available: bool,
+    pub(crate) up: bool,
+    pub(crate) connected_clients: u64,
+    pub(crate) blocked_clients: u64,
+    pub(crate) memory_used_bytes: u64,
+    pub(crate) memory_max_bytes: u64,
+    pub(crate) uptime_seconds: u64,
+    pub(crate) commands_processed_total: u64,
+    pub(crate) connections_received_total: u64,
+    pub(crate) keyspace_hits_total: u64,
+    pub(crate) keyspace_misses_total: u64,
+    pub(crate) expired_keys_total: u64,
+    pub(crate) evicted_keys_total: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RedisRates {
+    commands_per_second: f64,
+    connections_per_second: f64,
+    hit_ratio: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PrevState {
+    last: Option<(RedisSnapshot, Instant)>,
+}
+
+impl PrevState {
+    fn derive(&mut self, current: &RedisSnapshot) -> RedisRates {
+        let now = Instant::now();
+        let Some((previous, previous_at)) = &self.last else {
+            self.last = Some((current.clone(), now));
+            return RedisRates {
+                hit_ratio: hit_ratio(current.keyspace_hits_total, current.keyspace_misses_total),
+                ..RedisRates::default()
+            };
+        };
+        let elapsed = now
+            .checked_duration_since(*previous_at)
+            .unwrap_or_default()
+            .as_secs_f64();
+        if elapsed <= 0.0 {
+            self.last = Some((current.clone(), now));
+            return RedisRates {
+                hit_ratio: hit_ratio(current.keyspace_hits_total, current.keyspace_misses_total),
+                ..RedisRates::default()
+            };
+        }
+        let rates = RedisRates {
+            commands_per_second: saturating_rate(
+                previous.commands_processed_total,
+                current.commands_processed_total,
+                elapsed,
+            ),
+            connections_per_second: saturating_rate(
+                previous.connections_received_total,
+                current.connections_received_total,
+                elapsed,
+            ),
+            hit_ratio: hit_ratio(current.keyspace_hits_total, current.keyspace_misses_total),
+        };
+        self.last = Some((current.clone(), now));
+        rates
+    }
+}
+
+fn saturating_rate(previous: u64, current: u64, elapsed_secs: f64) -> f64 {
+    if current < previous {
+        return 0.0;
+    }
+    (current - previous) as f64 / elapsed_secs
+}
+
+fn hit_ratio(hits: u64, misses: u64) -> f64 {
+    let total = hits.saturating_add(misses);
+    if total == 0 {
+        0.0
+    } else {
+        hits as f64 / total as f64
+    }
+}
+
+fn derive_rates_or_reset(prev: &mut PrevState, snapshot: &RedisSnapshot) -> RedisRates {
+    if snapshot.available {
+        prev.derive(snapshot)
+    } else {
+        prev.last = None;
+        RedisRates::default()
+    }
 }
 
 #[derive(Clone)]
 struct Instruments {
+    source_available: Gauge<u64>,
     up: Gauge<u64>,
+    connected_clients: Gauge<u64>,
+    blocked_clients: Gauge<u64>,
+    memory_used_bytes: Gauge<u64>,
+    memory_max_bytes: Gauge<u64>,
+    uptime_seconds: Gauge<u64>,
+    commands_total: Gauge<u64>,
+    connections_total: Gauge<u64>,
+    keyspace_hits_total: Gauge<u64>,
+    keyspace_misses_total: Gauge<u64>,
+    expired_keys_total: Gauge<u64>,
+    evicted_keys_total: Gauge<u64>,
+    commands_rate: Gauge<f64>,
+    connections_rate: Gauge<f64>,
+    hit_ratio: Gauge<f64>,
 }
 
 impl Instruments {
     fn new(meter: &opentelemetry::metrics::Meter) -> Self {
         Self {
+            source_available: meter.u64_gauge("system.redis.source.available").build(),
             up: meter.u64_gauge("system.redis.up").build(),
+            connected_clients: meter.u64_gauge("system.redis.clients.connected").build(),
+            blocked_clients: meter.u64_gauge("system.redis.clients.blocked").build(),
+            memory_used_bytes: meter.u64_gauge("system.redis.memory.used.bytes").build(),
+            memory_max_bytes: meter.u64_gauge("system.redis.memory.max.bytes").build(),
+            uptime_seconds: meter.u64_gauge("system.redis.uptime.seconds").build(),
+            commands_total: meter
+                .u64_gauge("system.redis.commands.processed.total")
+                .build(),
+            connections_total: meter
+                .u64_gauge("system.redis.connections.received.total")
+                .build(),
+            keyspace_hits_total: meter.u64_gauge("system.redis.keyspace.hits.total").build(),
+            keyspace_misses_total: meter
+                .u64_gauge("system.redis.keyspace.misses.total")
+                .build(),
+            expired_keys_total: meter.u64_gauge("system.redis.keys.expired.total").build(),
+            evicted_keys_total: meter.u64_gauge("system.redis.keys.evicted.total").build(),
+            commands_rate: meter
+                .f64_gauge("system.redis.commands.processed.rate_per_second")
+                .with_unit("{commands}/s")
+                .build(),
+            connections_rate: meter
+                .f64_gauge("system.redis.connections.received.rate_per_second")
+                .with_unit("{connections}/s")
+                .build(),
+            hit_ratio: meter
+                .f64_gauge("system.redis.keyspace.hit.ratio")
+                .with_unit("1")
+                .build(),
         }
     }
 }
@@ -48,15 +206,185 @@ fn parse_bool_env(name: &str) -> Option<bool> {
     })
 }
 
-fn collect_redis_up() -> u64 {
-    if parse_bool_env("OJO_REDIS_SIMULATE_UP").unwrap_or(true) {
-        1
-    } else {
-        0
+fn run() -> Result<()> {
+    let cfg = Config::load()?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .try_init()
+        .ok();
+
+    let provider = init_meter_provider(&OtlpSettings {
+        service_name: cfg.service_name.clone(),
+        instance_id: cfg.instance_id.clone(),
+        otlp_endpoint: cfg.otlp_endpoint.clone(),
+        otlp_protocol: cfg.otlp_protocol.clone(),
+        otlp_headers: cfg.otlp_headers.clone(),
+        otlp_compression: cfg.otlp_compression.clone(),
+        otlp_timeout: cfg.otlp_timeout,
+        export_interval: cfg.export_interval,
+        export_timeout: cfg.export_timeout,
+    })?;
+    let meter = opentelemetry::global::meter("ojo-redis");
+    let instruments = Instruments::new(&meter);
+    let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
+    let mut prev = PrevState::default();
+
+    #[cfg(test)]
+    let mut iterations = 0u64;
+    loop {
+        let started_at = Instant::now();
+        let snapshot = platform::collect_snapshot(&cfg.redis);
+        let rates = derive_rates_or_reset(&mut prev, &snapshot);
+        record_snapshot(&instruments, &filter, &snapshot, &rates);
+        let _ = provider.force_flush();
+
+        #[cfg(test)]
+        {
+            iterations += 1;
+            let max = env::var("OJO_TEST_MAX_ITERATIONS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1);
+            if iterations >= max {
+                break;
+            }
+        }
+
+        if cfg.once {
+            break;
+        }
+
+        let deadline = started_at + cfg.poll_interval;
+        while Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(100));
+        }
     }
+
+    let _ = provider.shutdown();
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn main() -> Result<()> {
+    run()
+}
+
+fn record_snapshot(
+    instruments: &Instruments,
+    filter: &PrefixFilter,
+    snap: &RedisSnapshot,
+    rates: &RedisRates,
+) {
+    record_u64(
+        &instruments.source_available,
+        filter,
+        "system.redis.source.available",
+        if snap.available { 1 } else { 0 },
+    );
+    record_u64(
+        &instruments.up,
+        filter,
+        "system.redis.up",
+        if snap.up { 1 } else { 0 },
+    );
+    if !snap.available {
+        return;
+    }
+    record_u64(
+        &instruments.connected_clients,
+        filter,
+        "system.redis.clients.connected",
+        snap.connected_clients,
+    );
+    record_u64(
+        &instruments.blocked_clients,
+        filter,
+        "system.redis.clients.blocked",
+        snap.blocked_clients,
+    );
+    record_u64(
+        &instruments.memory_used_bytes,
+        filter,
+        "system.redis.memory.used.bytes",
+        snap.memory_used_bytes,
+    );
+    record_u64(
+        &instruments.memory_max_bytes,
+        filter,
+        "system.redis.memory.max.bytes",
+        snap.memory_max_bytes,
+    );
+    record_u64(
+        &instruments.uptime_seconds,
+        filter,
+        "system.redis.uptime.seconds",
+        snap.uptime_seconds,
+    );
+    record_u64(
+        &instruments.commands_total,
+        filter,
+        "system.redis.commands.processed.total",
+        snap.commands_processed_total,
+    );
+    record_u64(
+        &instruments.connections_total,
+        filter,
+        "system.redis.connections.received.total",
+        snap.connections_received_total,
+    );
+    record_u64(
+        &instruments.keyspace_hits_total,
+        filter,
+        "system.redis.keyspace.hits.total",
+        snap.keyspace_hits_total,
+    );
+    record_u64(
+        &instruments.keyspace_misses_total,
+        filter,
+        "system.redis.keyspace.misses.total",
+        snap.keyspace_misses_total,
+    );
+    record_u64(
+        &instruments.expired_keys_total,
+        filter,
+        "system.redis.keys.expired.total",
+        snap.expired_keys_total,
+    );
+    record_u64(
+        &instruments.evicted_keys_total,
+        filter,
+        "system.redis.keys.evicted.total",
+        snap.evicted_keys_total,
+    );
+    record_f64(
+        &instruments.commands_rate,
+        filter,
+        "system.redis.commands.processed.rate_per_second",
+        rates.commands_per_second,
+    );
+    record_f64(
+        &instruments.connections_rate,
+        filter,
+        "system.redis.connections.received.rate_per_second",
+        rates.connections_per_second,
+    );
+    record_f64(
+        &instruments.hit_ratio,
+        filter,
+        "system.redis.keyspace.hit.ratio",
+        rates.hit_ratio,
+    );
 }
 
 fn record_u64(instrument: &Gauge<u64>, filter: &PrefixFilter, name: &str, value: u64) {
+    if filter.allows(name) {
+        instrument.record(value, &[] as &[KeyValue]);
+    }
+}
+
+fn record_f64(instrument: &Gauge<f64>, filter: &PrefixFilter, name: &str, value: f64) {
     if filter.allows(name) {
         instrument.record(value, &[] as &[KeyValue]);
     }
@@ -107,7 +435,9 @@ impl Config {
         let collection = file_cfg.collection.unwrap_or_default();
         let export = file_cfg.export.unwrap_or_default();
         let otlp = export.otlp.unwrap_or_default();
+        let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
+        let redis = file_cfg.redis.unwrap_or_default();
 
         let otlp_endpoint = otlp
             .endpoint
@@ -116,7 +446,7 @@ impl Config {
         let otlp_protocol = otlp
             .protocol
             .or_else(|| env::var("OTEL_EXPORTER_OTLP_PROTOCOL").ok())
-            .unwrap_or_else(|| "http/protobuf".to_string());
+            .unwrap_or_else(|| default_protocol_for_endpoint(Some(&otlp_endpoint)));
 
         Ok(Self {
             service_name: service.name.unwrap_or_else(|| "ojo-redis".to_string()),
@@ -126,80 +456,25 @@ impl Config {
             poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(10).max(1)),
             otlp_endpoint,
             otlp_protocol,
+            otlp_headers: otlp.headers.unwrap_or_default(),
+            otlp_compression: otlp.compression,
+            otlp_timeout: otlp.timeout_secs.map(Duration::from_secs),
+            export_interval: batch.interval_secs.map(Duration::from_secs),
+            export_timeout: batch.timeout_secs.map(Duration::from_secs),
             metrics_include: metrics
                 .include
                 .unwrap_or_else(|| vec!["system.redis.".to_string()]),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
+            redis: RedisConfig {
+                executable: redis.executable.unwrap_or_else(|| "redis-cli".to_string()),
+                host: redis.host.filter(|v| !v.trim().is_empty()),
+                port: redis.port,
+                username: redis.username.filter(|v| !v.trim().is_empty()),
+                password: redis.password.filter(|v| !v.trim().is_empty()),
+            },
             once,
         })
     }
-}
-
-fn run() -> Result<()> {
-    let cfg = Config::load()?;
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .try_init()
-        .ok();
-
-    let provider = init_meter_provider(&OtlpSettings {
-        service_name: cfg.service_name.clone(),
-        instance_id: cfg.instance_id.clone(),
-        otlp_endpoint: cfg.otlp_endpoint.clone(),
-        otlp_protocol: cfg.otlp_protocol.clone(),
-        otlp_headers: BTreeMap::new(),
-        otlp_compression: None,
-        otlp_timeout: None,
-        export_interval: None,
-        export_timeout: None,
-    })?;
-    let meter = opentelemetry::global::meter("ojo-redis");
-    let instruments = Instruments::new(&meter);
-    let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
-
-    #[cfg(test)]
-    let mut iterations = 0u64;
-    loop {
-        let started_at = Instant::now();
-        record_u64(
-            &instruments.up,
-            &filter,
-            "system.redis.up",
-            collect_redis_up(),
-        );
-        let _ = provider.force_flush();
-
-        #[cfg(test)]
-        {
-            iterations += 1;
-            let max = env::var("OJO_TEST_MAX_ITERATIONS")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .unwrap_or(1);
-            if iterations >= max {
-                break;
-            }
-        }
-
-        if cfg.once {
-            break;
-        }
-
-        let deadline = started_at + cfg.poll_interval;
-        while Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(100));
-        }
-    }
-
-    let _ = provider.shutdown();
-    Ok(())
-}
-
-#[cfg(not(test))]
-fn main() -> Result<()> {
-    run()
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -208,6 +483,7 @@ struct FileConfig {
     collection: Option<CollectionSection>,
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
+    redis: Option<RedisSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -222,14 +498,33 @@ struct CollectionSection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+struct RedisSection {
+    executable: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 struct ExportSection {
     otlp: Option<OtlpSection>,
+    batch: Option<BatchSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct OtlpSection {
     endpoint: Option<String>,
     protocol: Option<String>,
+    headers: Option<BTreeMap<String, String>>,
+    compression: Option<String>,
+    timeout_secs: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct BatchSection {
+    interval_secs: Option<u64>,
+    timeout_secs: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
