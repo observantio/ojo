@@ -11,3 +11,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 opentelemetry = { version = "0.31", features = ["metrics"] }
 host-collectors = { path = "../../crates/host-collectors" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
