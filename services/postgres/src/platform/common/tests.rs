@@ -50,6 +50,13 @@ fn parse_postgres_tsv_output_parses_expected_tsv_line() {
 }
 
 #[test]
+fn parse_postgres_tsv_output_skips_blank_lines_before_data() {
+    let snap = parse_postgres_tsv_output("\n\n7\t100\t4\t2\t20\t50\n");
+    assert!(snap.available);
+    assert_eq!(snap.connections, 7);
+}
+
+#[test]
 fn parse_postgres_tsv_output_returns_default_for_short_lines() {
     let snap = parse_postgres_tsv_output("1\t2\n");
     assert!(!snap.available);

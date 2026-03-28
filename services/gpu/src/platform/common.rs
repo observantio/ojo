@@ -7,31 +7,35 @@ use tracing::warn;
 const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) fn collect_snapshot() -> GpuSnapshot {
-    let maybe_samples = collect_nvidia_smi();
-    if let Some(samples) = maybe_samples {
-        return GpuSnapshot {
+    match collect_nvidia_smi() {
+        Some(samples) => GpuSnapshot {
             available: true,
             samples,
-        };
+        },
+        None => GpuSnapshot::default(),
     }
-    GpuSnapshot::default()
 }
 
+#[allow(clippy::question_mark)]
 fn collect_nvidia_smi() -> Option<Vec<GpuSample>> {
     let mut cmd = Command::new("nvidia-smi");
     cmd.args([
         "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks_throttle_reasons.active",
         "--format=csv,noheader,nounits",
     ]);
-    let output = run_with_timeout(cmd, CMD_TIMEOUT);
-    let output = output?;
+    let maybe_output = run_with_timeout(cmd, CMD_TIMEOUT);
+    let output = match maybe_output {
+        Some(output) => output,
+        None => return None,
+    };
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "nvidia-smi failed");
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout);
     let mut samples = Vec::new();
-    for (index, line) in text.lines().enumerate() {
+    let lines: Vec<&str> = text.lines().collect();
+    for (index, line) in lines.into_iter().enumerate() {
         let parts = line.split(',').map(str::trim).collect::<Vec<_>>();
         if parts.len() < 7 {
             continue;
@@ -82,8 +86,8 @@ where
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let spawn_result = cmd.spawn();
-    let mut child = match spawn_result {
+    let child_result = cmd.spawn();
+    let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "failed to spawn command");

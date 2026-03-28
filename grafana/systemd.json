@@ -1,0 +1,19 @@
+{
+  "title": "Ojo Systemd",
+  "uid": "ojo-systemd",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["ojo", "systemd"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Systemd Up",
+      "targets": [
+        { "refId": "A", "expr": "max(system_systemd_up)" }
+      ],
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+    }
+  ]
+}

@@ -220,6 +220,20 @@ fn config_load_from_args_covers_defaults_and_missing_path_error() {
 }
 
 #[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("gpu-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_GPU_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_GPU_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
 fn advance_export_state_covers_all_transitions() {
     assert_eq!(
         advance_export_state(ExportState::Pending, true),

@@ -2,8 +2,8 @@ use super::{
     advance_export_state, cap_samples_for_labels, container_name_label, handle_flush_event,
     install_signal_handler, load_yaml_config_file, log_flush_result, make_stop_handler,
     maybe_sleep_until_next_poll, non_empty_or, parse_pair_bytes, parse_percent,
-    parse_size_to_bytes, record_f64, record_snapshot, record_u64, resolve_default_config_path,
-    run, sleep_until, Config, DockerSample, DockerSnapshot, ExportState, FlushEvent, Instruments,
+    parse_size_to_bytes, record_f64, record_snapshot, record_u64, resolve_default_config_path, run,
+    sleep_until, Config, DockerSample, DockerSnapshot, ExportState, FlushEvent, Instruments,
 };
 use host_collectors::PrefixFilter;
 use std::collections::BTreeMap;
@@ -228,6 +228,20 @@ fn config_load_from_args_covers_flags_and_missing_path_error() {
     let err = Config::load_from_args(&missing_args).unwrap_err();
     assert!(err.to_string().contains("was not found"), "{err}");
 
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("docker-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_DOCKER_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_DOCKER_CONFIG");
     fs::remove_file(&path).expect("cleanup config");
 }
 

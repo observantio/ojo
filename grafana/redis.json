@@ -1,0 +1,19 @@
+{
+  "title": "Ojo Redis",
+  "uid": "ojo-redis",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["ojo", "redis"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Redis Up",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_up)" }
+      ],
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+    }
+  ]
+}

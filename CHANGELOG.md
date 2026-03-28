@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Expanded test coverage across core and sidecar services, including deterministic one-shot execution paths for integration-style `main` tests.
 - Added broader Linux collector helper tests (cgroup/support-state helpers, cache parsers, key formatting, scope normalization) and additional config/catalog edge-case tests.
+- Added three new cross-platform sidecar services:
+  - `ojo-redis` (`system.redis.*`)
+  - `ojo-nginx` (`system.nginx.*`)
+  - `ojo-systemd` (`system.systemd.*`)
+- Added new Grafana dashboards:
+  - `grafana/redis.json`
+  - `grafana/nginx.json`
+  - `grafana/systemd.json`
 
 ### Changed
 - Coverage gate for `host-collectors` is now enforced at 100% line coverage in CI and docs using `cargo llvm-cov -p host-collectors --all-features --summary-only --fail-under-lines 100`.

@@ -46,6 +46,43 @@ fn resolve_summary_entry_matches_exact_and_prefix_ids() {
 
     let missing_long = resolve_summary_entry(&by_id, "zzzzzz");
     assert_eq!(missing_long, None);
+
+    let reverse_prefix = resolve_summary_entry(&by_id, "abcdef1234567890");
+    assert_eq!(reverse_prefix, Some(("/web", "nginx", "running")));
+}
+
+#[test]
+fn collect_snapshot_keeps_sample_identity_when_summary_match_missing() {
+    let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let dir = unique_temp_dir("no-summary-match");
+    fs::create_dir_all(&dir).expect("mkdir");
+    let docker = dir.join("docker");
+    fs::write(
+        &docker,
+        "#!/bin/sh\nif [ \"$1\" = \"ps\" ]; then\n  printf '{\"ID\":\"deadbeef\",\"Names\":\"/db\",\"Image\":\"postgres\",\"State\":\"running\"}\\n'\nelif [ \"$1\" = \"stats\" ]; then\n  printf '{\"ID\":\"abcdef\",\"Name\":\"/web\",\"CPUPerc\":\"2%%\",\"MemUsage\":\"1MiB / 2MiB\",\"NetIO\":\"1kB / 2kB\",\"BlockIO\":\"3kB / 4kB\"}\\n'\nelse\n  exit 1\nfi\n",
+    )
+    .expect("write docker script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker, perms).expect("chmod");
+    }
+
+    let old_path = std::env::var("PATH").unwrap_or_default();
+    std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+
+    let snap = collect_snapshot();
+    assert!(snap.available);
+    assert_eq!(snap.samples.len(), 1);
+    assert_eq!(snap.samples[0].name, "web");
+    assert!(snap.samples[0].image.is_empty());
+    assert!(snap.samples[0].state.is_empty());
+
+    std::env::set_var("PATH", old_path);
+    fs::remove_file(&docker).expect("cleanup docker script");
+    fs::remove_dir_all(&dir).expect("cleanup dir");
 }
 
 #[test]
@@ -150,6 +187,38 @@ fn collect_snapshot_handles_failed_commands_and_invalid_json_lines() {
 }
 
 #[test]
+fn collect_snapshot_skips_blank_lines_in_ps_and_stats() {
+    let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let dir = unique_temp_dir("blank-lines");
+    fs::create_dir_all(&dir).expect("mkdir");
+    let docker = dir.join("docker");
+    fs::write(
+        &docker,
+        "#!/bin/sh\nif [ \"$1\" = \"ps\" ]; then\n  printf '\\n'\n  printf '{\"ID\":\"abcdef123456\",\"Names\":\"/web\",\"Image\":\"nginx:latest\",\"State\":\"running\"}\\n'\nelif [ \"$1\" = \"stats\" ]; then\n  printf '\\n'\n  printf '{\"ID\":\"abcdef\",\"Name\":\"/web\",\"CPUPerc\":\"10%%\",\"MemUsage\":\"8MiB / 128MiB\",\"NetIO\":\"1kB / 2kB\",\"BlockIO\":\"3kB / 4kB\"}\\n'\nelse\n  exit 1\nfi\n",
+    )
+    .expect("write docker script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker, perms).expect("chmod");
+    }
+
+    let old_path = std::env::var("PATH").unwrap_or_default();
+    std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+
+    let snap = collect_snapshot();
+    assert!(snap.available);
+    assert_eq!(snap.total, 1);
+    assert_eq!(snap.samples.len(), 1);
+
+    std::env::set_var("PATH", old_path);
+    fs::remove_file(&docker).expect("cleanup docker script");
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
 fn run_with_timeout_covers_success_timeout_and_wait_error() {
     let mut ok_cmd = Command::new("sh");
     ok_cmd.args(["-c", "printf 'ok'"]);
@@ -158,7 +227,7 @@ fn run_with_timeout_covers_success_timeout_and_wait_error() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
 
     let mut slow_cmd = Command::new("sh");
-    slow_cmd.args(["-c", "sleep 1"]);
+    slow_cmd.args(["-c", "while :; do :; done"]);
     assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
 
     let mut err_cmd = Command::new("sh");

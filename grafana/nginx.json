@@ -1,0 +1,19 @@
+{
+  "title": "Ojo Nginx",
+  "uid": "ojo-nginx",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["ojo", "nginx"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Nginx Up",
+      "targets": [
+        { "refId": "A", "expr": "max(system_nginx_up)" }
+      ],
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+    }
+  ]
+}

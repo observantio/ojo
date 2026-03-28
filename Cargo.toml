@@ -14,6 +14,9 @@ members = [
   "services/mysql",
   "services/postgres",
   "services/nfs-client",
+  "services/redis",
+  "services/nginx",
+  "services/systemd",
 ]
 
 [dependencies]

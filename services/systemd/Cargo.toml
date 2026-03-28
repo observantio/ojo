@@ -1,0 +1,13 @@
+[package]
+name = "ojo-systemd"
+version = "0.0.2"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+opentelemetry = { version = "0.31", features = ["metrics"] }
+host-collectors = { path = "../../crates/host-collectors" }

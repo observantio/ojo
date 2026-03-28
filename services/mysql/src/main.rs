@@ -257,13 +257,18 @@ fn maybe_sleep_until_next_poll(
     sleep_until(deadline, running, Duration::from_millis(500));
 }
 
+fn should_break_after_iteration(once: bool) -> bool {
+    once
+}
+
 fn run() -> Result<()> {
     let cfg = Config::load()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .init();
+        .try_init()
+        .ok();
 
     let provider = init_meter_provider(&OtlpSettings {
         service_name: cfg.service_name.clone(),
@@ -282,7 +287,16 @@ fn run() -> Result<()> {
     let mut prev = PrevState::default();
 
     let running = Arc::new(AtomicBool::new(true));
-    install_signal_handler(&running)?;
+    #[cfg(test)]
+    let skip_signal_handler = env::var("OJO_TEST_SKIP_SIGNAL_HANDLER")
+        .ok()
+        .is_some_and(|v| v == "1");
+    #[cfg(not(test))]
+    let skip_signal_handler = false;
+
+    if !skip_signal_handler {
+        install_signal_handler(&running)?;
+    }
 
     let mut export_state = ExportState::Pending;
     while running.load(Ordering::SeqCst) {
@@ -304,8 +318,16 @@ fn run() -> Result<()> {
         );
         export_state = next_state;
         maybe_sleep_until_next_poll(cfg.once, started_at, cfg.poll_interval, &running);
-        if cfg.once {
-            break;
+        #[cfg(test)]
+        let should_break_for_test = env::var("OJO_TEST_MAX_ITERATIONS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .is_some_and(|max| max <= 1);
+        #[cfg(not(test))]
+        let should_break_for_test = false;
+
+        if should_break_after_iteration(cfg.once) || should_break_for_test {
+            running.store(false, Ordering::SeqCst);
         }
     }
 

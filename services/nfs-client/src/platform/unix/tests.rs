@@ -37,6 +37,7 @@ fn parse_helpers_cover_mount_and_proc_rpc_formats() {
     let mounts =
         "server:/x /mnt nfs4 rw 0 0\nserver:/y /home ext4 rw 0 0\nserver:/z /data nfs rw 0 0\n";
     assert_eq!(parse_nfs_mount_count(mounts), 2);
+    assert_eq!(parse_nfs_mount_count("malformed-line\n"), 0);
 
     let proc_stats = "net 0 0 0\nrpc 42 3 1\n";
     assert_eq!(parse_proc_nfs_rpc_stats(proc_stats), Some((42, 3, 1)));

@@ -1,7 +1,7 @@
 use super::{
-    advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_snapshot,
-    resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState, FlushEvent,
-    Instruments, PostgresRates, PostgresSnapshot, PrevState,
+    advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_f64,
+    record_snapshot, record_u64, resolve_default_config_path, saturating_rate, sleep_until, Config,
+    ExportState, FlushEvent, Instruments, PostgresRates, PostgresSnapshot, PrevState,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -164,6 +164,27 @@ fn load_yaml_config_file_handles_missing_empty_and_valid_yaml() {
 }
 
 #[test]
+fn load_yaml_config_file_covers_read_and_parse_errors() {
+    let dir = unique_temp_path("postgres-config-dir");
+    fs::create_dir_all(&dir).expect("mkdir");
+    let dir_err = load_yaml_config_file(dir.to_string_lossy().as_ref()).unwrap_err();
+    assert!(
+        dir_err.to_string().contains("failed to read config file"),
+        "{dir_err}"
+    );
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+
+    let invalid = unique_temp_path("postgres-invalid-config.yaml");
+    fs::write(&invalid, "service: [\n").expect("write invalid");
+    let parse_err = load_yaml_config_file(invalid.to_string_lossy().as_ref()).unwrap_err();
+    assert!(
+        parse_err.to_string().contains("failed to parse YAML"),
+        "{parse_err}"
+    );
+    fs::remove_file(&invalid).expect("cleanup invalid");
+}
+
+#[test]
 fn config_load_reads_yaml_and_applies_defaults() {
     let _guard = env_lock().lock().expect("env lock");
     let path = unique_temp_path("postgres-load.yaml");
@@ -267,6 +288,32 @@ fn config_load_from_args_covers_default_and_missing_config_error() {
 }
 
 #[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("postgres-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_POSTGRES_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_POSTGRES_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_from_args_uses_repo_default_when_env_not_set() {
+    let _guard = env_lock().lock().expect("env lock");
+    std::env::remove_var("OJO_POSTGRES_CONFIG");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+    let args = vec!["ojo-postgres".to_string()];
+    let cfg = Config::load_from_args(&args).expect("load default config path");
+    assert!(!cfg.service_name.is_empty());
+}
+
+#[test]
 fn flush_and_sleep_helpers_cover_paths() {
     let now = Instant::now();
     super::log_flush_result(now, true);
@@ -331,6 +378,21 @@ fn record_snapshot_handles_unavailable_and_available_samples() {
         rollbacks_per_second: 0.2,
     };
     record_snapshot(&instruments, &filter, &available, &rates);
+}
+
+#[test]
+fn record_helpers_cover_allow_and_block_paths() {
+    let meter = opentelemetry::global::meter("postgres-record-helpers");
+    let gauge_u64 = meter.u64_gauge("postgres.test.u64").build();
+    let gauge_f64 = meter.f64_gauge("postgres.test.f64").build();
+
+    let filter_allow = PrefixFilter::new(vec!["system.postgres.".to_string()], vec![]);
+    record_u64(&gauge_u64, &filter_allow, "system.postgres.test.u64", 1);
+    record_f64(&gauge_f64, &filter_allow, "system.postgres.test.f64", 1.0);
+
+    let filter_block = PrefixFilter::new(vec!["system.unrelated.".to_string()], vec![]);
+    record_u64(&gauge_u64, &filter_block, "system.postgres.test.u64", 2);
+    record_f64(&gauge_f64, &filter_block, "system.postgres.test.f64", 2.0);
 }
 
 #[cfg(target_os = "linux")]

@@ -43,13 +43,13 @@ fn collect_snapshot_impl_covers_default_executable_and_all_optional_args() {
     let script = dir.join("fake-mysql.sh");
     let marker = dir.join("args.txt");
     fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\nprintf '%s\n' \"$@\" > {}\nprintf 'Threads_connected\t1\nThreads_running\t2\nQueries\t3\nSlow_queries\t4\nBytes_received\t5\nBytes_sent\t6\n'\n",
-                marker.to_string_lossy()
-            ),
-        )
-        .expect("write script");
+        &script,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\ncat <<'OUT'\nThreads_connected\t1\nThreads_running\t2\nQueries\t3\nSlow_queries\t4\nBytes_received\t5\nBytes_sent\t6\nOUT\n",
+            marker.to_string_lossy()
+        ),
+    )
+    .expect("write script");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -130,6 +130,14 @@ fn parse_mysql_status_output_returns_default_for_empty_text() {
     let snap = parse_mysql_status_output("\n\n");
     assert!(!snap.available);
     assert_eq!(snap.queries_total, 0);
+}
+
+#[test]
+fn parse_mysql_status_output_ignores_empty_keys_and_parses_valid_rows() {
+    let text = "\t999\nThreads_connected\t7\n";
+    let snap = parse_mysql_status_output(text);
+    assert!(snap.available);
+    assert_eq!(snap.connections, 7);
 }
 
 #[test]

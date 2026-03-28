@@ -32,8 +32,10 @@ pub(super) fn collect_snapshot_impl(
         FROM pg_stat_database;",
     ]);
 
-    let Some(output) = run_with_timeout(command, CMD_TIMEOUT) else {
-        return PostgresSnapshot::default();
+    let maybe_output = run_with_timeout(command, CMD_TIMEOUT);
+    let output = match maybe_output {
+        Some(output) => output,
+        None => return PostgresSnapshot::default(),
     };
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "psql command failed");
@@ -45,11 +47,14 @@ pub(super) fn collect_snapshot_impl(
 }
 
 fn parse_postgres_tsv_output(text: &str) -> PostgresSnapshot {
-    let line = text
-        .lines()
-        .find(|v| !v.trim().is_empty())
-        .unwrap_or_default()
-        .to_string();
+    let mut line = String::new();
+    for candidate in text.lines() {
+        if candidate.trim().is_empty() {
+            continue;
+        }
+        line = candidate.to_string();
+        break;
+    }
     let values = line.split('\t').collect::<Vec<_>>();
     if values.len() < 6 {
         return PostgresSnapshot::default();
@@ -72,7 +77,11 @@ fn parse_u64(value: &str) -> u64 {
 }
 
 fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
-    run_with_timeout_using_waiter(cmd, timeout, |child| child.try_wait())
+    run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
+}
+
+fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    child.try_wait()
 }
 
 fn run_with_timeout_using_waiter<W>(
@@ -86,7 +95,8 @@ where
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = match cmd.spawn() {
+    let child_result = cmd.spawn();
+    let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "failed to spawn command");

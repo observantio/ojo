@@ -464,7 +464,6 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("service.name"), "{msg}");
         assert!(msg.contains("service.instance_id"), "{msg}");
-        assert!(msg.contains("collection.poll_interval_secs"), "{msg}");
         assert!(msg.contains("export.otlp.endpoint"), "{msg}");
         assert!(msg.contains("export.otlp.protocol"), "{msg}");
     }

@@ -76,8 +76,10 @@ struct DockerSummary {
 fn docker_ps_summary() -> DockerSummary {
     let mut cmd = Command::new("docker");
     cmd.args(["ps", "-a", "--no-trunc", "--format", "{{json .}}"]);
-    let Some(output) = run_with_timeout(cmd, CMD_TIMEOUT) else {
-        return DockerSummary::default();
+    let maybe_output = run_with_timeout(cmd, CMD_TIMEOUT);
+    let output = match maybe_output {
+        Some(output) => output,
+        None => return DockerSummary::default(),
     };
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "docker ps failed");
@@ -88,9 +90,13 @@ fn docker_ps_summary() -> DockerSummary {
         available: true,
         ..DockerSummary::default()
     };
-    for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
+    for line in text.lines() {
+        if line.trim().is_empty() {
             continue;
+        }
+        let value = match serde_json::from_str::<Value>(line) {
+            Ok(value) => value,
+            Err(_) => continue,
         };
         let id = value.get("ID").and_then(Value::as_str).unwrap_or_default();
         let name = value
@@ -125,8 +131,10 @@ fn docker_ps_summary() -> DockerSummary {
 fn docker_stats() -> Vec<DockerSample> {
     let mut cmd = Command::new("docker");
     cmd.args(["stats", "--no-stream", "--format", "{{json .}}"]);
-    let Some(output) = run_with_timeout(cmd, CMD_TIMEOUT) else {
-        return Vec::new();
+    let maybe_output = run_with_timeout(cmd, CMD_TIMEOUT);
+    let output = match maybe_output {
+        Some(output) => output,
+        None => return Vec::new(),
     };
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "docker stats failed");
@@ -134,9 +142,13 @@ fn docker_stats() -> Vec<DockerSample> {
     }
     let text = String::from_utf8_lossy(&output.stdout);
     let mut samples = Vec::new();
-    for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
+    for line in text.lines() {
+        if line.trim().is_empty() {
             continue;
+        }
+        let value = match serde_json::from_str::<Value>(line) {
+            Ok(value) => value,
+            Err(_) => continue,
         };
         let id = value
             .get("ID")
@@ -186,7 +198,11 @@ fn docker_stats() -> Vec<DockerSample> {
 }
 
 fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
-    run_with_timeout_using_waiter(cmd, timeout, |child| child.try_wait())
+    run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
+}
+
+fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    child.try_wait()
 }
 
 fn run_with_timeout_using_waiter<W>(
@@ -200,7 +216,8 @@ where
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = match cmd.spawn() {
+    let child_result = cmd.spawn();
+    let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "failed to spawn command");

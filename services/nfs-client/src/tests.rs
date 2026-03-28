@@ -275,6 +275,20 @@ fn config_load_from_args_covers_default_and_missing_config_error() {
 }
 
 #[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("nfs-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_NFS_CLIENT_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_NFS_CLIENT_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
 fn flush_and_sleep_helpers_cover_paths() {
     let now = Instant::now();
     log_flush_result(now, true);

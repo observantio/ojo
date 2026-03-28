@@ -1,0 +1,13 @@
+service:
+  name: ojo-systemd
+  instance_id: systemd-01
+collection:
+  poll_interval_secs: 10
+metrics:
+  include:
+    - system.systemd.
+  exclude: []
+export:
+  otlp:
+    endpoint: http://127.0.0.1:4318/v1/metrics
+    protocol: http/protobuf

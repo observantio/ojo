@@ -71,6 +71,29 @@ fn collect_helpers_populate_sensor_samples() {
 }
 
 #[test]
+fn collect_helpers_cover_invalid_suffixes_and_unreadable_values() {
+    let dir = unique_temp_dir("hwmon-invalid");
+    fs::create_dir_all(&dir).expect("mkdir");
+    fs::write(dir.join("temp1_input"), "not-a-number\n").expect("write bad temp");
+    fs::write(dir.join("fanx_input"), "1200\n").expect("write fan invalid idx");
+    fs::write(dir.join("fan1_input"), "oops\n").expect("write bad fan value");
+    fs::write(dir.join("in1_bad"), "1100\n").expect("write bad voltage suffix");
+    fs::write(dir.join("in1_input"), "nan\n").expect("write bad voltage value");
+
+    let mut snap = SensorSnapshot::default();
+    collect_temps(&dir, "chip0", &mut snap);
+    collect_fans(&dir, "chip0", &mut snap);
+    collect_voltages(&dir, "chip0", &mut snap);
+
+    assert!(!snap.available);
+    assert!(snap.temperatures.is_empty());
+    assert!(snap.fans.is_empty());
+    assert!(snap.voltages.is_empty());
+
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
 fn collectors_handle_read_dir_failures_and_snapshot_defaults() {
     let dir = unique_temp_dir("not-dir");
     fs::write(&dir, "not a directory").expect("write marker");

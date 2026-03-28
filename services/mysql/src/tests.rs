@@ -1,8 +1,8 @@
 use super::{
     advance_export_state, derive_rates_or_reset, handle_flush_event, load_yaml_config_file,
-    log_flush_result, make_stop_handler, maybe_sleep_until_next_poll, record_snapshot,
-    resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState, FlushEvent,
-    Instruments, MysqlRates, MysqlSnapshot, PrevState,
+    log_flush_result, make_stop_handler, maybe_sleep_until_next_poll, record_f64, record_snapshot,
+    record_u64, resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState,
+    FlushEvent, Instruments, MysqlRates, MysqlSnapshot, PrevState,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -154,6 +154,12 @@ fn stop_handler_sets_running_false() {
     let stop = make_stop_handler(Arc::clone(&running));
     stop();
     assert!(!running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn should_break_after_iteration_covers_true_and_false() {
+    assert!(!super::should_break_after_iteration(false));
+    assert!(super::should_break_after_iteration(true));
 }
 
 #[test]
@@ -313,6 +319,20 @@ fn config_load_from_args_errors_for_missing_config_path() {
 }
 
 #[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("mysql-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_MYSQL_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_MYSQL_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
 fn load_yaml_config_file_errors_for_directory_and_invalid_yaml() {
     let dir = unique_temp_path("mysql-config-dir");
     fs::create_dir_all(&dir).expect("mkdir");
@@ -360,6 +380,21 @@ fn record_snapshot_handles_unavailable_and_available_samples() {
     record_snapshot(&instruments, &filter, &available, &rates);
 }
 
+#[test]
+fn record_helpers_cover_allow_and_block_paths() {
+    let meter = opentelemetry::global::meter("mysql-record-helpers");
+    let gauge_u64 = meter.u64_gauge("mysql.test.u64").build();
+    let gauge_f64 = meter.f64_gauge("mysql.test.f64").build();
+
+    let filter_allow = PrefixFilter::new(vec!["system.mysql.".to_string()], vec![]);
+    record_u64(&gauge_u64, &filter_allow, "system.mysql.test.u64", 1);
+    record_f64(&gauge_f64, &filter_allow, "system.mysql.test.f64", 1.0);
+
+    let filter_block = PrefixFilter::new(vec!["system.unrelated.".to_string()], vec![]);
+    record_u64(&gauge_u64, &filter_block, "system.mysql.test.u64", 2);
+    record_f64(&gauge_f64, &filter_block, "system.mysql.test.f64", 2.0);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn linux_platform_collect_snapshot_wrapper_is_callable() {
@@ -387,5 +422,29 @@ fn main_runs_once_with_temp_config() {
     assert!(result.is_ok(), "{result:?}");
     std::env::remove_var("OJO_MYSQL_CONFIG");
     std::env::remove_var("OJO_RUN_ONCE");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_supports_test_iteration_cap_when_once_is_false() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("mysql-main-iter-cap.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: mysql-main-test\n  instance_id: mysql-main-01\ncollection:\n  poll_interval_secs: 1\nmysql:\n  executable: /definitely/missing/mysql\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("OJO_MYSQL_CONFIG", &path);
+    std::env::remove_var("OJO_RUN_ONCE");
+    std::env::set_var("OJO_TEST_MAX_ITERATIONS", "1");
+    std::env::set_var("OJO_TEST_SKIP_SIGNAL_HANDLER", "1");
+
+    let result = super::run();
+    assert!(result.is_ok(), "{result:?}");
+
+    std::env::remove_var("OJO_MYSQL_CONFIG");
+    std::env::remove_var("OJO_TEST_MAX_ITERATIONS");
+    std::env::remove_var("OJO_TEST_SKIP_SIGNAL_HANDLER");
     fs::remove_file(&path).expect("cleanup config");
 }

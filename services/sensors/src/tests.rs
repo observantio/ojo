@@ -209,6 +209,41 @@ fn config_load_from_args_covers_defaults_and_missing_path_error() {
 }
 
 #[test]
+fn config_load_reads_from_environment_config_path() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("sensors-load-direct.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::set_var("OJO_SENSORS_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    std::env::remove_var("OJO_SENSORS_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_from_args_uses_repo_default_when_env_not_set() {
+    let _guard = env_lock().lock().expect("env lock");
+    std::env::remove_var("OJO_SENSORS_CONFIG");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+    let args = vec!["ojo-sensors".to_string()];
+    let cfg = Config::load_from_args(&args).expect("load default config path");
+    assert!(!cfg.service_name.is_empty());
+}
+
+#[test]
+fn resolve_default_config_path_returns_repo_relative_when_local_missing() {
+    let selected = resolve_default_config_path(
+        "/definitely/missing/sensors.yaml",
+        "services/sensors/sensors.yaml",
+    );
+    assert_eq!(selected, "services/sensors/sensors.yaml");
+}
+
+#[test]
 fn advance_export_state_covers_all_transitions() {
     assert_eq!(
         advance_export_state(ExportState::Pending, true),
@@ -309,4 +344,45 @@ fn flush_sleep_and_signal_helpers_cover_paths() {
     assert!(!running.load(Ordering::SeqCst));
     install_signal_handler(&running);
     install_signal_handler(&running);
+}
+
+#[test]
+fn record_snapshot_handles_available_without_voltages() {
+    let meter = opentelemetry::global::meter("sensors-no-voltage");
+    let instruments = Instruments::new(&meter);
+    let filter = PrefixFilter::new(vec!["system.sensor.".to_string()], vec![]);
+    let cfg = Config {
+        service_name: "svc".to_string(),
+        instance_id: "inst".to_string(),
+        poll_interval: Duration::from_secs(1),
+        include_sensor_labels: false,
+        max_labeled_sensors: 1,
+        otlp_endpoint: "http://127.0.0.1:4318/v1/metrics".to_string(),
+        otlp_protocol: "http/protobuf".to_string(),
+        otlp_headers: std::collections::BTreeMap::new(),
+        otlp_compression: None,
+        otlp_timeout: None,
+        export_interval: None,
+        export_timeout: None,
+        metrics_include: vec!["system.sensor.".to_string()],
+        metrics_exclude: vec![],
+        once: true,
+    };
+    let snapshot = SensorSnapshot {
+        available: true,
+        temperatures: vec![SensorSample {
+            chip: "chip0".to_string(),
+            kind: "temperature".to_string(),
+            label: "temp0".to_string(),
+            value: 40.0,
+        }],
+        fans: vec![SensorSample {
+            chip: "chip0".to_string(),
+            kind: "fan".to_string(),
+            label: "fan0".to_string(),
+            value: 1000.0,
+        }],
+        voltages: vec![],
+    };
+    record_snapshot(&instruments, &filter, &cfg, &snapshot);
 }

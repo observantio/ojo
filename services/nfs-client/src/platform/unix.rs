@@ -102,6 +102,7 @@ fn parse_proc_nfs_rpc_stats(contents: &str) -> Option<(u64, u64, u64)> {
     None
 }
 
+#[allow(clippy::question_mark)]
 fn collect_rpc_stats_from_nfsstat(cfg: &NfsClientConfig) -> Option<(u64, u64, u64)> {
     let executable = cfg
         .executable
@@ -110,7 +111,10 @@ fn collect_rpc_stats_from_nfsstat(cfg: &NfsClientConfig) -> Option<(u64, u64, u6
         .unwrap_or("nfsstat");
     let mut cmd = Command::new(executable);
     cmd.args(["-c"]);
-    let output = run_with_timeout(cmd, CMD_TIMEOUT)?;
+    let output = match run_with_timeout(cmd, CMD_TIMEOUT) {
+        Some(output) => output,
+        None => return None,
+    };
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "nfsstat command failed");
         return None;
@@ -126,11 +130,16 @@ fn parse_nfsstat_client_output(text: &str) -> Option<(u64, u64, u64)> {
         if !lowered.contains("calls") || !lowered.contains("retrans") {
             continue;
         }
-        let data_line = lines.get(i + 1)?;
-        let values: Vec<u64> = data_line
-            .split_whitespace()
-            .filter_map(|token| token.parse::<u64>().ok())
-            .collect();
+        let data_line = match lines.get(i + 1) {
+            Some(line) => *line,
+            None => return None,
+        };
+        let mut values = Vec::new();
+        for token in data_line.split_whitespace() {
+            if let Ok(parsed) = token.parse::<u64>() {
+                values.push(parsed);
+            }
+        }
         if values.len() < 2 {
             continue;
         }
@@ -140,7 +149,11 @@ fn parse_nfsstat_client_output(text: &str) -> Option<(u64, u64, u64)> {
 }
 
 fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
-    run_with_timeout_using_waiter(cmd, timeout, |child| child.try_wait())
+    run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
+}
+
+fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    child.try_wait()
 }
 
 fn run_with_timeout_using_waiter<W>(
@@ -154,7 +167,8 @@ where
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = match cmd.spawn() {
+    let child_result = cmd.spawn();
+    let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "failed to spawn command");
