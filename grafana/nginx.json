@@ -2,7 +2,7 @@
   "title": "Ojo Nginx",
   "uid": "ojo-nginx",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": { "from": "now-1h", "to": "now" },
   "tags": ["ojo", "nginx"],
   "panels": [
@@ -13,7 +13,72 @@
       "targets": [
         { "refId": "A", "expr": "max(system_nginx_up)" }
       ],
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Source Available",
+      "targets": [
+        { "refId": "A", "expr": "max(system_nginx_source_available)" }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Active Connections",
+      "targets": [
+        { "refId": "A", "expr": "max(system_nginx_connections_active)" }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Request Rate",
+      "targets": [
+        { "refId": "A", "expr": "max(system_nginx_requests_rate_per_second)" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Connection States",
+      "targets": [
+        { "refId": "A", "expr": "system_nginx_connections_active" },
+        { "refId": "B", "expr": "system_nginx_connections_reading" },
+        { "refId": "C", "expr": "system_nginx_connections_writing" },
+        { "refId": "D", "expr": "system_nginx_connections_waiting" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Traffic Rates",
+      "targets": [
+        { "refId": "A", "expr": "system_nginx_requests_rate_per_second" },
+        { "refId": "B", "expr": "system_nginx_connections_accepted_rate_per_second" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Connection and Request Totals",
+      "targets": [
+        { "refId": "A", "expr": "system_nginx_connections_accepted_total" },
+        { "refId": "B", "expr": "system_nginx_connections_handled_total" },
+        { "refId": "C", "expr": "system_nginx_requests_total" }
+      ],
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 }
     }
   ]
 }

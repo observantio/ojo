@@ -2,18 +2,98 @@
   "title": "Ojo Systemd",
   "uid": "ojo-systemd",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "time": { "from": "now-1h", "to": "now" },
   "tags": ["ojo", "systemd"],
   "panels": [
     {
       "id": 1,
       "type": "stat",
-      "title": "Systemd Up",
+      "title": "Systemd Collector Up",
       "targets": [
         { "refId": "A", "expr": "max(system_systemd_up)" }
       ],
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Source Availability",
+      "targets": [
+        { "refId": "A", "expr": "max(system_systemd_source_available)" }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Units Total",
+      "targets": [
+        { "refId": "A", "expr": "max(system_systemd_units_total)" }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Failed Units (Reported)",
+      "targets": [
+        { "refId": "A", "expr": "max(system_systemd_failed_units_reported)" }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Unit States",
+      "targets": [
+        { "refId": "A", "expr": "system_systemd_units_active" },
+        { "refId": "B", "expr": "system_systemd_units_inactive" },
+        { "refId": "C", "expr": "system_systemd_units_failed" },
+        { "refId": "D", "expr": "system_systemd_units_activating" },
+        { "refId": "E", "expr": "system_systemd_units_deactivating" },
+        { "refId": "F", "expr": "system_systemd_units_reloading" },
+        { "refId": "G", "expr": "system_systemd_units_maintenance" },
+        { "refId": "H", "expr": "system_systemd_units_not_found" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Systemd Jobs",
+      "targets": [
+        { "refId": "A", "expr": "system_systemd_jobs_queued" },
+        { "refId": "B", "expr": "system_systemd_jobs_running" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Unit Health Ratios",
+      "targets": [
+        { "refId": "A", "expr": "system_systemd_units_active_ratio" },
+        { "refId": "B", "expr": "system_systemd_units_failed_ratio" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Failed Units",
+      "targets": [
+        { "refId": "A", "expr": "system_systemd_units_failed" },
+        { "refId": "B", "expr": "system_systemd_failed_units_reported" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
     }
   ]
 }

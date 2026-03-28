@@ -2,7 +2,7 @@
   "title": "Ojo Redis",
   "uid": "ojo-redis",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": { "from": "now-1h", "to": "now" },
   "tags": ["ojo", "redis"],
   "panels": [
@@ -13,7 +13,112 @@
       "targets": [
         { "refId": "A", "expr": "max(system_redis_up)" }
       ],
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Source Available",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_source_available)" }
+      ],
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Connected Clients",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_clients_connected)" }
+      ],
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Blocked Clients",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_clients_blocked)" }
+      ],
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Command Rate",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_commands_processed_rate_per_second)" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Keyspace Hit Ratio",
+      "targets": [
+        { "refId": "A", "expr": "max(system_redis_keyspace_hit_ratio)" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Memory",
+      "targets": [
+        { "refId": "A", "expr": "system_redis_memory_used_bytes" },
+        { "refId": "B", "expr": "system_redis_memory_max_bytes" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Traffic Rates",
+      "targets": [
+        { "refId": "A", "expr": "system_redis_commands_processed_rate_per_second" },
+        { "refId": "B", "expr": "system_redis_connections_received_rate_per_second" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Totals",
+      "targets": [
+        { "refId": "A", "expr": "system_redis_commands_processed_total" },
+        { "refId": "B", "expr": "system_redis_connections_received_total" },
+        { "refId": "C", "expr": "system_redis_uptime_seconds" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Keyspace and Evictions",
+      "targets": [
+        { "refId": "A", "expr": "system_redis_keyspace_hits_total" },
+        { "refId": "B", "expr": "system_redis_keyspace_misses_total" },
+        { "refId": "C", "expr": "system_redis_keys_expired_total" },
+        { "refId": "D", "expr": "system_redis_keys_evicted_total" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
     }
   ]
 }
