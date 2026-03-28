@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Added broader Linux collector helper tests (cgroup/support-state helpers, cache parsers, key formatting, scope normalization) and additional config/catalog edge-case tests.
 
 ### Changed
+- Coverage gate for `host-collectors` is now enforced at 100% line coverage in CI and docs using `cargo llvm-cov -p host-collectors --all-features --summary-only --fail-under-lines 100`.
 - Updated Linux snapshot support-state assertions to match current key naming (`system.linux.cgroup.mode`).
 - Improved config validation behavior to accept `PROC_POLL_INTERVAL_SECS` when YAML omits `collection.poll_interval_secs`.
 - Updated service and core test paths to avoid flaky Ctrl-C handler re-registration failures during repeated test runs.

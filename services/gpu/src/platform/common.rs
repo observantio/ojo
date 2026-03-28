@@ -1,4 +1,5 @@
 use crate::{GpuSample, GpuSnapshot};
+use std::process::Child;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
@@ -6,7 +7,8 @@ use tracing::warn;
 const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) fn collect_snapshot() -> GpuSnapshot {
-    if let Some(samples) = collect_nvidia_smi() {
+    let maybe_samples = collect_nvidia_smi();
+    if let Some(samples) = maybe_samples {
         return GpuSnapshot {
             available: true,
             samples,
@@ -21,7 +23,8 @@ fn collect_nvidia_smi() -> Option<Vec<GpuSample>> {
         "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks_throttle_reasons.active",
         "--format=csv,noheader,nounits",
     ]);
-    let output = run_with_timeout(cmd, CMD_TIMEOUT)?;
+    let output = run_with_timeout(cmd, CMD_TIMEOUT);
+    let output = output?;
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "nvidia-smi failed");
         return None;
@@ -60,11 +63,27 @@ fn collect_nvidia_smi() -> Option<Vec<GpuSample>> {
     Some(samples)
 }
 
-fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+    run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
+}
+
+fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    child.try_wait()
+}
+
+fn run_with_timeout_using_waiter<W>(
+    mut cmd: Command,
+    timeout: Duration,
+    mut waiter: W,
+) -> Option<std::process::Output>
+where
+    W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
+{
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = match cmd.spawn() {
+    let spawn_result = cmd.spawn();
+    let mut child = match spawn_result {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "failed to spawn command");
@@ -73,7 +92,7 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
     };
     let start = Instant::now();
     loop {
-        match child.try_wait() {
+        match waiter(&mut child) {
             Ok(Some(_)) => return child.wait_with_output().ok(),
             Ok(None) => {
                 if start.elapsed() > timeout {
@@ -95,9 +114,11 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
 
 #[cfg(test)]
 mod tests {
-    use super::collect_snapshot;
+    use super::{collect_snapshot, run_with_timeout, run_with_timeout_using_waiter};
     use std::fs;
+    use std::process::Command;
     use std::sync::{Mutex, OnceLock};
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -161,5 +182,75 @@ mod tests {
 
         std::env::set_var("PATH", old_path);
         fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn collect_snapshot_handles_failed_and_malformed_output() {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = unique_temp_dir("bad");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let cmd = dir.join("nvidia-smi");
+        fs::write(
+            &cmd,
+            "#!/bin/sh\nprintf 'RTX 4090, short\n'\nprintf 'RTX 4080, 80, 2048, 16384, 65, 200, 0X1\n'\n",
+        )
+        .expect("write script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&cmd).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&cmd, perms).expect("chmod");
+        }
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+
+        let snap = collect_snapshot();
+        assert!(snap.available);
+        assert_eq!(snap.samples.len(), 1);
+        assert!(snap.samples[0].throttled);
+
+        std::env::set_var("PATH", old_path);
+        fs::remove_file(&cmd).expect("cleanup script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+
+        let dir = unique_temp_dir("fail");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let cmd = dir.join("nvidia-smi");
+        fs::write(&cmd, "#!/bin/sh\nprintf 'nope' 1>&2\nexit 2\n").expect("write script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&cmd).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&cmd, perms).expect("chmod");
+        }
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+        let snap = collect_snapshot();
+        assert!(!snap.available);
+        std::env::set_var("PATH", old_path);
+        fs::remove_file(&cmd).expect("cleanup script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn run_with_timeout_covers_success_timeout_and_wait_error() {
+        let mut ok_cmd = Command::new("sh");
+        ok_cmd.args(["-c", "printf 'ok'"]);
+        let output = run_with_timeout(ok_cmd, Duration::from_secs(1)).expect("expected output");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+
+        let mut slow_cmd = Command::new("sh");
+        slow_cmd.args(["-c", "sleep 1"]);
+        assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
+
+        let mut err_cmd = Command::new("sh");
+        err_cmd.args(["-c", "printf 'ok'"]);
+        let errored = run_with_timeout_using_waiter(err_cmd, Duration::from_secs(1), |_child| {
+            Err(std::io::Error::other("forced wait error"))
+        });
+        assert_eq!(errored, None);
     }
 }

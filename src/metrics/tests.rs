@@ -6,7 +6,6 @@ mod tests {
         CpuInfoSnapshot, MountSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot,
         SwapDeviceSnapshot, WindowsSnapshot,
     };
-    use std::time::Duration;
 
     #[test]
     fn metric_filter_allows_all_when_no_rules() {
@@ -57,8 +56,8 @@ mod tests {
         let snap = crate::collector::collect_snapshot(true).expect("collect snapshot");
 
         let mut prev = crate::delta::PrevState::default();
-        let _first = prev.derive(&snap, Duration::from_secs(1));
-        let derived = prev.derive(&snap, Duration::from_secs(1));
+        let _first = prev.derive(&snap, std::time::Duration::from_secs(1));
+        let derived = prev.derive(&snap, std::time::Duration::from_secs(1));
 
         let meter = opentelemetry::global::meter("metrics-test");
         let metrics = crate::metrics::ProcMetrics::new(

@@ -60,4 +60,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Enforce line coverage threshold (host-collectors)
-        run: cargo llvm-cov -p host-collectors --all-features --all-targets --summary-only --fail-under-lines 70
+        run: cargo llvm-cov -p host-collectors --all-features --summary-only --fail-under-lines 100

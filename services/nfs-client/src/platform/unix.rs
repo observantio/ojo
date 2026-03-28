@@ -1,6 +1,7 @@
 use crate::{NfsClientConfig, NfsClientSnapshot};
 use std::fs;
 use std::path::Path;
+use std::process::Child;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
@@ -9,7 +10,19 @@ const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) fn collect_snapshot(cfg: &NfsClientConfig) -> NfsClientSnapshot {
     let mounts = collect_mounts_from_proc_mounts().unwrap_or(0);
-    if let Some((calls, retrans, auth_refreshes)) = collect_rpc_stats_from_proc() {
+    snapshot_from_sources(
+        mounts,
+        collect_rpc_stats_from_proc(),
+        collect_rpc_stats_from_nfsstat(cfg),
+    )
+}
+
+fn snapshot_from_sources(
+    mounts: u64,
+    proc_stats: Option<(u64, u64, u64)>,
+    nfsstat_stats: Option<(u64, u64, u64)>,
+) -> NfsClientSnapshot {
+    if let Some((calls, retrans, auth_refreshes)) = proc_stats {
         return NfsClientSnapshot {
             available: true,
             mounts,
@@ -18,7 +31,7 @@ pub(crate) fn collect_snapshot(cfg: &NfsClientConfig) -> NfsClientSnapshot {
             rpc_auth_refreshes_total: auth_refreshes,
         };
     }
-    if let Some((calls, retrans, auth_refreshes)) = collect_rpc_stats_from_nfsstat(cfg) {
+    if let Some((calls, retrans, auth_refreshes)) = nfsstat_stats {
         return NfsClientSnapshot {
             available: true,
             mounts,
@@ -31,28 +44,45 @@ pub(crate) fn collect_snapshot(cfg: &NfsClientConfig) -> NfsClientSnapshot {
 }
 
 fn collect_mounts_from_proc_mounts() -> Option<u64> {
-    let contents = fs::read_to_string("/proc/mounts").ok()?;
+    collect_mounts_from_path(Path::new("/proc/mounts"))
+}
+
+fn collect_mounts_from_path(path: &Path) -> Option<u64> {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(_) => return None,
+    };
     Some(parse_nfs_mount_count(&contents))
 }
 
 fn collect_rpc_stats_from_proc() -> Option<(u64, u64, u64)> {
-    let path = Path::new("/proc/net/rpc/nfs");
+    collect_rpc_stats_from_proc_path(Path::new("/proc/net/rpc/nfs"))
+}
+
+fn collect_rpc_stats_from_proc_path(path: &Path) -> Option<(u64, u64, u64)> {
     if !path.exists() {
         return None;
     }
-    let contents = fs::read_to_string(path).ok()?;
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(_) => return None,
+    };
     parse_proc_nfs_rpc_stats(&contents)
 }
 
 fn parse_nfs_mount_count(contents: &str) -> u64 {
-    contents
-        .lines()
-        .filter(|line| {
-            line.split_whitespace()
-                .nth(2)
-                .is_some_and(|fstype| fstype == "nfs" || fstype == "nfs4")
-        })
-        .count() as u64
+    let mut count = 0u64;
+    for line in contents.lines() {
+        let mut fields = line.split_whitespace();
+        let _ = fields.next();
+        let _ = fields.next();
+        if let Some(fstype) = fields.next() {
+            if fstype == "nfs" || fstype == "nfs4" {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 fn parse_proc_nfs_rpc_stats(contents: &str) -> Option<(u64, u64, u64)> {
@@ -109,7 +139,18 @@ fn parse_nfsstat_client_output(text: &str) -> Option<(u64, u64, u64)> {
     None
 }
 
-fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+    run_with_timeout_using_waiter(cmd, timeout, |child| child.try_wait())
+}
+
+fn run_with_timeout_using_waiter<W>(
+    mut cmd: Command,
+    timeout: Duration,
+    mut waiter: W,
+) -> Option<std::process::Output>
+where
+    W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
+{
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -122,7 +163,7 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
     };
     let start = Instant::now();
     loop {
-        match child.try_wait() {
+        match waiter(&mut child) {
             Ok(Some(_)) => return child.wait_with_output().ok(),
             Ok(None) => {
                 if start.elapsed() > timeout {
@@ -145,12 +186,25 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_rpc_stats_from_nfsstat, parse_nfs_mount_count, parse_nfsstat_client_output,
-        parse_proc_nfs_rpc_stats, run_with_timeout,
+        collect_mounts_from_path, collect_rpc_stats_from_nfsstat, collect_rpc_stats_from_proc_path,
+        parse_nfs_mount_count, parse_nfsstat_client_output, parse_proc_nfs_rpc_stats,
+        run_with_timeout, run_with_timeout_using_waiter, snapshot_from_sources,
     };
     use crate::NfsClientConfig;
+    use std::fs;
     use std::process::Command;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ojo-nfs-unix-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn parse_nfsstat_client_output_reads_expected_values() {
@@ -158,6 +212,7 @@ mod tests {
         assert_eq!(parse_nfsstat_client_output(text), Some((100, 3, 1)));
         let two_cols = "calls retrans\n100 3\n";
         assert_eq!(parse_nfsstat_client_output(two_cols), Some((100, 3, 0)));
+        assert_eq!(parse_nfsstat_client_output("calls retrans\n"), None);
         assert_eq!(
             parse_nfsstat_client_output("calls retrans\nfoo bar\n"),
             None
@@ -173,6 +228,55 @@ mod tests {
         let proc_stats = "net 0 0 0\nrpc 42 3 1\n";
         assert_eq!(parse_proc_nfs_rpc_stats(proc_stats), Some((42, 3, 1)));
         assert_eq!(parse_proc_nfs_rpc_stats("rpc 1 2\n"), None);
+        assert_eq!(parse_proc_nfs_rpc_stats("rpc 7 x 1\n"), Some((7, 0, 1)));
+
+        let dir = unique_temp_dir("proc-rpc");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let stats_file = dir.join("nfs-rpc");
+        fs::write(&stats_file, "rpc 9 2 1\n").expect("write proc stats");
+        assert_eq!(
+            collect_rpc_stats_from_proc_path(&stats_file),
+            Some((9, 2, 1))
+        );
+        fs::remove_file(&stats_file).expect("cleanup stats file");
+        fs::remove_dir_all(&dir).expect("cleanup stats dir");
+
+        let missing_file = unique_temp_dir("missing-proc-rpc").join("nfs-rpc");
+        assert_eq!(collect_rpc_stats_from_proc_path(&missing_file), None);
+
+        let proc_dir = unique_temp_dir("proc-rpc-dir");
+        fs::create_dir_all(&proc_dir).expect("mkdir proc dir");
+        assert_eq!(collect_rpc_stats_from_proc_path(&proc_dir), None);
+        fs::remove_dir_all(&proc_dir).expect("cleanup proc dir");
+
+        let mounts_dir = unique_temp_dir("mounts-dir");
+        fs::create_dir_all(&mounts_dir).expect("mkdir mounts dir");
+        assert_eq!(collect_mounts_from_path(&mounts_dir), None);
+        fs::remove_dir_all(&mounts_dir).expect("cleanup mounts dir");
+    }
+
+    #[test]
+    fn snapshot_from_sources_prefers_proc_then_nfsstat_then_default() {
+        let from_proc = snapshot_from_sources(3, Some((11, 2, 1)), Some((22, 4, 2)));
+        assert!(from_proc.available);
+        assert_eq!(from_proc.mounts, 3);
+        assert_eq!(from_proc.rpc_calls_total, 11);
+        assert_eq!(from_proc.rpc_retransmissions_total, 2);
+        assert_eq!(from_proc.rpc_auth_refreshes_total, 1);
+
+        let from_nfsstat = snapshot_from_sources(5, None, Some((22, 4, 2)));
+        assert!(from_nfsstat.available);
+        assert_eq!(from_nfsstat.mounts, 5);
+        assert_eq!(from_nfsstat.rpc_calls_total, 22);
+        assert_eq!(from_nfsstat.rpc_retransmissions_total, 4);
+        assert_eq!(from_nfsstat.rpc_auth_refreshes_total, 2);
+
+        let unavailable = snapshot_from_sources(7, None, None);
+        assert!(!unavailable.available);
+        assert_eq!(unavailable.mounts, 0);
+        assert_eq!(unavailable.rpc_calls_total, 0);
+        assert_eq!(unavailable.rpc_retransmissions_total, 0);
+        assert_eq!(unavailable.rpc_auth_refreshes_total, 0);
     }
 
     #[test]
@@ -186,6 +290,13 @@ mod tests {
         let mut slow_cmd = Command::new("sh");
         slow_cmd.args(["-c", "sleep 1"]);
         assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
+
+        let mut err_cmd = Command::new("sh");
+        err_cmd.args(["-c", "printf 'ok'"]);
+        let errored = run_with_timeout_using_waiter(err_cmd, Duration::from_secs(1), |_child| {
+            Err(std::io::Error::other("forced wait error"))
+        });
+        assert_eq!(errored, None);
     }
 
     #[test]
@@ -202,5 +313,32 @@ mod tests {
             executable: Some("/definitely/missing/nfsstat".to_string()),
         };
         assert_eq!(collect_rpc_stats_from_nfsstat(&cfg), None);
+    }
+
+    #[test]
+    fn collect_rpc_stats_from_nfsstat_parses_output_when_command_succeeds() {
+        let dir = unique_temp_dir("nfsstat-success");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let script = dir.join("fake-nfsstat.sh");
+        fs::write(
+            &script,
+            "#!/bin/sh\nprintf 'Client rpc stats:\n'\nprintf 'calls retrans authrefrsh\n'\nprintf '123 4 2\n'\n",
+        )
+        .expect("write script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script, perms).expect("chmod");
+        }
+
+        let cfg = NfsClientConfig {
+            executable: Some(script.to_string_lossy().to_string()),
+        };
+        assert_eq!(collect_rpc_stats_from_nfsstat(&cfg), Some((123, 4, 2)));
+
+        fs::remove_file(&script).expect("cleanup script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
     }
 }

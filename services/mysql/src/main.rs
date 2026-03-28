@@ -111,7 +111,10 @@ impl PrevState {
             self.last = Some((current.clone(), now));
             return MysqlRates::default();
         };
-        let elapsed = now.duration_since(*previous_at).as_secs_f64();
+        let elapsed = now
+            .checked_duration_since(*previous_at)
+            .unwrap_or_default()
+            .as_secs_f64();
         if elapsed <= 0.0 {
             self.last = Some((current.clone(), now));
             return MysqlRates::default();
@@ -195,7 +198,66 @@ impl Instruments {
     }
 }
 
-fn main() -> Result<()> {
+fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
+    move || {
+        signal.store(false, Ordering::SeqCst);
+    }
+}
+
+fn install_signal_handler(running: &Arc<AtomicBool>) -> Result<()> {
+    ctrlc::set_handler(make_stop_handler(Arc::clone(running)))?;
+    Ok(())
+}
+
+fn log_flush_result(started_at: Instant, flush_succeeded: bool) {
+    let elapsed_ms = started_at.elapsed().as_millis();
+    if flush_succeeded {
+        debug!(elapsed_ms, "force_flush ok");
+    } else {
+        debug!(elapsed_ms, "force_flush err");
+    }
+}
+
+fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
+    if let Some(err) = flush_error {
+        match event {
+            FlushEvent::Reconnecting => {
+                warn!(error = %err, "Exporter flush failed; reconnecting")
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(error = %err, "Exporter still unavailable")
+            }
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Connected Successfully"),
+            FlushEvent::Reconnected => info!("Reconnected Successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
+    }
+}
+
+fn sleep_until(deadline: Instant, running: &AtomicBool, sleep_interval: Duration) {
+    while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+        thread::sleep(sleep_interval);
+    }
+}
+
+fn maybe_sleep_until_next_poll(
+    once: bool,
+    started_at: Instant,
+    poll_interval: Duration,
+    running: &AtomicBool,
+) {
+    if once {
+        return;
+    }
+    let deadline = started_at + poll_interval;
+    sleep_until(deadline, running, Duration::from_millis(500));
+}
+
+fn run() -> Result<()> {
     let cfg = Config::load()?;
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -220,10 +282,7 @@ fn main() -> Result<()> {
     let mut prev = PrevState::default();
 
     let running = Arc::new(AtomicBool::new(true));
-    let signal = Arc::clone(&running);
-    ctrlc::set_handler(move || {
-        signal.store(false, Ordering::SeqCst);
-    })?;
+    install_signal_handler(&running)?;
 
     let mut export_state = ExportState::Pending;
     while running.load(Ordering::SeqCst) {
@@ -233,49 +292,30 @@ fn main() -> Result<()> {
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
         let flush_result = provider.force_flush();
-        if flush_result.is_ok() {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush ok"
-            );
-        } else {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush err"
-            );
-        }
+        log_flush_result(started_at, flush_result.is_ok());
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
-        if let Err(err) = flush_result {
-            match event {
-                FlushEvent::Reconnecting => {
-                    warn!(error = %err, "Exporter flush failed; reconnecting")
-                }
-                FlushEvent::StillUnavailable => {
-                    warn!(error = %err, "Exporter still unavailable")
-                }
-                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
-            }
-        } else {
-            match event {
-                FlushEvent::Connected => info!("Connected Successfully"),
-                FlushEvent::Reconnected => info!("Reconnected Successfully"),
-                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
-            }
-        }
+        handle_flush_event(
+            event,
+            flush_result
+                .as_ref()
+                .err()
+                .map(|err| err as &dyn std::fmt::Display),
+        );
         export_state = next_state;
-
+        maybe_sleep_until_next_poll(cfg.once, started_at, cfg.poll_interval, &running);
         if cfg.once {
             break;
-        }
-        let deadline = started_at + cfg.poll_interval;
-        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(500));
         }
     }
 
     let _ = provider.shutdown();
     Ok(())
+}
+
+#[cfg(not(test))]
+fn main() -> Result<()> {
+    run()
 }
 
 fn record_snapshot(
@@ -427,6 +467,10 @@ struct MetricSection {
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
+        Self::load_from_args(&args)
+    }
+
+    fn load_from_args(args: &[String]) -> Result<Self> {
         let once = args.iter().any(|arg| arg == "--once")
             || env::var("OJO_RUN_ONCE")
                 .ok()
@@ -518,13 +562,14 @@ fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_snapshot,
-        resolve_default_config_path, saturating_rate, Config, ExportState, FlushEvent, Instruments,
-        MysqlRates, MysqlSnapshot, PrevState,
+        advance_export_state, derive_rates_or_reset, handle_flush_event, load_yaml_config_file,
+        log_flush_result, make_stop_handler, maybe_sleep_until_next_poll, record_snapshot,
+        resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState, FlushEvent,
+        Instruments, MysqlRates, MysqlSnapshot, PrevState,
     };
     use host_collectors::PrefixFilter;
     use std::fs;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -570,6 +615,20 @@ mod tests {
         assert!(rates.queries_per_second > 25.0);
         assert!(rates.bytes_received_per_second > 250.0);
         assert!(rates.bytes_sent_per_second > 400.0);
+    }
+
+    #[test]
+    fn prev_state_derive_resets_on_non_progressing_time() {
+        let mut state = PrevState {
+            last: Some((
+                MysqlSnapshot::default(),
+                Instant::now() + Duration::from_secs(1),
+            )),
+        };
+        let rates = state.derive(&MysqlSnapshot::default());
+        assert_eq!(rates.queries_per_second, 0.0);
+        assert_eq!(rates.bytes_received_per_second, 0.0);
+        assert_eq!(rates.bytes_sent_per_second, 0.0);
     }
 
     #[test]
@@ -619,6 +678,45 @@ mod tests {
             advance_export_state(ExportState::Reconnecting, false),
             (ExportState::Reconnecting, FlushEvent::StillUnavailable)
         );
+    }
+
+    #[test]
+    fn flush_helpers_cover_success_failure_and_sleep_paths() {
+        let now = Instant::now();
+        log_flush_result(now, true);
+        log_flush_result(now, false);
+
+        handle_flush_event(FlushEvent::Connected, None);
+        handle_flush_event(FlushEvent::Reconnected, None);
+        handle_flush_event(FlushEvent::None, None);
+        handle_flush_event(FlushEvent::Reconnecting, Some(&"err"));
+        handle_flush_event(FlushEvent::StillUnavailable, Some(&"err"));
+        handle_flush_event(FlushEvent::Connected, Some(&"err"));
+
+        let running = AtomicBool::new(false);
+        sleep_until(
+            Instant::now() + Duration::from_millis(5),
+            &running,
+            Duration::from_millis(1),
+        );
+
+        let running = AtomicBool::new(true);
+        sleep_until(
+            Instant::now() + Duration::from_millis(2),
+            &running,
+            Duration::from_millis(1),
+        );
+
+        maybe_sleep_until_next_poll(false, Instant::now(), Duration::from_millis(2), &running);
+        maybe_sleep_until_next_poll(true, Instant::now(), Duration::from_secs(1), &running);
+    }
+
+    #[test]
+    fn stop_handler_sets_running_false() {
+        let running = Arc::new(AtomicBool::new(true));
+        let stop = make_stop_handler(Arc::clone(&running));
+        stop();
+        assert!(!running.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -716,6 +814,90 @@ mod tests {
     }
 
     #[test]
+    fn config_load_uses_repo_default_config_path_when_env_not_set() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var("OJO_MYSQL_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+        let cfg = Config::load().expect("load default config");
+        assert!(!cfg.service_name.is_empty());
+    }
+
+    #[test]
+    fn config_load_from_args_supports_config_flag_and_once_aliases() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("mysql-args-load.yaml");
+        fs::write(
+            &path,
+            "collection:\n  poll_interval_secs: 2\nmysql:\n  host: db\n",
+        )
+        .expect("write config");
+
+        std::env::remove_var("OJO_MYSQL_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+        let args = vec![
+            "ojo-mysql".to_string(),
+            "--config".to_string(),
+            path.to_string_lossy().to_string(),
+            "--once".to_string(),
+        ];
+        let cfg = Config::load_from_args(&args).expect("load args config");
+        assert_eq!(cfg.service_name, "ojo-mysql");
+        assert_eq!(cfg.mysql.executable, "mysql");
+        assert_eq!(cfg.mysql.host.as_deref(), Some("db"));
+        assert!(cfg.once);
+
+        std::env::set_var("OJO_RUN_ONCE", "yes");
+        let cfg = Config::load_from_args(&args[..3]).expect("load with env yes");
+        assert!(cfg.once);
+
+        std::env::set_var("OJO_RUN_ONCE", "on");
+        let cfg = Config::load_from_args(&args[..3]).expect("load with env on");
+        assert!(cfg.once);
+
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn config_load_from_args_errors_for_missing_config_path() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var("OJO_MYSQL_CONFIG");
+        let missing = unique_temp_path("mysql-missing-from-args.yaml");
+        let args = vec![
+            "ojo-mysql".to_string(),
+            "--config".to_string(),
+            missing.to_string_lossy().to_string(),
+        ];
+        let err = Config::load_from_args(&args).unwrap_err();
+        assert!(err.to_string().contains("was not found"), "{err}");
+    }
+
+    #[test]
+    fn load_yaml_config_file_errors_for_directory_and_invalid_yaml() {
+        let dir = unique_temp_path("mysql-config-dir");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let dir_err = load_yaml_config_file(dir.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            dir_err.to_string().contains("failed to read config file"),
+            "{dir_err}"
+        );
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+
+        let invalid = unique_temp_path("mysql-invalid-config.yaml");
+        fs::write(&invalid, "service: [\n").expect("write invalid");
+        let parse_err = load_yaml_config_file(invalid.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            parse_err.to_string().contains("failed to parse YAML"),
+            "{parse_err}"
+        );
+        fs::remove_file(&invalid).expect("cleanup invalid");
+    }
+
+    #[test]
     fn record_snapshot_handles_unavailable_and_available_samples() {
         let meter = opentelemetry::global::meter("mysql-test-meter");
         let instruments = Instruments::new(&meter);
@@ -765,7 +947,7 @@ mod tests {
 
         std::env::set_var("OJO_MYSQL_CONFIG", &path);
         std::env::set_var("OJO_RUN_ONCE", "1");
-        let result = super::main();
+        let result = super::run();
         assert!(result.is_ok(), "{result:?}");
         std::env::remove_var("OJO_MYSQL_CONFIG");
         std::env::remove_var("OJO_RUN_ONCE");

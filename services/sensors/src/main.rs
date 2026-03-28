@@ -182,13 +182,74 @@ impl Instruments {
     }
 }
 
-fn main() -> Result<()> {
+fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
+    move || {
+        signal.store(false, Ordering::SeqCst);
+    }
+}
+
+fn install_signal_handler(running: &Arc<AtomicBool>) {
+    if let Err(err) = ctrlc::set_handler(make_stop_handler(Arc::clone(running))) {
+        warn!(error = %err, "failed to install signal handler");
+    }
+}
+
+fn log_flush_result(started_at: Instant, flush_succeeded: bool) {
+    let elapsed_ms = started_at.elapsed().as_millis();
+    if flush_succeeded {
+        debug!(elapsed_ms, "force_flush ok");
+    } else {
+        debug!(elapsed_ms, "force_flush err");
+    }
+}
+
+fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
+    if let Some(err) = flush_error {
+        match event {
+            FlushEvent::Reconnecting => {
+                warn!(error = %err, "Exporter flush failed; reconnecting")
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(error = %err, "Exporter still unavailable")
+            }
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Connected Successfully"),
+            FlushEvent::Reconnected => info!("Reconnected Successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
+    }
+}
+
+fn sleep_until(deadline: Instant, running: &AtomicBool, sleep_interval: Duration) {
+    while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+        thread::sleep(sleep_interval);
+    }
+}
+
+fn maybe_sleep_until_next_poll(
+    once: bool,
+    started_at: Instant,
+    poll_interval: Duration,
+    running: &AtomicBool,
+) {
+    if once {
+        return;
+    }
+    let deadline = started_at + poll_interval;
+    sleep_until(deadline, running, Duration::from_millis(500));
+}
+
+fn run() -> Result<()> {
     let cfg = Config::load()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .init();
+        .try_init()
+        .ok();
 
     let provider = init_meter_provider(&OtlpSettings {
         service_name: cfg.service_name.clone(),
@@ -206,59 +267,37 @@ fn main() -> Result<()> {
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
 
     let running = Arc::new(AtomicBool::new(true));
-    let signal = Arc::clone(&running);
-    ctrlc::set_handler(move || {
-        signal.store(false, Ordering::SeqCst);
-    })?;
+    install_signal_handler(&running);
 
     let mut export_state = ExportState::Pending;
-    while running.load(Ordering::SeqCst) {
+    let mut continue_running = true;
+    while continue_running && running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot();
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
         let flush_result = provider.force_flush();
-        if flush_result.is_ok() {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush ok"
-            );
-        } else {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush err"
-            );
-        }
+        log_flush_result(started_at, flush_result.is_ok());
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
-        if let Err(err) = flush_result {
-            match event {
-                FlushEvent::Reconnecting => {
-                    warn!(error = %err, "Exporter flush failed; reconnecting")
-                }
-                FlushEvent::StillUnavailable => {
-                    warn!(error = %err, "Exporter still unavailable")
-                }
-                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
-            }
-        } else {
-            match event {
-                FlushEvent::Connected => info!("Connected Successfully"),
-                FlushEvent::Reconnected => info!("Reconnected Successfully"),
-                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
-            }
-        }
+        handle_flush_event(
+            event,
+            flush_result
+                .as_ref()
+                .err()
+                .map(|err| err as &dyn std::fmt::Display),
+        );
         export_state = next_state;
-        if cfg.once {
-            break;
-        }
-        let deadline = started_at + cfg.poll_interval;
-        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(500));
-        }
+        maybe_sleep_until_next_poll(cfg.once, started_at, cfg.poll_interval, &running);
+        continue_running = !cfg.once;
     }
 
     let _ = provider.shutdown();
     Ok(())
+}
+
+#[cfg(not(test))]
+fn main() -> Result<()> {
+    run()
 }
 
 fn record_snapshot(
@@ -359,6 +398,10 @@ fn cap_samples_for_labels(samples: &[SensorSample], limit: usize) -> Vec<SensorS
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
+        Self::load_from_args(&args)
+    }
+
+    fn load_from_args(args: &[String]) -> Result<Self> {
         let once = args.iter().any(|arg| arg == "--once")
             || env::var("OJO_RUN_ONCE")
                 .ok()
@@ -468,14 +511,15 @@ fn record_f64(
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_export_state, cap_samples_for_labels, load_yaml_config_file, record_snapshot,
-        resolve_default_config_path, Config, ExportState, FlushEvent, Instruments, SensorSample,
-        SensorSnapshot, METRICS,
+        advance_export_state, cap_samples_for_labels, handle_flush_event, install_signal_handler,
+        load_yaml_config_file, log_flush_result, make_stop_handler, maybe_sleep_until_next_poll,
+        record_f64, record_snapshot, record_u64, resolve_default_config_path, run, sleep_until,
+        Config, ExportState, FlushEvent, Instruments, SensorSample, SensorSnapshot, METRICS,
     };
     use host_collectors::PrefixFilter;
     use std::fs;
-    use std::sync::{Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex, OnceLock};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -535,6 +579,27 @@ mod tests {
         let missing = unique_temp_path("missing.yaml");
         let err = load_yaml_config_file(missing.to_string_lossy().as_ref()).unwrap_err();
         assert!(err.to_string().contains("was not found"), "{err}");
+
+        let dir = unique_temp_path("dir");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let err = load_yaml_config_file(dir.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            err.to_string().contains("failed to read config file"),
+            "{err}"
+        );
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+
+        let empty = unique_temp_path("empty.yaml");
+        fs::write(&empty, "\n").expect("write empty");
+        let err = load_yaml_config_file(empty.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.to_string().contains("is empty"), "{err}");
+        fs::remove_file(&empty).expect("cleanup empty");
+
+        let invalid = unique_temp_path("invalid.yaml");
+        fs::write(&invalid, "service: [\n").expect("write invalid");
+        let err = load_yaml_config_file(invalid.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.to_string().contains("failed to parse YAML"), "{err}");
+        fs::remove_file(&invalid).expect("cleanup invalid");
     }
 
     #[test]
@@ -588,6 +653,63 @@ mod tests {
         std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
         std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
         fs::remove_file(&path).expect("cleanup config");
+
+        let filter_block = PrefixFilter::new(vec!["system.unrelated.".to_string()], vec![]);
+        let gauge_u64 = meter.u64_gauge("system.sensor.test.u64").build();
+        let gauge_f64 = meter.f64_gauge("system.sensor.test.f64").build();
+        record_u64(&gauge_u64, &filter_block, "system.sensor.test.u64", 1, &[]);
+        record_f64(
+            &gauge_f64,
+            &filter_block,
+            "system.sensor.test.f64",
+            1.0,
+            &[],
+        );
+    }
+
+    #[test]
+    fn config_load_from_args_covers_defaults_and_missing_path_error() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var("OJO_SENSORS_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+        let args = vec!["ojo-sensors".to_string()];
+        let cfg = Config::load_from_args(&args).expect("load defaults");
+        assert!(!cfg.service_name.is_empty());
+
+        let missing = unique_temp_path("sensors-missing-config.yaml");
+        let args = vec![
+            "ojo-sensors".to_string(),
+            "--config".to_string(),
+            missing.to_string_lossy().to_string(),
+        ];
+        let err = Config::load_from_args(&args).unwrap_err();
+        assert!(err.to_string().contains("was not found"), "{err}");
+
+        let path = unique_temp_path("sensors-args-defaults.yaml");
+        fs::write(&path, "collection:\n  poll_interval_secs: 2\n").expect("write config");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+        let args = vec![
+            "ojo-sensors".to_string(),
+            "--config".to_string(),
+            path.to_string_lossy().to_string(),
+        ];
+        std::env::set_var("OJO_RUN_ONCE", "true");
+        let cfg = Config::load_from_args(&args).expect("load args defaults");
+        assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4318/v1/metrics");
+        assert_eq!(cfg.otlp_protocol, "http/protobuf");
+        assert_eq!(cfg.service_name, "ojo-sensors");
+        assert!(cfg.once);
+        std::env::set_var("OJO_RUN_ONCE", "yes");
+        assert!(Config::load_from_args(&args).expect("load yes").once);
+        std::env::set_var("OJO_RUN_ONCE", "on");
+        assert!(Config::load_from_args(&args).expect("load on").once);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        assert!(Config::load_from_args(&args).expect("load 1").once);
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
     }
 
     #[test]
@@ -630,10 +752,66 @@ mod tests {
 
         std::env::set_var("OJO_SENSORS_CONFIG", &path);
         std::env::set_var("OJO_RUN_ONCE", "1");
-        let result = super::main();
+        let result = super::run();
         assert!(result.is_ok(), "{result:?}");
         std::env::remove_var("OJO_SENSORS_CONFIG");
         std::env::remove_var("OJO_RUN_ONCE");
         fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn run_returns_error_for_invalid_or_missing_config() {
+        let _guard = env_lock().lock().expect("env lock");
+
+        let path = unique_temp_path("sensors-invalid-proto.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: sensors-main-test\n  instance_id: sensors-main-01\ncollection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4317\n    protocol: badproto\n",
+        )
+        .expect("write config");
+        std::env::set_var("OJO_SENSORS_CONFIG", &path);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        assert!(run().is_err());
+        std::env::remove_var("OJO_SENSORS_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
+
+        let missing = unique_temp_path("sensors-run-missing.yaml");
+        std::env::set_var("OJO_SENSORS_CONFIG", &missing);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        assert!(run().is_err());
+        std::env::remove_var("OJO_SENSORS_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+    }
+
+    #[test]
+    fn flush_sleep_and_signal_helpers_cover_paths() {
+        let now = Instant::now();
+        log_flush_result(now, true);
+        log_flush_result(now, false);
+
+        handle_flush_event(FlushEvent::Connected, None);
+        handle_flush_event(FlushEvent::Reconnected, None);
+        handle_flush_event(FlushEvent::None, None);
+        handle_flush_event(FlushEvent::Reconnecting, Some(&"err"));
+        handle_flush_event(FlushEvent::StillUnavailable, Some(&"err"));
+        handle_flush_event(FlushEvent::Connected, Some(&"err"));
+
+        let running = AtomicBool::new(false);
+        sleep_until(
+            Instant::now() + Duration::from_millis(2),
+            &running,
+            Duration::from_millis(1),
+        );
+        let running = AtomicBool::new(true);
+        maybe_sleep_until_next_poll(false, Instant::now(), Duration::from_millis(2), &running);
+        maybe_sleep_until_next_poll(true, Instant::now(), Duration::from_secs(1), &running);
+
+        let running = Arc::new(AtomicBool::new(true));
+        let stop = make_stop_handler(Arc::clone(&running));
+        stop();
+        assert!(!running.load(Ordering::SeqCst));
+        install_signal_handler(&running);
+        install_signal_handler(&running);
     }
 }

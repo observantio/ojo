@@ -58,11 +58,7 @@ pub fn build_meter_provider(settings: &OtlpSettings) -> Result<SdkMeterProvider>
                 .with_timeout(timeout);
             #[cfg(not(target_os = "solaris"))]
             {
-                builder = builder.with_http_client(
-                    reqwest::blocking::Client::builder()
-                        .timeout(timeout)
-                        .build()?,
-                );
+                builder = builder.with_http_client(reqwest::blocking::Client::new());
             }
             builder.build()?
         }

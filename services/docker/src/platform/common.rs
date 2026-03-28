@@ -1,6 +1,7 @@
 use crate::{DockerSample, DockerSnapshot};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::process::Child;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
@@ -23,21 +24,26 @@ pub(crate) fn collect_snapshot() -> DockerSnapshot {
     for sample in &stats {
         let (name, image, state) =
             resolve_summary_entry(&summary.by_id, &sample.id).unwrap_or(("", "", ""));
-        let mut enriched = sample.clone();
-        if enriched.name.is_empty() {
-            enriched.name = name.trim_start_matches('/').to_string();
-        } else {
-            enriched.name = enriched.name.trim_start_matches('/').to_string();
-        }
-        if enriched.image.is_empty() {
-            enriched.image = image.to_string();
-        }
-        if enriched.state.is_empty() {
-            enriched.state = state.to_string();
-        }
+        let enriched = enrich_sample(sample, name, image, state);
         snapshot.samples.push(enriched);
     }
     snapshot
+}
+
+fn enrich_sample(sample: &DockerSample, name: &str, image: &str, state: &str) -> DockerSample {
+    let mut enriched = sample.clone();
+    if enriched.name.is_empty() {
+        enriched.name = name.trim_start_matches('/').to_string();
+    } else {
+        enriched.name = enriched.name.trim_start_matches('/').to_string();
+    }
+    if enriched.image.is_empty() {
+        enriched.image = image.to_string();
+    }
+    if enriched.state.is_empty() {
+        enriched.state = state.to_string();
+    }
+    enriched
 }
 
 fn resolve_summary_entry<'a>(
@@ -179,7 +185,18 @@ fn docker_stats() -> Vec<DockerSample> {
     samples
 }
 
-fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+    run_with_timeout_using_waiter(cmd, timeout, |child| child.try_wait())
+}
+
+fn run_with_timeout_using_waiter<W>(
+    mut cmd: Command,
+    timeout: Duration,
+    mut waiter: W,
+) -> Option<std::process::Output>
+where
+    W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
+{
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -192,7 +209,7 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
     };
     let start = Instant::now();
     loop {
-        match child.try_wait() {
+        match waiter(&mut child) {
             Ok(Some(_)) => return child.wait_with_output().ok(),
             Ok(None) => {
                 if start.elapsed() > timeout {
@@ -214,10 +231,16 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<std::process:
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_snapshot, resolve_summary_entry};
+    use super::{
+        collect_snapshot, enrich_sample, resolve_summary_entry, run_with_timeout,
+        run_with_timeout_using_waiter,
+    };
+    use crate::DockerSample;
     use std::collections::BTreeMap;
     use std::fs;
+    use std::process::Command;
     use std::sync::{Mutex, OnceLock};
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -253,11 +276,14 @@ mod tests {
 
         let missing = resolve_summary_entry(&by_id, "xyz");
         assert_eq!(missing, None);
+
+        let missing_long = resolve_summary_entry(&by_id, "zzzzzz");
+        assert_eq!(missing_long, None);
     }
 
     #[test]
     fn collect_snapshot_parses_fake_docker_ps_and_stats_output() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
         let dir = unique_temp_dir("bin");
         fs::create_dir_all(&dir).expect("mkdir");
         let docker = dir.join("docker");
@@ -290,5 +316,104 @@ mod tests {
         std::env::set_var("PATH", old_path);
         fs::remove_file(&docker).expect("cleanup docker script");
         fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn collect_snapshot_returns_default_when_docker_missing() {
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", "/definitely/missing");
+        let snap = collect_snapshot();
+        assert!(!snap.available);
+        assert_eq!(snap.total, 0);
+        std::env::set_var("PATH", old_path);
+    }
+
+    #[test]
+    fn collect_snapshot_handles_failed_commands_and_invalid_json_lines() {
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let dir = unique_temp_dir("bad-json");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let docker = dir.join("docker");
+
+        fs::write(
+            &docker,
+            "#!/bin/sh\nif [ \"$1\" = \"ps\" ]; then\n  printf '{bad-json}\n'\n  printf '{\"ID\":\"a1\",\"Names\":\"/ok\",\"Image\":\"img\",\"State\":\"running\"}\n'\n  printf '{\"Names\":\"/noid\",\"Image\":\"img2\",\"State\":\"exited\"}\n'\nelif [ \"$1\" = \"stats\" ]; then\n  printf '{bad-json}\n'\n  printf '{\"ID\":\"a1\",\"Name\":\"\",\"CPUPerc\":\"1%%\",\"MemUsage\":\"1MiB / 2MiB\",\"NetIO\":\"1kB / 2kB\",\"BlockIO\":\"3kB / 4kB\"}\n'\nelse\n  exit 1\nfi\n",
+        )
+        .expect("write docker script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&docker).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&docker, perms).expect("chmod");
+        }
+
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+
+        let snap = collect_snapshot();
+        assert!(snap.available);
+        assert_eq!(snap.total, 2);
+        assert!(!snap.samples.is_empty());
+        assert!(snap.samples.iter().any(|s| s.name == "ok"));
+
+        std::env::set_var("PATH", old_path);
+        fs::remove_file(&docker).expect("cleanup docker script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+
+        let dir = unique_temp_dir("fail-cmd");
+        fs::create_dir_all(&dir).expect("mkdir");
+        let docker = dir.join("docker");
+        fs::write(&docker, "#!/bin/sh\nprintf 'oops' 1>&2\nexit 5\n").expect("write fail script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&docker).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&docker, perms).expect("chmod");
+        }
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.to_string_lossy(), old_path));
+        let snap = collect_snapshot();
+        assert!(!snap.available);
+        std::env::set_var("PATH", old_path);
+        fs::remove_file(&docker).expect("cleanup fail script");
+        fs::remove_dir_all(&dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn run_with_timeout_covers_success_timeout_and_wait_error() {
+        let mut ok_cmd = Command::new("sh");
+        ok_cmd.args(["-c", "printf 'ok'"]);
+        let output = run_with_timeout(ok_cmd, Duration::from_secs(1)).expect("expected output");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
+
+        let mut slow_cmd = Command::new("sh");
+        slow_cmd.args(["-c", "sleep 1"]);
+        assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
+
+        let mut err_cmd = Command::new("sh");
+        err_cmd.args(["-c", "printf 'ok'"]);
+        let errored = run_with_timeout_using_waiter(err_cmd, Duration::from_secs(1), |_child| {
+            Err(std::io::Error::other("forced wait error"))
+        });
+        assert_eq!(errored, None);
+    }
+
+    #[test]
+    fn enrich_sample_keeps_existing_image_and_state() {
+        let sample = DockerSample {
+            id: "abc".to_string(),
+            name: "/existing".to_string(),
+            image: "sample-image".to_string(),
+            state: "running".to_string(),
+            ..DockerSample::default()
+        };
+        let enriched = enrich_sample(&sample, "/summary-name", "summary-image", "exited");
+        assert_eq!(enriched.name, "existing");
+        assert_eq!(enriched.image, "sample-image");
+        assert_eq!(enriched.state, "running");
     }
 }

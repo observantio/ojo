@@ -106,7 +106,10 @@ impl PrevState {
             self.last = Some((current.clone(), now));
             return PostgresRates::default();
         };
-        let elapsed = now.duration_since(*previous_at).as_secs_f64();
+        let elapsed = now
+            .checked_duration_since(*previous_at)
+            .unwrap_or_default()
+            .as_secs_f64();
         if elapsed <= 0.0 {
             self.last = Some((current.clone(), now));
             return PostgresRates::default();
@@ -184,13 +187,14 @@ impl Instruments {
     }
 }
 
-fn main() -> Result<()> {
+fn run() -> Result<()> {
     let cfg = Config::load()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .init();
+        .try_init()
+        .ok();
 
     let provider = init_meter_provider(&OtlpSettings {
         service_name: cfg.service_name.clone(),
@@ -209,61 +213,99 @@ fn main() -> Result<()> {
     let mut prev = PrevState::default();
 
     let running = Arc::new(AtomicBool::new(true));
-    let signal = Arc::clone(&running);
-    ctrlc::set_handler(move || {
-        signal.store(false, Ordering::SeqCst);
-    })?;
+    install_signal_handler(&running);
 
     let mut export_state = ExportState::Pending;
-    while running.load(Ordering::SeqCst) {
+    let mut continue_running = true;
+    while continue_running && running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.postgres);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
         let flush_result = provider.force_flush();
-        if flush_result.is_ok() {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush ok"
-            );
-        } else {
-            debug!(
-                elapsed_ms = started_at.elapsed().as_millis(),
-                "force_flush err"
-            );
-        }
+        log_flush_result(started_at, flush_result.is_ok());
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
-        if let Err(err) = flush_result {
-            match event {
-                FlushEvent::Reconnecting => {
-                    warn!(error = %err, "Exporter flush failed; reconnecting")
-                }
-                FlushEvent::StillUnavailable => {
-                    warn!(error = %err, "Exporter still unavailable")
-                }
-                FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
-            }
-        } else {
-            match event {
-                FlushEvent::Connected => info!("Connected Successfully"),
-                FlushEvent::Reconnected => info!("Reconnected Successfully"),
-                FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
-            }
-        }
+        handle_flush_event(
+            event,
+            flush_result
+                .err()
+                .as_ref()
+                .map(|e| e as &dyn std::fmt::Display),
+        );
         export_state = next_state;
-        if cfg.once {
-            break;
-        }
-        let deadline = started_at + cfg.poll_interval;
-        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(500));
-        }
+        maybe_sleep_until_next_poll(cfg.once, started_at, cfg.poll_interval, &running);
+        continue_running = !cfg.once;
     }
 
     let _ = provider.shutdown();
     Ok(())
+}
+
+fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
+    move || {
+        signal.store(false, Ordering::SeqCst);
+    }
+}
+
+fn install_signal_handler(running: &Arc<AtomicBool>) {
+    if let Err(err) = ctrlc::set_handler(make_stop_handler(Arc::clone(running))) {
+        warn!(error = %err, "failed to install signal handler");
+    }
+}
+
+fn log_flush_result(started_at: Instant, flush_succeeded: bool) {
+    let elapsed_ms = started_at.elapsed().as_millis();
+    if flush_succeeded {
+        debug!(elapsed_ms, "force_flush ok");
+    } else {
+        debug!(elapsed_ms, "force_flush err");
+    }
+}
+
+fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
+    if let Some(err) = flush_error {
+        match event {
+            FlushEvent::Reconnecting => {
+                warn!(error = %err, "Exporter flush failed; reconnecting")
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(error = %err, "Exporter still unavailable")
+            }
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Connected Successfully"),
+            FlushEvent::Reconnected => info!("Reconnected Successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
+    }
+}
+
+fn sleep_until(deadline: Instant, running: &AtomicBool, sleep_interval: Duration) {
+    while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+        thread::sleep(sleep_interval);
+    }
+}
+
+fn maybe_sleep_until_next_poll(
+    once: bool,
+    started_at: Instant,
+    poll_interval: Duration,
+    running: &AtomicBool,
+) {
+    if once {
+        return;
+    }
+    let deadline = started_at + poll_interval;
+    sleep_until(deadline, running, Duration::from_millis(500));
+}
+
+#[cfg(not(test))]
+fn main() -> Result<()> {
+    run()
 }
 
 fn record_snapshot(
@@ -405,6 +447,10 @@ struct MetricSection {
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
+        Self::load_from_args(&args)
+    }
+
+    fn load_from_args(args: &[String]) -> Result<Self> {
         let once = args.iter().any(|arg| arg == "--once")
             || env::var("OJO_RUN_ONCE")
                 .ok()
@@ -493,11 +539,14 @@ fn load_yaml_config_file(config_path: &str) -> Result<FileConfig> {
 mod tests {
     use super::{
         advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_snapshot,
-        resolve_default_config_path, saturating_rate, Config, ExportState, FlushEvent, Instruments,
-        PostgresRates, PostgresSnapshot, PrevState,
+        resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState, FlushEvent,
+        Instruments, PostgresRates, PostgresSnapshot, PrevState,
     };
     use host_collectors::PrefixFilter;
     use std::fs;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -544,6 +593,27 @@ mod tests {
         let rates = state.derive(&second);
         assert!(rates.commits_per_second > 30.0);
         assert!(rates.rollbacks_per_second > 4.0);
+    }
+
+    #[test]
+    fn prev_state_derive_resets_on_non_progressing_time() {
+        let mut state = PrevState {
+            last: Some((
+                PostgresSnapshot {
+                    xact_commit_total: 100,
+                    xact_rollback_total: 10,
+                    ..PostgresSnapshot::default()
+                },
+                Instant::now() + Duration::from_secs(1),
+            )),
+        };
+        let rates = state.derive(&PostgresSnapshot {
+            xact_commit_total: 120,
+            xact_rollback_total: 12,
+            ..PostgresSnapshot::default()
+        });
+        assert_eq!(rates.commits_per_second, 0.0);
+        assert_eq!(rates.rollbacks_per_second, 0.0);
     }
 
     #[test]
@@ -686,6 +756,98 @@ mod tests {
     }
 
     #[test]
+    fn config_load_from_args_covers_default_and_missing_config_error() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+
+        let default_path = unique_temp_path("postgres-default-from-args.yaml");
+        fs::write(
+            &default_path,
+            "service:\n  name: pg-default\n  instance_id: pg-default-01\ncollection:\n  poll_interval_secs: 1\n",
+        )
+        .expect("write default config");
+        std::env::set_var("OJO_POSTGRES_CONFIG", &default_path);
+
+        let args = vec!["ojo-postgres".to_string()];
+        let cfg = Config::load_from_args(&args).expect("load default config");
+        assert_eq!(cfg.service_name, "pg-default");
+
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        fs::remove_file(&default_path).expect("cleanup default config");
+
+        let missing = unique_temp_path("postgres-missing-from-args.yaml");
+        let args = vec![
+            "ojo-postgres".to_string(),
+            "--config".to_string(),
+            missing.to_string_lossy().to_string(),
+        ];
+        let err = Config::load_from_args(&args).unwrap_err();
+        assert!(err.to_string().contains("was not found"), "{err}");
+
+        let path = unique_temp_path("postgres-run-once-values.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: pg-once\n  instance_id: pg-once-01\ncollection:\n  poll_interval_secs: 1\n",
+        )
+        .expect("write run-once config");
+        let args = vec![
+            "ojo-postgres".to_string(),
+            "--config".to_string(),
+            path.to_string_lossy().to_string(),
+        ];
+        for value in ["true", "yes", "on"] {
+            std::env::set_var("OJO_RUN_ONCE", value);
+            let cfg = Config::load_from_args(&args).expect("load run-once config");
+            assert!(cfg.once, "expected once=true for value={value}");
+        }
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup run-once config");
+    }
+
+    #[test]
+    fn flush_and_sleep_helpers_cover_paths() {
+        let now = Instant::now();
+        super::log_flush_result(now, true);
+        super::log_flush_result(now, false);
+
+        super::handle_flush_event(FlushEvent::Connected, None);
+        super::handle_flush_event(FlushEvent::Reconnected, None);
+        super::handle_flush_event(FlushEvent::None, None);
+        super::handle_flush_event(FlushEvent::Reconnecting, Some(&"err"));
+        super::handle_flush_event(FlushEvent::StillUnavailable, Some(&"err"));
+        super::handle_flush_event(FlushEvent::Connected, Some(&"err"));
+
+        let running = AtomicBool::new(false);
+        sleep_until(
+            Instant::now() + Duration::from_millis(2),
+            &running,
+            Duration::from_millis(1),
+        );
+
+        let running = AtomicBool::new(true);
+        super::maybe_sleep_until_next_poll(
+            false,
+            Instant::now(),
+            Duration::from_millis(2),
+            &running,
+        );
+        super::maybe_sleep_until_next_poll(true, Instant::now(), Duration::from_secs(1), &running);
+    }
+
+    #[test]
+    fn stop_handler_and_signal_install_are_safe() {
+        let running = Arc::new(AtomicBool::new(true));
+        let stop = super::make_stop_handler(Arc::clone(&running));
+        stop();
+        assert!(!running.load(Ordering::SeqCst));
+
+        let _ = super::install_signal_handler(&running);
+        let _ = super::install_signal_handler(&running);
+    }
+
+    #[test]
     fn record_snapshot_handles_unavailable_and_available_samples() {
         let meter = opentelemetry::global::meter("postgres-test-meter");
         let instruments = Instruments::new(&meter);
@@ -739,8 +901,39 @@ mod tests {
 
         std::env::set_var("OJO_POSTGRES_CONFIG", &path);
         std::env::set_var("OJO_RUN_ONCE", "1");
-        let result = super::main();
+        let result = super::run();
         assert!(result.is_ok(), "{result:?}");
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+        fs::remove_file(&path).expect("cleanup config");
+    }
+
+    #[test]
+    fn run_returns_error_for_missing_config() {
+        let _guard = env_lock().lock().expect("env lock");
+        let missing = unique_temp_path("postgres-run-missing.yaml");
+        std::env::set_var("OJO_POSTGRES_CONFIG", &missing);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        let result = super::run();
+        assert!(result.is_err(), "{result:?}");
+        std::env::remove_var("OJO_POSTGRES_CONFIG");
+        std::env::remove_var("OJO_RUN_ONCE");
+    }
+
+    #[test]
+    fn run_returns_error_for_invalid_otlp_protocol() {
+        let _guard = env_lock().lock().expect("env lock");
+        let path = unique_temp_path("postgres-main-invalid-protocol.yaml");
+        fs::write(
+            &path,
+            "service:\n  name: postgres-main-test\n  instance_id: postgres-main-01\ncollection:\n  poll_interval_secs: 1\npostgres:\n  executable: /definitely/missing/psql\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: unsupported-protocol\n",
+        )
+        .expect("write config");
+
+        std::env::set_var("OJO_POSTGRES_CONFIG", &path);
+        std::env::set_var("OJO_RUN_ONCE", "1");
+        let result = super::run();
+        assert!(result.is_err(), "{result:?}");
         std::env::remove_var("OJO_POSTGRES_CONFIG");
         std::env::remove_var("OJO_RUN_ONCE");
         fs::remove_file(&path).expect("cleanup config");
