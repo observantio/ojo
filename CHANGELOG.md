@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - `grafana/redis.json`
   - `grafana/nginx.json`
   - `grafana/systemd.json`
+- Added `--dump-snapshot` JSON output mode to all sidecar services (`ojo-docker`, `ojo-gpu`, `ojo-mysql`, `ojo-nfs-client`, `ojo-nginx`, `ojo-postgres`, `ojo-redis`, `ojo-sensors`, `ojo-systemd`) for one-shot snapshot inspection.
 
 ### Changed
 - Coverage gate for `host-collectors` is now enforced at 100% line coverage in CI and docs using `cargo llvm-cov -p host-collectors --all-features --summary-only --fail-under-lines 100`.
