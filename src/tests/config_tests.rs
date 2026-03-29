@@ -7,6 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(unix)]
+use std::{os::unix::fs::PermissionsExt, path::Path};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -287,4 +289,151 @@ fn config_load_accepts_poll_interval_from_env_when_yaml_omits_it() {
     std::env::remove_var("PROC_OTEL_CONFIG");
     std::env::remove_var("PROC_POLL_INTERVAL_SECS");
     fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_from_args_supports_config_flag() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("config-load-from-args.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: args-svc\n  instance_id: args-01\ncollection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+    )
+    .expect("write config");
+
+    std::env::remove_var("PROC_OTEL_CONFIG");
+    let args = vec![
+        "ojo".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+    let cfg = Config::load_from_args(&args).expect("load args config");
+    assert_eq!(cfg.service_name, "args-svc");
+
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_from_args_uses_default_path_when_no_overrides() {
+    let _guard = env_lock().lock().expect("env lock");
+    std::env::remove_var("PROC_OTEL_CONFIG");
+    let args = vec!["ojo".to_string()];
+    let err = Config::load_from_args(&args).unwrap_err();
+    assert!(err.to_string().contains("ojo.yaml"), "{err}");
+}
+
+#[test]
+fn config_load_from_args_surfaces_validation_error() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("config-load-validation.yaml");
+    fs::write(&path, "service: {}\ncollection: {}\nexport: {}\n").expect("write config");
+
+    let args = vec![
+        "ojo".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+    let err = Config::load_from_args(&args).unwrap_err();
+    assert!(
+        err.to_string().contains("missing required attributes"),
+        "{err}"
+    );
+
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn from_file_config_covers_env_and_default_fallbacks() {
+    let _guard = env_lock().lock().expect("env lock");
+
+    std::env::set_var("OTEL_SERVICE_NAME", "svc-env");
+    std::env::set_var("OTEL_SERVICE_INSTANCE_ID", "inst-env");
+    std::env::set_var(
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "http://127.0.0.1:4318/v1/metrics",
+    );
+    std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+    std::env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", "bad");
+    std::env::set_var("OTEL_METRIC_EXPORT_INTERVAL", "bad");
+    std::env::set_var("OTEL_METRIC_EXPORT_TIMEOUT", "bad");
+    std::env::set_var("PROC_INCLUDE_PROCESS_METRICS", "true");
+    std::env::set_var("PROC_PROCESS_INCLUDE_PID_LABEL", "1");
+    std::env::set_var("PROC_PROCESS_INCLUDE_COMMAND_LABEL", "0");
+    std::env::set_var("PROC_PROCESS_INCLUDE_STATE_LABEL", "true");
+
+    let cfg = Config::from_file_config(FileConfig::default());
+    assert_eq!(cfg.service_name, "svc-env");
+    assert_eq!(cfg.instance_id, "inst-env");
+    assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4318/v1/metrics");
+    assert_eq!(cfg.otlp_protocol, "grpc");
+    assert!(cfg.otlp_timeout.is_none());
+    assert!(cfg.export_interval.is_none());
+    assert!(cfg.export_timeout.is_none());
+    assert!(cfg.include_process_metrics);
+    assert!(cfg.process_include_pid_label);
+    assert!(!cfg.process_include_command_label);
+    assert!(cfg.process_include_state_label);
+
+    std::env::set_var("OTEL_EXPORTER_OTLP_TIMEOUT", "9");
+    std::env::set_var("OTEL_METRIC_EXPORT_INTERVAL", "2500");
+    std::env::set_var("OTEL_METRIC_EXPORT_TIMEOUT", "4500");
+    let cfg = Config::from_file_config(FileConfig::default());
+    assert_eq!(cfg.otlp_timeout, Some(Duration::from_secs(9)));
+    assert_eq!(cfg.export_interval, Some(Duration::from_millis(2500)));
+    assert_eq!(cfg.export_timeout, Some(Duration::from_millis(4500)));
+
+    std::env::remove_var("OTEL_SERVICE_NAME");
+    std::env::remove_var("OTEL_SERVICE_INSTANCE_ID");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+    std::env::remove_var("OTEL_EXPORTER_OTLP_TIMEOUT");
+    std::env::remove_var("OTEL_METRIC_EXPORT_INTERVAL");
+    std::env::remove_var("OTEL_METRIC_EXPORT_TIMEOUT");
+    std::env::remove_var("PROC_INCLUDE_PROCESS_METRICS");
+    std::env::remove_var("PROC_PROCESS_INCLUDE_PID_LABEL");
+    std::env::remove_var("PROC_PROCESS_INCLUDE_COMMAND_LABEL");
+    std::env::remove_var("PROC_PROCESS_INCLUDE_STATE_LABEL");
+
+    let cfg = Config::from_file_config(FileConfig::default());
+    assert_eq!(cfg.service_name, "ojo");
+    assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4317");
+    assert_eq!(cfg.otlp_protocol, "grpc");
+}
+
+#[test]
+fn from_file_config_uses_default_authorization_header_for_token() {
+    let cfg = Config::from_file_config(FileConfig {
+        export: Some(super::ExportSection {
+            otlp: Some(super::OtlpSection {
+                token: Some("abc123".to_string()),
+                ..super::OtlpSection::default()
+            }),
+            ..super::ExportSection::default()
+        }),
+        ..FileConfig::default()
+    });
+    assert_eq!(
+        cfg.otlp_headers.get("authorization").map(String::as_str),
+        Some("abc123")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn load_yaml_config_file_reports_read_error_context() {
+    let path = unique_temp_path("config-read-error.yaml");
+    fs::write(&path, "service:\n  name: x\n").expect("write config");
+
+    let perms = fs::Permissions::from_mode(0o000);
+    fs::set_permissions(Path::new(&path), perms).expect("chmod 000");
+
+    let err = load_yaml_config_file(path.to_string_lossy().as_ref()).unwrap_err();
+    assert!(
+        err.to_string().contains("failed to read config file"),
+        "{err}"
+    );
+
+    let restore = fs::Permissions::from_mode(0o600);
+    fs::set_permissions(Path::new(&path), restore).expect("chmod 600");
+    fs::remove_file(&path).expect("cleanup file");
 }

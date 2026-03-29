@@ -80,6 +80,10 @@ struct MetricSection {
 impl Config {
     pub fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
+        Self::load_from_args(&args)
+    }
+
+    fn load_from_args(args: &[String]) -> Result<Self> {
         let config_path = args
             .windows(2)
             .find(|pair| pair[0] == "--config")
@@ -90,6 +94,10 @@ impl Config {
         let file_cfg = load_yaml_config_file(&config_path)?;
         validate_required_yaml_fields(&file_cfg, &config_path)?;
 
+        Ok(Self::from_file_config(file_cfg))
+    }
+
+    fn from_file_config(file_cfg: FileConfig) -> Self {
         let service = file_cfg.service.unwrap_or_default();
         let collection = file_cfg.collection.unwrap_or_default();
         let export = file_cfg.export.unwrap_or_default();
@@ -115,7 +123,7 @@ impl Config {
             .or_else(|| env::var("OTEL_EXPORTER_OTLP_PROTOCOL").ok())
             .unwrap_or_else(|| default_protocol_for_endpoint(Some(&otlp_endpoint)));
 
-        Ok(Self {
+        Self {
             service_name: service
                 .name
                 .or_else(|| env::var("OTEL_SERVICE_NAME").ok())
@@ -180,7 +188,7 @@ impl Config {
             }),
             metrics_include: metrics.include.unwrap_or_default(),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
-        })
+        }
     }
 
     pub fn apply_otel_env(&self) {

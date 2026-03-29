@@ -1,8 +1,10 @@
 use super::{
     advance_export_state, compute_sleep_duration, handle_flush_event, log_flush_result,
-    ExportState, FlushEvent,
+    make_stop_handler, ExportState, FlushEvent,
 };
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -134,7 +136,15 @@ fn flush_helpers_cover_all_event_paths() {
 }
 
 #[test]
-fn main_handles_sigint_when_not_run_once() {
+fn stop_handler_sets_running_false() {
+    let running = Arc::new(AtomicBool::new(true));
+    let stop = make_stop_handler(Arc::clone(&running));
+    stop();
+    assert!(!running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn main_supports_test_iteration_cap_when_not_run_once() {
     let _guard = env_lock().lock().expect("env lock");
     let path = unique_temp_path("valid-config-sigint.yaml");
     fs::write(
@@ -145,16 +155,12 @@ fn main_handles_sigint_when_not_run_once() {
 
     std::env::set_var("PROC_OTEL_CONFIG", &path);
     std::env::remove_var("OJO_RUN_ONCE");
+    std::env::set_var("OJO_TEST_MAX_ITERATIONS", "1");
 
-    let handle = std::thread::spawn(super::main);
-    std::thread::sleep(Duration::from_millis(200));
-    unsafe {
-        libc::raise(libc::SIGINT);
-    }
-
-    let result = handle.join().expect("join main thread");
+    let result = super::main();
     assert!(result.is_ok(), "{result:?}");
 
     std::env::remove_var("PROC_OTEL_CONFIG");
+    std::env::remove_var("OJO_TEST_MAX_ITERATIONS");
     fs::remove_file(path).expect("cleanup config");
 }

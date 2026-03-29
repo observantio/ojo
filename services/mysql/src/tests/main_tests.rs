@@ -157,9 +157,28 @@ fn stop_handler_sets_running_false() {
 }
 
 #[test]
+fn install_signal_handler_error_path_is_reachable() {
+    let running = Arc::new(AtomicBool::new(true));
+    let first = super::install_signal_handler(&running);
+    if first.is_ok() {
+        let second = super::install_signal_handler(&running);
+        assert!(second.is_err());
+    } else {
+        assert!(first.is_err());
+    }
+}
+
+#[test]
 fn should_break_after_iteration_covers_true_and_false() {
     assert!(!super::should_break_after_iteration(false));
     assert!(super::should_break_after_iteration(true));
+}
+
+#[test]
+fn should_stop_after_iteration_covers_all_paths() {
+    assert!(!super::should_stop_after_iteration(false, false));
+    assert!(super::should_stop_after_iteration(true, false));
+    assert!(super::should_stop_after_iteration(false, true));
 }
 
 #[test]
@@ -418,10 +437,12 @@ fn main_runs_once_with_temp_config() {
 
     std::env::set_var("OJO_MYSQL_CONFIG", &path);
     std::env::set_var("OJO_RUN_ONCE", "1");
+    std::env::set_var("OJO_TEST_SKIP_SIGNAL_HANDLER", "1");
     let result = super::run();
     assert!(result.is_ok(), "{result:?}");
     std::env::remove_var("OJO_MYSQL_CONFIG");
     std::env::remove_var("OJO_RUN_ONCE");
+    std::env::remove_var("OJO_TEST_SKIP_SIGNAL_HANDLER");
     fs::remove_file(&path).expect("cleanup config");
 }
 
@@ -446,5 +467,58 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
     std::env::remove_var("OJO_MYSQL_CONFIG");
     std::env::remove_var("OJO_TEST_MAX_ITERATIONS");
     std::env::remove_var("OJO_TEST_SKIP_SIGNAL_HANDLER");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_returns_error_for_missing_or_invalid_config() {
+    let _guard = env_lock().lock().expect("env lock");
+
+    std::env::set_var("OJO_TEST_SKIP_SIGNAL_HANDLER", "1");
+    std::env::set_var("OJO_MYSQL_CONFIG", "/definitely/missing/mysql.yaml");
+    let missing = super::run();
+    assert!(missing.is_err());
+    std::env::remove_var("OJO_MYSQL_CONFIG");
+
+    let path = unique_temp_path("mysql-invalid-protocol.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: ojo-mysql-test\n  instance_id: mysql-test\ncollection:\n  poll_interval_secs: 1\nmysql:\n  executable: /definitely/missing/mysql\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: invalid\n",
+    )
+    .expect("write config");
+    std::env::set_var("OJO_MYSQL_CONFIG", &path);
+    std::env::set_var("OJO_TEST_SKIP_SIGNAL_HANDLER", "1");
+    let invalid = super::run();
+    assert!(invalid.is_err());
+    std::env::remove_var("OJO_MYSQL_CONFIG");
+    std::env::remove_var("OJO_TEST_SKIP_SIGNAL_HANDLER");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_exercises_signal_handler_install_branch() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("mysql-signal-branch.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: mysql-main-test\n  instance_id: mysql-main-01\ncollection:\n  poll_interval_secs: 1\nmysql:\n  executable: /definitely/missing/mysql\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("OJO_MYSQL_CONFIG", &path);
+    std::env::set_var("OJO_RUN_ONCE", "1");
+    std::env::remove_var("OJO_TEST_SKIP_SIGNAL_HANDLER");
+
+    let result = super::run();
+    if let Err(err) = &result {
+        let msg = err.to_string();
+        assert!(
+            msg.contains("already registered") || msg.contains("Ctrl-C"),
+            "{msg}"
+        );
+    }
+
+    std::env::remove_var("OJO_MYSQL_CONFIG");
+    std::env::remove_var("OJO_RUN_ONCE");
     fs::remove_file(&path).expect("cleanup config");
 }

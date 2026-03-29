@@ -126,6 +126,18 @@ fn load_yaml_config_file_covers_missing_empty_invalid_and_valid() {
 }
 
 #[test]
+fn load_yaml_config_file_covers_directory_read_error() {
+    let dir = unique_temp_path("nginx-dir.yaml");
+    fs::create_dir_all(&dir).expect("mkdir");
+    let err = load_yaml_config_file(dir.to_string_lossy().as_ref()).unwrap_err();
+    assert!(
+        err.to_string().contains("failed to read config file"),
+        "{err}"
+    );
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
 fn config_load_from_args_reads_env_config() {
     let _guard = env_lock().lock().expect("env lock");
     let path = unique_temp_path("nginx-config.yaml");
@@ -156,6 +168,30 @@ fn config_load_from_args_uses_repo_default_when_env_not_set() {
     let args = vec!["ojo-nginx".to_string()];
     let cfg = Config::load_from_args(&args).expect("load default config");
     assert!(!cfg.service_name.is_empty());
+}
+
+#[test]
+fn config_load_from_args_supports_config_flag_and_defaults_service_name() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("nginx-config-flag.yaml");
+    fs::write(
+        &path,
+        "collection:\n  poll_interval_secs: 1\nnginx:\n  executable: curl\n  status_url: http://127.0.0.1/nginx_status\n",
+    )
+    .expect("write config");
+
+    std::env::remove_var("OJO_NGINX_CONFIG");
+    let args = vec![
+        "ojo-nginx".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+
+    let cfg = Config::load_from_args(&args).expect("load via --config");
+    assert_eq!(cfg.service_name, "ojo-nginx");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    fs::remove_file(&path).expect("cleanup config");
 }
 
 #[test]
@@ -266,6 +302,28 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
     } else {
         std::env::remove_var("OJO_NGINX_STUB_STATUS");
     }
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_returns_error_for_missing_or_invalid_config() {
+    let _guard = env_lock().lock().expect("env lock");
+
+    std::env::set_var("OJO_NGINX_CONFIG", "/definitely/missing/nginx.yaml");
+    let missing = run();
+    assert!(missing.is_err());
+    std::env::remove_var("OJO_NGINX_CONFIG");
+
+    let path = unique_temp_path("nginx-invalid-protocol.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: ojo-nginx-test\ncollection:\n  poll_interval_secs: 1\nnginx:\n  executable: curl\n  status_url: http://127.0.0.1/nginx_status\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: invalid\n",
+    )
+    .expect("write config");
+    std::env::set_var("OJO_NGINX_CONFIG", &path);
+    let invalid = run();
+    assert!(invalid.is_err());
+    std::env::remove_var("OJO_NGINX_CONFIG");
     fs::remove_file(&path).expect("cleanup config");
 }
 

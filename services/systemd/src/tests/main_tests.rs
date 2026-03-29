@@ -1,7 +1,7 @@
 use crate::{
-    collect_snapshot, load_yaml_config_file, parse_bool_env, parse_u64_env, ratio, record_snapshot,
-    record_u64, resolve_default_config_path, run, simulated_snapshot_from_env, snapshot_up, Config,
-    Instruments, SystemdSnapshot,
+    collect_snapshot, load_yaml_config_file, parse_bool_env, parse_u64_env, ratio, record_f64,
+    record_snapshot, record_u64, resolve_default_config_path, run, simulated_snapshot_from_env,
+    snapshot_up, Config, Instruments, SystemdSnapshot,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -63,6 +63,22 @@ fn simulated_snapshot_from_env_covers_enabled_and_disabled_paths() {
     std::env::remove_var("OJO_SYSTEMD_SIMULATE_UNITS_TOTAL");
     std::env::remove_var("OJO_SYSTEMD_SIMULATE_UNITS_ACTIVE");
     std::env::remove_var("OJO_SYSTEMD_SIMULATE_UNITS_FAILED");
+}
+
+#[test]
+fn simulated_snapshot_from_env_defaults_active_to_zero_when_down() {
+    let _guard = env_lock().lock().expect("env lock");
+    std::env::set_var("OJO_SYSTEMD_SIMULATE_UP", "0");
+    std::env::set_var("OJO_SYSTEMD_SIMULATE_UNITS_TOTAL", "10");
+    std::env::remove_var("OJO_SYSTEMD_SIMULATE_UNITS_ACTIVE");
+
+    let snapshot = simulated_snapshot_from_env().expect("snapshot from env");
+    assert!(!snapshot.available);
+    assert_eq!(snapshot.units_total, 10);
+    assert_eq!(snapshot.units_active, 0);
+
+    std::env::remove_var("OJO_SYSTEMD_SIMULATE_UP");
+    std::env::remove_var("OJO_SYSTEMD_SIMULATE_UNITS_TOTAL");
 }
 
 #[test]
@@ -147,6 +163,18 @@ fn load_yaml_config_file_covers_missing_empty_invalid_and_valid() {
 }
 
 #[test]
+fn load_yaml_config_file_covers_directory_read_error() {
+    let dir = unique_temp_path("systemd-dir.yaml");
+    fs::create_dir_all(&dir).expect("mkdir");
+    let err = load_yaml_config_file(dir.to_string_lossy().as_ref()).unwrap_err();
+    assert!(
+        err.to_string().contains("failed to read config file"),
+        "{err}"
+    );
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
 fn config_load_from_args_reads_env_config() {
     let _guard = env_lock().lock().expect("env lock");
     let path = unique_temp_path("systemd-config.yaml");
@@ -197,6 +225,25 @@ fn config_load_from_args_uses_repo_default_when_env_not_set() {
 }
 
 #[test]
+fn config_load_from_args_supports_config_flag_and_defaults_service_name() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("systemd-config-flag.yaml");
+    fs::write(&path, "collection:\n  poll_interval_secs: 1\n").expect("write config");
+
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
+    let args = vec![
+        "ojo-systemd".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+    let cfg = Config::load_from_args(&args).expect("load via --config");
+    assert_eq!(cfg.service_name, "ojo-systemd");
+    assert_eq!(cfg.poll_interval, Duration::from_secs(1));
+
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
 fn record_u64_covers_allow_and_block_paths() {
     let meter = opentelemetry::global::meter("systemd-tests");
     let gauge = meter.u64_gauge("systemd.test.value").build();
@@ -204,6 +251,16 @@ fn record_u64_covers_allow_and_block_paths() {
     record_u64(&gauge, &allow, "system.systemd.up", 1);
     let block = PrefixFilter::new(vec!["system.other.".to_string()], vec![]);
     record_u64(&gauge, &block, "system.systemd.up", 2);
+}
+
+#[test]
+fn record_f64_covers_allow_and_block_paths() {
+    let meter = opentelemetry::global::meter("systemd-tests-f64");
+    let gauge = meter.f64_gauge("systemd.test.value.f64").build();
+    let allow = PrefixFilter::new(vec!["system.systemd.".to_string()], vec![]);
+    record_f64(&gauge, &allow, "system.systemd.units.failed.ratio", 0.1);
+    let block = PrefixFilter::new(vec!["system.other.".to_string()], vec![]);
+    record_f64(&gauge, &block, "system.systemd.units.failed.ratio", 0.2);
 }
 
 #[test]
@@ -274,5 +331,27 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
     std::env::remove_var("OJO_SYSTEMD_CONFIG");
     std::env::remove_var("OJO_TEST_MAX_ITERATIONS");
     std::env::remove_var("OJO_SYSTEMD_SIMULATE_UP");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_returns_error_for_missing_or_invalid_config() {
+    let _guard = env_lock().lock().expect("env lock");
+
+    std::env::set_var("OJO_SYSTEMD_CONFIG", "/definitely/missing/systemd.yaml");
+    let missing = run();
+    assert!(missing.is_err());
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
+
+    let path = unique_temp_path("systemd-invalid-protocol.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: ojo-systemd-test\ncollection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: invalid\n",
+    )
+    .expect("write config");
+    std::env::set_var("OJO_SYSTEMD_CONFIG", &path);
+    let invalid = run();
+    assert!(invalid.is_err());
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
     fs::remove_file(&path).expect("cleanup config");
 }

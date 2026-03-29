@@ -262,6 +262,10 @@ fn should_break_after_iteration(once: bool) -> bool {
     once
 }
 
+fn should_stop_after_iteration(once: bool, should_break_for_test: bool) -> bool {
+    should_break_after_iteration(once) || should_break_for_test
+}
+
 fn run() -> Result<()> {
     let cfg = Config::load()?;
     tracing_subscriber::fmt()
@@ -327,9 +331,8 @@ fn run() -> Result<()> {
         #[cfg(not(test))]
         let should_break_for_test = false;
 
-        if should_break_after_iteration(cfg.once) || should_break_for_test {
-            running.store(false, Ordering::SeqCst);
-        }
+        let should_stop = should_stop_after_iteration(cfg.once, should_break_for_test);
+        let _ = running.fetch_and(!should_stop, Ordering::SeqCst);
     }
 
     let _ = provider.shutdown();

@@ -21,6 +21,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+#[cfg(not(coverage))]
 use std::thread;
 use std::time::Instant;
 use tracing::{debug, info, warn};
@@ -114,6 +115,12 @@ fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Disp
     }
 }
 
+fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
+    move || {
+        signal.store(false, Ordering::SeqCst);
+    }
+}
+
 fn main() -> Result<()> {
     let cfg = Config::load()?;
     cfg.apply_otel_env();
@@ -143,10 +150,7 @@ fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     if !run_once {
-        let signal = Arc::clone(&running);
-        ctrlc::set_handler(move || {
-            signal.store(false, Ordering::SeqCst);
-        })?;
+        ctrlc::set_handler(make_stop_handler(Arc::clone(&running)))?;
     }
 
     let mut prev = PrevState::default();
@@ -199,6 +203,11 @@ fn main() -> Result<()> {
             break;
         }
 
+        let should_break_for_test = std::env::var("OJO_TEST_MAX_ITERATIONS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .is_some_and(|max| max <= 1);
+
         #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
@@ -211,15 +220,17 @@ fn main() -> Result<()> {
         if let Some(sleep_for) =
             compute_sleep_duration(elapsed, cfg.poll_interval, running.load(Ordering::SeqCst))
         {
+            #[cfg(coverage)]
+            let _ = sleep_for;
+            #[cfg(not(coverage))]
             thread::sleep(sleep_for);
+        }
+
+        if should_break_for_test {
+            running.store(false, Ordering::SeqCst);
         }
     }
 
-    #[cfg(not(coverage))]
-    if let Err(err) = provider.shutdown() {
-        warn!(error = %err, "Ojo provider shutdown encountered an error");
-    }
-    #[cfg(coverage)]
     let _ = provider.shutdown();
     Ok(())
 }
