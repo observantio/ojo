@@ -1,17 +1,50 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "editable": true,
+  "id": null,
   "title": "Ojo Systemd",
   "uid": "ojo-systemd",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
+  "refresh": "10s",
   "time": { "from": "now-1h", "to": "now" },
   "tags": ["ojo", "systemd"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(system_systemd_source_available, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Systemd Collector Up",
       "targets": [
-        { "refId": "A", "expr": "max(system_systemd_up)" }
+        { "refId": "A", "expr": "max(system_systemd_up{service_name=~\"$service\"})" }
       ],
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 }
     },
@@ -20,7 +53,7 @@
       "type": "stat",
       "title": "Source Availability",
       "targets": [
-        { "refId": "A", "expr": "max(system_systemd_source_available)" }
+        { "refId": "A", "expr": "max(system_systemd_source_available{service_name=~\"$service\"})" }
       ],
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 }
     },
@@ -29,7 +62,7 @@
       "type": "stat",
       "title": "Units Total",
       "targets": [
-        { "refId": "A", "expr": "max(system_systemd_units_total)" }
+        { "refId": "A", "expr": "max(system_systemd_units_total{service_name=~\"$service\"})" }
       ],
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 }
     },
@@ -38,7 +71,7 @@
       "type": "stat",
       "title": "Failed Units (Reported)",
       "targets": [
-        { "refId": "A", "expr": "max(system_systemd_failed_units_reported)" }
+        { "refId": "A", "expr": "max(system_systemd_failed_units_reported{service_name=~\"$service\"})" }
       ],
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 }
     },
@@ -47,14 +80,14 @@
       "type": "timeseries",
       "title": "Unit States",
       "targets": [
-        { "refId": "A", "expr": "system_systemd_units_active" },
-        { "refId": "B", "expr": "system_systemd_units_inactive" },
-        { "refId": "C", "expr": "system_systemd_units_failed" },
-        { "refId": "D", "expr": "system_systemd_units_activating" },
-        { "refId": "E", "expr": "system_systemd_units_deactivating" },
-        { "refId": "F", "expr": "system_systemd_units_reloading" },
-        { "refId": "G", "expr": "system_systemd_units_maintenance" },
-        { "refId": "H", "expr": "system_systemd_units_not_found" }
+        { "refId": "A", "expr": "system_systemd_units_active{service_name=~\"$service\"}" },
+        { "refId": "B", "expr": "system_systemd_units_inactive{service_name=~\"$service\"}" },
+        { "refId": "C", "expr": "system_systemd_units_failed{service_name=~\"$service\"}" },
+        { "refId": "D", "expr": "system_systemd_units_activating{service_name=~\"$service\"}" },
+        { "refId": "E", "expr": "system_systemd_units_deactivating{service_name=~\"$service\"}" },
+        { "refId": "F", "expr": "system_systemd_units_reloading{service_name=~\"$service\"}" },
+        { "refId": "G", "expr": "system_systemd_units_maintenance{service_name=~\"$service\"}" },
+        { "refId": "H", "expr": "system_systemd_units_not_found{service_name=~\"$service\"}" }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
     },
@@ -63,8 +96,8 @@
       "type": "timeseries",
       "title": "Systemd Jobs",
       "targets": [
-        { "refId": "A", "expr": "system_systemd_jobs_queued" },
-        { "refId": "B", "expr": "system_systemd_jobs_running" }
+        { "refId": "A", "expr": "system_systemd_jobs_queued{service_name=~\"$service\"}" },
+        { "refId": "B", "expr": "system_systemd_jobs_running{service_name=~\"$service\"}" }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
     },
@@ -73,8 +106,8 @@
       "type": "timeseries",
       "title": "Unit Health Ratios",
       "targets": [
-        { "refId": "A", "expr": "system_systemd_units_active_ratio" },
-        { "refId": "B", "expr": "system_systemd_units_failed_ratio" }
+        { "refId": "A", "expr": "system_systemd_units_active_ratio{service_name=~\"$service\"}" },
+        { "refId": "B", "expr": "system_systemd_units_failed_ratio{service_name=~\"$service\"}" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -90,8 +123,8 @@
       "type": "timeseries",
       "title": "Failed Units",
       "targets": [
-        { "refId": "A", "expr": "system_systemd_units_failed" },
-        { "refId": "B", "expr": "system_systemd_failed_units_reported" }
+        { "refId": "A", "expr": "system_systemd_units_failed{service_name=~\"$service\"}" },
+        { "refId": "B", "expr": "system_systemd_failed_units_reported{service_name=~\"$service\"}" }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
     }
