@@ -24,7 +24,7 @@ pub(super) fn collect_snapshot_impl(cfg: &MysqlConfig, default_executable: &str)
         command.args(["-u", user]);
     }
     if let Some(password) = &cfg.password {
-        command.arg(format!("-p{password}"));
+        command.env("MYSQL_PWD", password);
     }
     if let Some(database) = &cfg.database {
         command.args(["-D", database]);

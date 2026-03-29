@@ -49,11 +49,13 @@ fn collect_snapshot_impl_covers_default_executable_and_all_optional_args() {
     fs::create_dir_all(&dir).expect("mkdir");
     let script = dir.join("fake-mysql.sh");
     let marker = dir.join("args.txt");
+    let env_marker = dir.join("env.txt");
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\ncat <<'OUT'\nThreads_connected\t1\nThreads_running\t2\nQueries\t3\nSlow_queries\t4\nBytes_received\t5\nBytes_sent\t6\nOUT\n",
-            marker.to_string_lossy()
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\nprintf '%s' \"$MYSQL_PWD\" > {}\ncat <<'OUT'\nThreads_connected\t1\nThreads_running\t2\nQueries\t3\nSlow_queries\t4\nBytes_received\t5\nBytes_sent\t6\nOUT\n",
+            marker.to_string_lossy(),
+            env_marker.to_string_lossy()
         ),
     )
     .expect("write script");
@@ -83,12 +85,15 @@ fn collect_snapshot_impl_covers_default_executable_and_all_optional_args() {
     assert!(args.contains("-h\ndb.example"));
     assert!(args.contains("-P\n3307"));
     assert!(args.contains("-u\nroot"));
-    assert!(args.contains("-psecret"));
+    assert!(!args.contains("-psecret"));
     assert!(args.contains("-D\napp"));
     assert!(args.contains("-e"));
+    let env_value = fs::read_to_string(&env_marker).expect("read env");
+    assert_eq!(env_value, "secret");
 
     fs::remove_file(&script).expect("cleanup script");
     fs::remove_file(&marker).expect("cleanup marker");
+    fs::remove_file(&env_marker).expect("cleanup env marker");
     fs::remove_dir_all(&dir).expect("cleanup dir");
 }
 

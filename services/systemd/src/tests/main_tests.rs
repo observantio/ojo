@@ -244,6 +244,51 @@ fn config_load_from_args_supports_config_flag_and_defaults_service_name() {
 }
 
 #[test]
+fn config_load_from_args_parses_otlp_timeout_secs() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("systemd-timeout.yaml");
+    fs::write(
+        &path,
+        "collection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n    timeout_secs: 7\n",
+    )
+    .expect("write config");
+
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
+    let args = vec![
+        "ojo-systemd".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+    let cfg = Config::load_from_args(&args).expect("load via --config");
+    assert_eq!(cfg.otlp_timeout, Some(Duration::from_secs(7)));
+
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_from_args_parses_batch_settings() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("systemd-batch.yaml");
+    fs::write(
+        &path,
+        "collection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n  batch:\n    interval_secs: 6\n    timeout_secs: 9\n",
+    )
+    .expect("write config");
+
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
+    let args = vec![
+        "ojo-systemd".to_string(),
+        "--config".to_string(),
+        path.to_string_lossy().to_string(),
+    ];
+    let cfg = Config::load_from_args(&args).expect("load via --config");
+    assert_eq!(cfg.export_interval, Some(Duration::from_secs(6)));
+    assert_eq!(cfg.export_timeout, Some(Duration::from_secs(9)));
+
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
 fn record_u64_covers_allow_and_block_paths() {
     let meter = opentelemetry::global::meter("systemd-tests");
     let gauge = meter.u64_gauge("systemd.test.value").build();

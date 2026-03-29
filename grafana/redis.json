@@ -10,10 +10,30 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
   ],
   "editable": true,
   "id": null,
@@ -22,19 +42,32 @@
   "schemaVersion": 39,
   "version": 3,
   "refresh": "10s",
-  "time": { "from": "now-1h", "to": "now" },
-  "tags": ["ojo", "redis"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "ojo",
+    "redis"
+  ],
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "query": "label_values(system_redis_source_available, service_name)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -44,57 +77,120 @@
       "type": "stat",
       "title": "Redis Up",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_up{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_up{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Source Available",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_source_available{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_source_available{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Connected Clients",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_clients_connected{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_clients_connected{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 4,
       "type": "stat",
       "title": "Blocked Clients",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_clients_blocked{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_clients_blocked{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 5,
       "type": "stat",
       "title": "Command Rate",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_commands_processed_rate_per_second{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_commands_processed_rate_per_second{service_name=~\"$service\"})"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 6,
       "type": "stat",
       "title": "Keyspace Hit Ratio",
       "targets": [
-        { "refId": "A", "expr": "max(system_redis_keyspace_hit_ratio{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_redis_keyspace_hit_ratio{service_name=~\"$service\"})"
+        }
       ],
       "fieldConfig": {
         "defaults": {
@@ -103,55 +199,133 @@
           "max": 1
         }
       },
-      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "Memory",
       "targets": [
-        { "refId": "A", "expr": "system_redis_memory_used_bytes{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_redis_memory_max_bytes{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_redis_memory_used_bytes{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_redis_memory_max_bytes{service_name=~\"$service\"}"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "Traffic Rates",
       "targets": [
-        { "refId": "A", "expr": "system_redis_commands_processed_rate_per_second{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_redis_connections_received_rate_per_second{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_redis_commands_processed_rate_per_second{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_redis_connections_received_rate_per_second{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 9,
       "type": "timeseries",
       "title": "Totals",
       "targets": [
-        { "refId": "A", "expr": "system_redis_commands_processed_total{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_redis_connections_received_total{service_name=~\"$service\"}" },
-        { "refId": "C", "expr": "system_redis_uptime_seconds{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_redis_commands_processed_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_redis_connections_received_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_redis_uptime_seconds{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 10,
       "type": "timeseries",
       "title": "Keyspace and Evictions",
       "targets": [
-        { "refId": "A", "expr": "system_redis_keyspace_hits_total{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_redis_keyspace_misses_total{service_name=~\"$service\"}" },
-        { "refId": "C", "expr": "system_redis_keys_expired_total{service_name=~\"$service\"}" },
-        { "refId": "D", "expr": "system_redis_keys_evicted_total{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_redis_keyspace_hits_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_redis_keyspace_misses_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_redis_keys_expired_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "D",
+          "expr": "system_redis_keys_evicted_total{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     }
   ]
 }

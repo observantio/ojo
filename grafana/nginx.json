@@ -10,10 +10,30 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
   ],
   "editable": true,
   "id": null,
@@ -22,19 +42,32 @@
   "schemaVersion": 39,
   "version": 3,
   "refresh": "10s",
-  "time": { "from": "now-1h", "to": "now" },
-  "tags": ["ojo", "nginx"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "ojo",
+    "nginx"
+  ],
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "query": "label_values(system_nginx_source_available, service_name)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -44,74 +77,176 @@
       "type": "stat",
       "title": "Nginx Up",
       "targets": [
-        { "refId": "A", "expr": "max(system_nginx_up{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_nginx_up{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Source Available",
       "targets": [
-        { "refId": "A", "expr": "max(system_nginx_source_available{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_nginx_source_available{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Active Connections",
       "targets": [
-        { "refId": "A", "expr": "max(system_nginx_connections_active{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_nginx_connections_active{service_name=~\"$service\"})"
+        }
       ],
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 4,
       "type": "stat",
       "title": "Request Rate",
       "targets": [
-        { "refId": "A", "expr": "max(system_nginx_requests_rate_per_second{service_name=~\"$service\"})" }
+        {
+          "refId": "A",
+          "expr": "max(system_nginx_requests_rate_per_second{service_name=~\"$service\"})"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "reqps"
         }
       },
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 }
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Connection States",
       "targets": [
-        { "refId": "A", "expr": "system_nginx_connections_active{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_nginx_connections_reading{service_name=~\"$service\"}" },
-        { "refId": "C", "expr": "system_nginx_connections_writing{service_name=~\"$service\"}" },
-        { "refId": "D", "expr": "system_nginx_connections_waiting{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_nginx_connections_active{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_nginx_connections_reading{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_nginx_connections_writing{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "D",
+          "expr": "system_nginx_connections_waiting{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "Traffic Rates",
       "targets": [
-        { "refId": "A", "expr": "system_nginx_requests_rate_per_second{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_nginx_connections_accepted_rate_per_second{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_nginx_requests_rate_per_second{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_nginx_connections_accepted_rate_per_second{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "Connection and Request Totals",
       "targets": [
-        { "refId": "A", "expr": "system_nginx_connections_accepted_total{service_name=~\"$service\"}" },
-        { "refId": "B", "expr": "system_nginx_connections_handled_total{service_name=~\"$service\"}" },
-        { "refId": "C", "expr": "system_nginx_requests_total{service_name=~\"$service\"}" }
+        {
+          "refId": "A",
+          "expr": "system_nginx_connections_accepted_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_nginx_connections_handled_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_nginx_requests_total{service_name=~\"$service\"}"
+        }
       ],
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 }
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     }
   ]
 }

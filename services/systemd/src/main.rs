@@ -19,6 +19,9 @@ struct Config {
     poll_interval: Duration,
     otlp_endpoint: String,
     otlp_protocol: String,
+    otlp_timeout: Option<Duration>,
+    export_interval: Option<Duration>,
+    export_timeout: Option<Duration>,
     metrics_include: Vec<String>,
     metrics_exclude: Vec<String>,
     once: bool,
@@ -314,6 +317,7 @@ impl Config {
         let collection = file_cfg.collection.unwrap_or_default();
         let export = file_cfg.export.unwrap_or_default();
         let otlp = export.otlp.unwrap_or_default();
+        let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
 
         let otlp_endpoint = otlp
@@ -333,6 +337,9 @@ impl Config {
             poll_interval: Duration::from_secs(collection.poll_interval_secs.unwrap_or(10).max(1)),
             otlp_endpoint,
             otlp_protocol,
+            otlp_timeout: otlp.timeout_secs.map(Duration::from_secs),
+            export_interval: batch.interval_secs.map(Duration::from_secs),
+            export_timeout: batch.timeout_secs.map(Duration::from_secs),
             metrics_include: metrics
                 .include
                 .unwrap_or_else(|| vec!["system.systemd.".to_string()]),
@@ -358,9 +365,9 @@ fn run() -> Result<()> {
         otlp_protocol: cfg.otlp_protocol.clone(),
         otlp_headers: BTreeMap::new(),
         otlp_compression: None,
-        otlp_timeout: None,
-        export_interval: None,
-        export_timeout: None,
+        otlp_timeout: cfg.otlp_timeout,
+        export_interval: cfg.export_interval,
+        export_timeout: cfg.export_timeout,
     })?;
     let meter = opentelemetry::global::meter("ojo-systemd");
     let instruments = Instruments::new(&meter);
@@ -427,12 +434,20 @@ struct CollectionSection {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct ExportSection {
     otlp: Option<OtlpSection>,
+    batch: Option<BatchSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct OtlpSection {
     endpoint: Option<String>,
     protocol: Option<String>,
+    timeout_secs: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct BatchSection {
+    interval_secs: Option<u64>,
+    timeout_secs: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
