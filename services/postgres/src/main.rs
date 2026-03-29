@@ -4,7 +4,7 @@ use host_collectors::{
 };
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
 use std::path::Path;
@@ -76,7 +76,7 @@ pub(crate) struct PostgresConfig {
     pub(crate) uri: Option<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub(crate) struct PostgresSnapshot {
     pub(crate) available: bool,
     pub(crate) up: bool,
@@ -188,7 +188,13 @@ impl Instruments {
 }
 
 fn run() -> Result<()> {
+    let dump_snapshot = env::args().any(|arg| arg == "--dump-snapshot");
     let cfg = Config::load()?;
+    if dump_snapshot {
+        let snapshot = platform::collect_snapshot(&cfg.postgres);
+        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        return Ok(());
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),

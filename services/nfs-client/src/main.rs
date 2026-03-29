@@ -4,7 +4,7 @@ use host_collectors::{
 };
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
 use std::path::Path;
@@ -75,7 +75,7 @@ pub(crate) struct NfsClientConfig {
     pub(crate) executable: Option<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub(crate) struct NfsClientSnapshot {
     pub(crate) available: bool,
     pub(crate) mounts: u64,
@@ -240,7 +240,13 @@ fn maybe_sleep_until_next_poll(
 }
 
 fn run() -> Result<()> {
+    let dump_snapshot = env::args().any(|arg| arg == "--dump-snapshot");
     let cfg = Config::load()?;
+    if dump_snapshot {
+        let snapshot = platform::collect_snapshot(&cfg.nfs_client);
+        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        return Ok(());
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
