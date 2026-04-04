@@ -1,6 +1,6 @@
 <div align="center">
 
-# Ojo
+# Ojo - Lightweight OTel Collector
 
   <img src="assets/circle.png" alt="Ojo icon" width="150" />
 
