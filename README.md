@@ -1,4 +1,27 @@
-# Ojo — OpenTelemetry Host Metrics Agent
+<div align="center">
+
+# Ojo
+
+  <img src="assets/circle.png" alt="Ojo icon" width="150" />
+
+  <p>
+    <img src="https://img.shields.io/badge/Language-Rust-1f2937?style=flat-square&logo=rust&logoColor=white" alt="Language" />
+    <img src="https://img.shields.io/badge/Telemetry-OpenTelemetry%20OTLP-0f766e?style=flat-square" alt="Telemetry" />
+    <img src="https://img.shields.io/badge/Dashboards-Grafana-0ea5e9?style=flat-square&logo=grafana&logoColor=white" alt="Dashboards" />
+    <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS-7c3aed?style=flat-square" alt="Services" />
+  </p>
+  <p>
+    <a href="DEPLOYMENT.md">
+      <img src="https://img.shields.io/badge/🚀%20Deploy-Setup%20Guide-0ea5e9?style=flat-square&logo=docker&logoColor=white" alt="Deploy" />
+    </a>
+    <a href="#quick-start">
+      <img src="https://img.shields.io/badge/⚡%20Run-Quick%20Start-16a34a?style=flat-square&logo=rust&logoColor=white" alt="Quick Start" />
+    </a>
+    <a href="grafana/windows.json">
+      <img src="https://img.shields.io/badge/📊%20Grafana-Windows%20Dashboard-f59e0b?style=flat-square" alt="Grafana" />
+    </a>
+  </p>
+</div>
 
 Ojo is a lightweight host metrics agent written in Rust that collects system and process metrics and exports them via OpenTelemetry OTLP.
 
