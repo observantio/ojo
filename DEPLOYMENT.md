@@ -4,44 +4,152 @@
 
 Releases are published via `.github/workflows/ci.yml` on `v*` tag push or manual dispatch.
 
-## OpenTelemetry Collector Requirement
+---
 
-Before running `ojo` or sidecars, ensure an OpenTelemetry Collector is running and reachable from your agent config (`export.otlp.endpoint`).
+# OpenTelemetry Collector (Required)
 
-If you want to run one quickly with Docker:
+Observantio requires a **host-level OpenTelemetry Collector** to properly collect system metrics (CPU, memory, disk, etc).
 
-```bash
-export MIMIR_OTLP_TOKEN="<token from watchdog>"
+⚠️ Running the collector in Docker will **not capture host metrics correctly** unless heavily modified.
+Use the provided script instead.
 
-docker run --rm -it \
-  -p 4355:4355 \
-  -p 4356:4356 \
-  -v $(pwd)/otel.yaml:/etc/otelcol-contrib/config.yaml \
-  -e MIMIR_OTLP_TOKEN=$MIMIR_OTLP_TOKEN \
-  otel/opentelemetry-collector-contrib:latest \
-  --config /etc/otelcol-contrib/config.yaml
+---
+
+# Running the OpenTelemetry Collector for Observantio
+
+## What it does
+
+`run_otel_collector.sh`:
+
+* Installs `otelcol-contrib` if not present
+* Runs it directly on the host
+* Loads configuration from `root`
+* Ensures proper access to host-level telemetry
+
+---
+
+## Configuration
+
+Default expected config location:
+
+```
+otel.yaml (assuming at root)
 ```
 
-If you have `otelcol-contrib` installed locally, you can run it directly:
+You can override this via the `-c` flag.
+
+---
+
+## Get the OTLP Token
+
+From Watchdog:
+
+* Copy the **OTLP token** (not tenant key)
+* Token is shown once → regenerate if lost
+
+---
+
+## Run the Collector
+
+From the repository root:
 
 ```bash
-export MIMIR_OTLP_TOKEN="<token from watchdog>"
-sudo otelcol-contrib --config otel.yaml
+sudo bash run_otel_collector.sh -t <MIMIR_OTLP_TOKEN> -c <CONFIG_PATH>
 ```
 
-If you prefer Docker and your Docker daemon requires elevated privileges, use:
+### Example
 
 ```bash
-export MIMIR_OTLP_TOKEN="<token from watchdog>"
-
-sudo docker run --rm -it \
-  -p 4355:4355 \
-  -p 4356:4356 \
-  -v $(pwd)/otel.yaml:/etc/otelcol-contrib/config.yaml \
-  -e MIMIR_OTLP_TOKEN=$MIMIR_OTLP_TOKEN \
-  otel/opentelemetry-collector-contrib:latest \
-  --config /etc/otelcol-contrib/config.yaml
+sudo bash otel/run_otel_collector.sh \
+  -t bo_xxxxxxxxxxxxxxxxx \
+  -c otel.yaml
 ```
+
+---
+
+## How it works internally
+
+The script ensures `otelcol-contrib` is available, then runs:
+
+```bash
+otelcol-contrib --config "$CONFIG_FILE"
+```
+
+Running on the host allows:
+
+* Full access to `/proc`, `/sys`
+* Accurate CPU, memory, disk metrics
+* Proper integration with `ojo` collectors
+
+
+## Configure Collector → Watchdog (Mimir Endpoint)
+
+Ensure your OpenTelemetry Collector is pointing to the correct Watchdog (Mimir) endpoint.
+
+### Example
+
+```yaml
+endpoint: "http://localhost:4320/mimir/api/v1/push"
+```
+
+---
+
+## Choosing the Correct Endpoint
+
+Use the appropriate host depending on your setup:
+
+### Local (Linux host)
+
+```yaml
+endpoint: "http://localhost:4320/mimir/api/v1/push"
+```
+
+### Docker (Windows / Mac)
+
+```yaml
+endpoint: "http://host.docker.internal:4320/mimir/api/v1/push"
+```
+
+### Remote Server
+
+```yaml
+endpoint: "http://<SERVER_IP_OR_DNS>:4320/mimir/api/v1/push"
+```
+
+* Ensure port `4320` is reachable (firewall / security groups)
+
+### Kubernetes
+
+```yaml
+endpoint: "http://<mimir-service-name>:4320/mimir/api/v1/push"
+```
+
+* Use the internal service DNS
+* Example: `mimir.monitoring.svc.cluster.local`
+
+---
+
+## Key Notes
+
+* The endpoint **must be reachable from the collector runtime**
+* `host.docker.internal` works on:
+
+  * Docker Desktop (Windows/Mac)
+  * ❌ Not reliable on native Linux Docker
+* If running collector on host → use `localhost`
+* If running collector in container → ensure correct networking
+
+---
+
+## Quick Debug
+
+```bash
+curl http://localhost:4320/ready
+```
+
+* Should return `ready` (or HTTP 200)
+
+
 
 ### Artifacts built on every release
 
@@ -89,6 +197,7 @@ chmod +x ojo-docker
 ## Configuration Guide: linux.yaml and docker.yaml
 
 This section focuses on practical tuning for label/cardinality control.
+Ensure you point the export to your otel collector, if it is not running or connection is not made, ojo will say it is not connected and keep a fixed `QUEUE` buffer until the collector is connected.
 
 ### Configure `linux.yaml` (core `ojo` agent)
 

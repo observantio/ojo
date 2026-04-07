@@ -44,3 +44,11 @@ service:
   telemetry:
     logs:
       level: debug
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8889
