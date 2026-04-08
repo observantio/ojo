@@ -3,28 +3,40 @@ service:
   instance_id: linux-0001
 
 collection:
+  # Poll interval for snapshot collection.
   poll_interval_secs: 5
+  # Collect per-process metrics in addition to host metrics.
   include_process_metrics: true
+  # Process label controls (higher cardinality when enabled).
   process_include_pid_label: true
   process_include_command_label: true
   process_include_state_label: true
+  # Number of failed export intervals to remember before dropping oldest.
+  offline_buffer_intervals: 5
 
 export:
   otlp:
     endpoint: "http://127.0.0.1:4355/v1/metrics"
-    compression: gzip
     protocol: http/protobuf
+    # Supported: gzip
+    compression: gzip
     timeout_secs: 10
   batch:
     interval_secs: 5
     timeout_secs: 10
 
-# Optional metric selector. If omitted, Ojo exports all metrics.
+storage:
+  archive_enabled: true
+  archive_dir: data/ojo
+  archive_max_file_bytes: 67108864
+  archive_retain_files: 8
+  archive_file_stem: ojo-snapshots
+
 # Rules:
 # - include/exclude are prefix-based
 # - exclude wins over include
 # - include omitted/empty means include all
-# Example:
-# metrics:
-#   include: [system., process.]
-#   exclude: [process.linux.]
+
+metrics:
+  include: [system., process.]
+  exclude: []

@@ -1,3 +1,4 @@
+#[cfg(any(target_os = "windows", test))]
 use std::collections::BTreeMap;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -5,7 +6,7 @@ use tracing::warn;
 
 const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg(any(target_os = "windows", test))]
 pub(super) fn parse_key_value_lines(text: &str) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
     for line in text.lines() {

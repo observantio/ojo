@@ -21,3 +21,10 @@ export:
 metrics:
   include: [system.gpu.]
   exclude: []
+
+storage:
+  archive_enabled: true
+  archive_dir: services/gpu/data
+  archive_max_file_bytes: 67108864
+  archive_retain_files: 8
+  archive_file_stem: gpu-snapshots

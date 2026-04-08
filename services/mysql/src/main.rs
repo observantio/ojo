@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use host_collectors::{
-    default_protocol_for_endpoint, init_meter_provider, OtlpSettings, PrefixFilter,
+    default_protocol_for_endpoint, init_meter_provider, ArchiveStorageConfig, JsonArchiveWriter,
+    OtlpSettings, PrefixFilter,
 };
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
@@ -67,11 +68,11 @@ struct Config {
     metrics_include: Vec<String>,
     metrics_exclude: Vec<String>,
     mysql: MysqlConfig,
+    archive: ArchiveStorageConfig,
     once: bool,
 }
 
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(coverage, allow(dead_code))]
 pub(crate) struct MysqlConfig {
     pub(crate) executable: String,
     pub(crate) host: Option<String>,
@@ -296,6 +297,7 @@ fn run() -> Result<()> {
     let instruments = Instruments::new(&meter);
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
     let mut prev = PrevState::default();
+    let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
 
     let running = Arc::new(AtomicBool::new(true));
     #[cfg(test)]
@@ -313,6 +315,9 @@ fn run() -> Result<()> {
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.mysql);
+        if let Ok(raw) = serde_json::to_value(&snapshot) {
+            archive.write_json_line(&raw);
+        }
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
@@ -446,6 +451,7 @@ struct FileConfig {
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
     mysql: Option<MysqlSection>,
+    storage: Option<StorageSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -496,6 +502,15 @@ struct MetricSection {
     exclude: Option<Vec<String>>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StorageSection {
+    archive_enabled: Option<bool>,
+    archive_dir: Option<String>,
+    archive_max_file_bytes: Option<u64>,
+    archive_retain_files: Option<usize>,
+    archive_file_stem: Option<String>,
+}
+
 impl Config {
     fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
@@ -530,6 +545,7 @@ impl Config {
         let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
         let mysql = file_cfg.mysql.unwrap_or_default();
+        let storage = file_cfg.storage.unwrap_or_default();
 
         let otlp_endpoint = otlp
             .endpoint
@@ -564,6 +580,17 @@ impl Config {
                 user: mysql.user.filter(|v| !v.trim().is_empty()),
                 password: mysql.password.filter(|v| !v.trim().is_empty()),
                 database: mysql.database.filter(|v| !v.trim().is_empty()),
+            },
+            archive: ArchiveStorageConfig {
+                enabled: storage.archive_enabled.unwrap_or(true),
+                archive_dir: storage
+                    .archive_dir
+                    .unwrap_or_else(|| "services/mysql/data".to_string()),
+                max_file_bytes: storage.archive_max_file_bytes.unwrap_or(64 * 1024 * 1024),
+                retain_files: storage.archive_retain_files.unwrap_or(8),
+                file_stem: storage
+                    .archive_file_stem
+                    .unwrap_or_else(|| "mysql-snapshots".to_string()),
             },
             once,
         })

@@ -4,7 +4,7 @@ use crate::{
     record_f64, record_snapshot, record_u64, resolve_default_config_path, run, sleep_until, Config,
     ExportState, FlushEvent, Instruments, SensorSample, SensorSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -366,6 +366,13 @@ fn record_snapshot_handles_available_without_voltages() {
         export_timeout: None,
         metrics_include: vec!["system.sensor.".to_string()],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "sensor-snapshots".to_string(),
+        },
         once: true,
     };
     let snapshot = SensorSnapshot {

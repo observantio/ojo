@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use host_collectors::ArchiveStorageConfig;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::env;
@@ -14,6 +15,7 @@ pub struct Config {
     pub process_include_pid_label: bool,
     pub process_include_command_label: bool,
     pub process_include_state_label: bool,
+    pub offline_buffer_intervals: usize,
     pub otlp_endpoint: String,
     pub otlp_protocol: String,
     pub otlp_headers: BTreeMap<String, String>,
@@ -23,6 +25,7 @@ pub struct Config {
     pub export_timeout: Option<Duration>,
     pub metrics_include: Vec<String>,
     pub metrics_exclude: Vec<String>,
+    pub archive: ArchiveStorageConfig,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -31,6 +34,7 @@ struct FileConfig {
     collection: Option<CollectionSection>,
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
+    storage: Option<StorageSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -46,6 +50,7 @@ struct CollectionSection {
     process_include_pid_label: Option<bool>,
     process_include_command_label: Option<bool>,
     process_include_state_label: Option<bool>,
+    offline_buffer_intervals: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -77,6 +82,15 @@ struct MetricSection {
     exclude: Option<Vec<String>>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StorageSection {
+    archive_enabled: Option<bool>,
+    archive_dir: Option<String>,
+    archive_max_file_bytes: Option<u64>,
+    archive_retain_files: Option<usize>,
+    archive_file_stem: Option<String>,
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
         let args = env::args().collect::<Vec<_>>();
@@ -104,6 +118,7 @@ impl Config {
         let otlp = export.otlp.unwrap_or_default();
         let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
+        let storage = file_cfg.storage.unwrap_or_default();
 
         let mut otlp_headers = otlp.headers.unwrap_or_default();
         if let Some(token) = otlp.token {
@@ -162,6 +177,15 @@ impl Config {
                 .process_include_state_label
                 .or_else(|| parse_bool_env("PROC_PROCESS_INCLUDE_STATE_LABEL"))
                 .unwrap_or(true),
+            offline_buffer_intervals: collection
+                .offline_buffer_intervals
+                .or_else(|| {
+                    env::var("PROC_OFFLINE_BUFFER_INTERVALS")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                })
+                .unwrap_or(crate::buffers::OFFLINE_BUFFER_INTERVALS)
+                .max(1),
             otlp_endpoint,
             otlp_protocol,
             otlp_headers,
@@ -188,6 +212,17 @@ impl Config {
             }),
             metrics_include: metrics.include.unwrap_or_default(),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
+            archive: ArchiveStorageConfig {
+                enabled: storage.archive_enabled.unwrap_or(true),
+                archive_dir: storage
+                    .archive_dir
+                    .unwrap_or_else(|| "data/ojo".to_string()),
+                max_file_bytes: storage.archive_max_file_bytes.unwrap_or(64 * 1024 * 1024),
+                retain_files: storage.archive_retain_files.unwrap_or(8),
+                file_stem: storage
+                    .archive_file_stem
+                    .unwrap_or_else(|| "ojo-snapshots".to_string()),
+            },
         }
     }
 

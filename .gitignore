@@ -2,3 +2,7 @@ target/
 target-qa/
 Cargo.lock
 logs/
+
+# Service runtime archives
+services/*/data/
+data/ojo/

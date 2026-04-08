@@ -6,7 +6,34 @@ pub(crate) fn collect_snapshot() -> SystemdSnapshot {
         &[
             "-NoProfile",
             "-Command",
-            "$s=Get-Service;\nWrite-Output \"total=$($s.Count)\";\nWrite-Output \"active=$(($s | Where-Object {$_.Status -eq 'Running'}).Count)\";\nWrite-Output \"inactive=$(($s | Where-Object {$_.Status -eq 'Stopped'}).Count)\";\nWrite-Output \"failed=0\";\nWrite-Output \"activating=$(($s | Where-Object {$_.Status -eq 'StartPending'}).Count)\";\nWrite-Output \"deactivating=$(($s | Where-Object {$_.Status -eq 'StopPending'}).Count)\";",
+            "$s=@(Get-CimInstance Win32_Service -ErrorAction Stop);\n\
+             $total=$s.Count;\n\
+             $running=@($s | Where-Object { $_.State -eq 'Running' }).Count;\n\
+             $stopped=@($s | Where-Object { $_.State -eq 'Stopped' }).Count;\n\
+             $paused=@($s | Where-Object { $_.State -eq 'Paused' }).Count;\n\
+             $startPending=@($s | Where-Object { $_.State -eq 'Start Pending' }).Count;\n\
+             $continuePending=@($s | Where-Object { $_.State -eq 'Continue Pending' }).Count;\n\
+             $stopPending=@($s | Where-Object { $_.State -eq 'Stop Pending' }).Count;\n\
+             $pausePending=@($s | Where-Object { $_.State -eq 'Pause Pending' }).Count;\n\
+             $failed=@($s | Where-Object {\n\
+                 $_.State -eq 'Stopped' -and\n\
+                 $_.ExitCode -ne 0 -and\n\
+                 $_.StartMode -ne 'Disabled'\n\
+             }).Count;\n\
+             $active=$running;\n\
+             $inactive=$stopped + $paused;\n\
+             $activating=$startPending + $continuePending;\n\
+             $deactivating=$stopPending + $pausePending;\n\
+             $maintenance=$paused;\n\
+             $jobsRunning=$activating + $deactivating;\n\
+             Write-Output \"total=$total\";\n\
+             Write-Output \"active=$active\";\n\
+             Write-Output \"inactive=$inactive\";\n\
+             Write-Output \"failed=$failed\";\n\
+             Write-Output \"activating=$activating\";\n\
+             Write-Output \"deactivating=$deactivating\";\n\
+             Write-Output \"maintenance=$maintenance\";\n\
+             Write-Output \"jobs_running=$jobsRunning\";",
         ],
     );
 
@@ -33,9 +60,9 @@ pub(crate) fn collect_snapshot() -> SystemdSnapshot {
         units_deactivating: *map.get("deactivating").unwrap_or(&0),
         units_reloading: 0,
         units_not_found: 0,
-        units_maintenance: 0,
+        units_maintenance: *map.get("maintenance").unwrap_or(&0),
         jobs_queued: 0,
-        jobs_running: 0,
+        jobs_running: *map.get("jobs_running").unwrap_or(&0),
         failed_units_reported: *map.get("failed").unwrap_or(&0),
     }
 }

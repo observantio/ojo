@@ -1,5 +1,6 @@
 use super::init_meter_provider;
 use crate::config::Config;
+use host_collectors::ArchiveStorageConfig;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ fn test_config(protocol: &str, endpoint: &str) -> Config {
         process_include_pid_label: false,
         process_include_command_label: true,
         process_include_state_label: true,
+        offline_buffer_intervals: 5,
         otlp_endpoint: endpoint.to_string(),
         otlp_protocol: protocol.to_string(),
         otlp_headers: BTreeMap::new(),
@@ -21,6 +23,13 @@ fn test_config(protocol: &str, endpoint: &str) -> Config {
         export_timeout: None,
         metrics_include: vec![],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "ojo-snapshots".to_string(),
+        },
     }
 }
 

@@ -3,7 +3,7 @@ use crate::{
     record_snapshot, record_u64, resolve_default_config_path, run, saturating_rate, Config,
     Instruments, PrevState, RedisConfig, RedisRates, RedisSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -378,6 +378,13 @@ fn config_shape_covers_all_fields() {
             port: None,
             username: None,
             password: None,
+        },
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "redis-snapshots".to_string(),
         },
         once: true,
     };
