@@ -174,6 +174,8 @@ curl http://localhost:4320/ready
 | `ojo-nfs-client-win-{version}.exe` | `x86_64-pc-windows-gnu` |
 | `ojo-systrace-unix-{version}` | `x86_64-unknown-linux-gnu` |
 | `ojo-systrace-win-{version}.exe` | `x86_64-pc-windows-gnu` |
+| `ojo-syslog-unix-{version}` | `x86_64-unknown-linux-gnu` |
+| `ojo-syslog-win-{version}.exe` | `x86_64-pc-windows-gnu` |
 
 ### Download and run - Linux
 

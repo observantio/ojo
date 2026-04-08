@@ -18,6 +18,7 @@ members = [
   "services/nginx",
   "services/systemd",
   "services/systrace",
+  "services/syslog",
 ]
 
 [dependencies]
