@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 use std::env;
 #[cfg(test)]
 use std::fs;
+use std::fs::{self as stdfs, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -38,6 +40,17 @@ struct Config {
     trace_enabled: bool,
     trace_include: Vec<String>,
     trace_exclude: Vec<String>,
+    archive_enabled: bool,
+    archive_dir: String,
+    archive_max_file_bytes: u64,
+    archive_retain_files: usize,
+    trace_stream_max_lines: usize,
+    privileged_expected: bool,
+    ebpf_enabled: bool,
+    uprobes_enabled: bool,
+    usdt_enabled: bool,
+    runtime_probe_profiles: Vec<String>,
+    validation_dataset_dir: Option<String>,
     once: bool,
 }
 
@@ -148,6 +161,26 @@ struct Instruments {
     kernel_stack_samples_total: Gauge<u64>,
     user_stack_samples_total: Gauge<u64>,
     collection_errors: Gauge<u64>,
+    enabled_events_inventory_total: Gauge<u64>,
+    high_value_categories_targeted: Gauge<u64>,
+    high_value_categories_enabled: Gauge<u64>,
+    trace_stream_lines_captured_total: Gauge<u64>,
+    trace_stream_continuity: Gauge<u64>,
+    trace_dropped_events_total: Gauge<u64>,
+    trace_overrun_events_total: Gauge<u64>,
+    syscall_enter_enabled: Gauge<u64>,
+    syscall_exit_enabled: Gauge<u64>,
+    privileged_mode: Gauge<u64>,
+    ebpf_available: Gauge<u64>,
+    uprobes_available: Gauge<u64>,
+    usdt_available: Gauge<u64>,
+    symbolizer_available: Gauge<u64>,
+    archive_writer_healthy: Gauge<u64>,
+    archive_events_total: Gauge<u64>,
+    archive_bytes_total: Gauge<u64>,
+    runtime_probes_configured_total: Gauge<u64>,
+    validation_datasets_total: Gauge<u64>,
+    validation_last_success: Gauge<u64>,
 }
 
 impl Instruments {
@@ -225,6 +258,58 @@ impl Instruments {
                 .u64_gauge("system.systrace.trace.user_stack_samples.total")
                 .build(),
             collection_errors: meter.u64_gauge("system.systrace.collection.errors").build(),
+            enabled_events_inventory_total: meter
+                .u64_gauge("system.systrace.events.enabled_inventory.total")
+                .build(),
+            high_value_categories_targeted: meter
+                .u64_gauge("system.systrace.coverage.high_value_categories.targeted")
+                .build(),
+            high_value_categories_enabled: meter
+                .u64_gauge("system.systrace.coverage.high_value_categories.enabled")
+                .build(),
+            trace_stream_lines_captured_total: meter
+                .u64_gauge("system.systrace.trace.stream.lines_captured.total")
+                .build(),
+            trace_stream_continuity: meter
+                .u64_gauge("system.systrace.trace.stream.continuity")
+                .build(),
+            trace_dropped_events_total: meter
+                .u64_gauge("system.systrace.trace.dropped_events.total")
+                .build(),
+            trace_overrun_events_total: meter
+                .u64_gauge("system.systrace.trace.overrun_events.total")
+                .build(),
+            syscall_enter_enabled: meter
+                .u64_gauge("system.systrace.syscalls.enter.enabled")
+                .build(),
+            syscall_exit_enabled: meter
+                .u64_gauge("system.systrace.syscalls.exit.enabled")
+                .build(),
+            privileged_mode: meter.u64_gauge("system.systrace.privileged.mode").build(),
+            ebpf_available: meter.u64_gauge("system.systrace.ebpf.available").build(),
+            uprobes_available: meter.u64_gauge("system.systrace.uprobes.available").build(),
+            usdt_available: meter.u64_gauge("system.systrace.usdt.available").build(),
+            symbolizer_available: meter
+                .u64_gauge("system.systrace.symbolizer.available")
+                .build(),
+            archive_writer_healthy: meter
+                .u64_gauge("system.systrace.archive.writer.healthy")
+                .build(),
+            archive_events_total: meter
+                .u64_gauge("system.systrace.archive.events.total")
+                .build(),
+            archive_bytes_total: meter
+                .u64_gauge("system.systrace.archive.bytes.total")
+                .build(),
+            runtime_probes_configured_total: meter
+                .u64_gauge("system.systrace.runtime.probes.configured.total")
+                .build(),
+            validation_datasets_total: meter
+                .u64_gauge("system.systrace.validation.datasets.total")
+                .build(),
+            validation_last_success: meter
+                .u64_gauge("system.systrace.validation.last_success")
+                .build(),
         }
     }
 }
@@ -260,6 +345,172 @@ pub(crate) struct SystraceSnapshot {
     pub(crate) kernel_stack_samples_total: u64,
     pub(crate) user_stack_samples_total: u64,
     pub(crate) collection_errors: u64,
+    pub(crate) enabled_events_inventory_total: u64,
+    pub(crate) enabled_events_inventory_sample: Vec<String>,
+    pub(crate) high_value_categories_targeted: u64,
+    pub(crate) high_value_categories_enabled: u64,
+    pub(crate) trace_stream_lines_captured_total: u64,
+    pub(crate) trace_stream_continuity: bool,
+    pub(crate) trace_dropped_events_total: u64,
+    pub(crate) trace_overrun_events_total: u64,
+    pub(crate) syscall_enter_enabled: bool,
+    pub(crate) syscall_exit_enabled: bool,
+    pub(crate) privileged_mode: bool,
+    pub(crate) ebpf_available: bool,
+    pub(crate) uprobes_available: bool,
+    pub(crate) usdt_available: bool,
+    pub(crate) symbolizer_available: bool,
+    pub(crate) archive_writer_healthy: bool,
+    pub(crate) archive_events_total: u64,
+    pub(crate) archive_bytes_total: u64,
+    pub(crate) runtime_probes_configured_total: u64,
+    pub(crate) validation_datasets_total: u64,
+    pub(crate) validation_last_success: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ArchivePipeline {
+    enabled: bool,
+    dir: String,
+    max_file_bytes: u64,
+    retain_files: usize,
+    total_events: u64,
+    total_bytes: u64,
+    healthy: bool,
+    last_error: Option<String>,
+}
+
+impl ArchivePipeline {
+    fn from_config(cfg: &Config) -> Self {
+        Self {
+            enabled: cfg.archive_enabled,
+            dir: cfg.archive_dir.clone(),
+            max_file_bytes: cfg.archive_max_file_bytes,
+            retain_files: cfg.archive_retain_files,
+            total_events: 0,
+            total_bytes: 0,
+            healthy: true,
+            last_error: None,
+        }
+    }
+
+    fn write_snapshot(&mut self, snapshot: &SystraceSnapshot) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Err(err) = self.write_snapshot_impl(snapshot) {
+            self.healthy = false;
+            self.last_error = Some(err.to_string());
+            warn!(error = %err, "archive pipeline write failed");
+        } else {
+            self.healthy = true;
+            self.last_error = None;
+        }
+    }
+
+    fn write_snapshot_impl(&mut self, snapshot: &SystraceSnapshot) -> Result<()> {
+        stdfs::create_dir_all(&self.dir)
+            .with_context(|| format!("failed to create archive dir '{}'", self.dir))?;
+
+        let snapshot_path = format!("{}/systrace-snapshots.ndjson", self.dir);
+        let trace_path = format!("{}/systrace-trace-lines.ndjson", self.dir);
+        self.rotate_if_needed(&snapshot_path)?;
+        self.rotate_if_needed(&trace_path)?;
+
+        let mut snapshot_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&snapshot_path)
+            .with_context(|| format!("failed to open snapshot archive '{}'", snapshot_path))?;
+        let json = serde_json::to_string(snapshot)?;
+        snapshot_file
+            .write_all(json.as_bytes())
+            .context("failed to write snapshot JSON")?;
+        snapshot_file
+            .write_all(b"\n")
+            .context("failed to write snapshot newline")?;
+        self.total_events = self.total_events.saturating_add(1);
+        self.total_bytes = self
+            .total_bytes
+            .saturating_add((json.len() as u64).saturating_add(1));
+
+        if !snapshot.trace_sample.is_empty() {
+            let mut trace_file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&trace_path)
+                .with_context(|| format!("failed to open trace archive '{}'", trace_path))?;
+            for line in &snapshot.trace_sample {
+                let entry = serde_json::json!({
+                    "line": line,
+                    "system_calls_source": snapshot.system_calls_source,
+                    "processes_total": snapshot.processes_total,
+                    "threads_total": snapshot.threads_total,
+                });
+                let raw = serde_json::to_string(&entry)?;
+                trace_file
+                    .write_all(raw.as_bytes())
+                    .context("failed to write trace line entry")?;
+                trace_file
+                    .write_all(b"\n")
+                    .context("failed to write trace line newline")?;
+                self.total_events = self.total_events.saturating_add(1);
+                self.total_bytes = self
+                    .total_bytes
+                    .saturating_add((raw.len() as u64).saturating_add(1));
+            }
+        }
+        self.prune_rotated_files()?;
+        Ok(())
+    }
+
+    fn rotate_if_needed(&self, path: &str) -> Result<()> {
+        let metadata = match stdfs::metadata(path) {
+            Ok(md) => md,
+            Err(_) => return Ok(()),
+        };
+        if metadata.len() < self.max_file_bytes {
+            return Ok(());
+        }
+
+        for idx in (1..=self.retain_files).rev() {
+            let src = format!("{}.{}", path, idx);
+            let dst = format!("{}.{}", path, idx + 1);
+            if Path::new(&src).exists() {
+                let _ = stdfs::rename(&src, &dst);
+            }
+        }
+        let first = format!("{}.1", path);
+        let _ = stdfs::rename(path, first);
+        Ok(())
+    }
+
+    fn prune_rotated_files(&self) -> Result<()> {
+        let snapshot_prefix = format!("{}/systrace-snapshots.ndjson", self.dir);
+        let trace_prefix = format!("{}/systrace-trace-lines.ndjson", self.dir);
+        self.prune_prefix(&snapshot_prefix)?;
+        self.prune_prefix(&trace_prefix)?;
+        Ok(())
+    }
+
+    fn prune_prefix(&self, prefix: &str) -> Result<()> {
+        if self.retain_files == 0 {
+            return Ok(());
+        }
+        let cutoff = self.retain_files + 1;
+        let mut idx = cutoff + 1;
+        loop {
+            let candidate = format!("{}.{}", prefix, idx);
+            if !Path::new(&candidate).exists() {
+                break;
+            }
+            stdfs::remove_file(&candidate)
+                .with_context(|| format!("failed to remove rotated archive '{}'", candidate))?;
+            idx += 1;
+        }
+        Ok(())
+    }
 }
 
 fn bool_as_u64(value: bool) -> u64 {
@@ -445,6 +696,126 @@ fn record_snapshot(instruments: &Instruments, filter: &PrefixFilter, snapshot: &
         "system.systrace.collection.errors",
         snapshot.collection_errors,
     );
+    record_u64(
+        &instruments.enabled_events_inventory_total,
+        filter,
+        "system.systrace.events.enabled_inventory.total",
+        snapshot.enabled_events_inventory_total,
+    );
+    record_u64(
+        &instruments.high_value_categories_targeted,
+        filter,
+        "system.systrace.coverage.high_value_categories.targeted",
+        snapshot.high_value_categories_targeted,
+    );
+    record_u64(
+        &instruments.high_value_categories_enabled,
+        filter,
+        "system.systrace.coverage.high_value_categories.enabled",
+        snapshot.high_value_categories_enabled,
+    );
+    record_u64(
+        &instruments.trace_stream_lines_captured_total,
+        filter,
+        "system.systrace.trace.stream.lines_captured.total",
+        snapshot.trace_stream_lines_captured_total,
+    );
+    record_u64(
+        &instruments.trace_stream_continuity,
+        filter,
+        "system.systrace.trace.stream.continuity",
+        bool_as_u64(snapshot.trace_stream_continuity),
+    );
+    record_u64(
+        &instruments.trace_dropped_events_total,
+        filter,
+        "system.systrace.trace.dropped_events.total",
+        snapshot.trace_dropped_events_total,
+    );
+    record_u64(
+        &instruments.trace_overrun_events_total,
+        filter,
+        "system.systrace.trace.overrun_events.total",
+        snapshot.trace_overrun_events_total,
+    );
+    record_u64(
+        &instruments.syscall_enter_enabled,
+        filter,
+        "system.systrace.syscalls.enter.enabled",
+        bool_as_u64(snapshot.syscall_enter_enabled),
+    );
+    record_u64(
+        &instruments.syscall_exit_enabled,
+        filter,
+        "system.systrace.syscalls.exit.enabled",
+        bool_as_u64(snapshot.syscall_exit_enabled),
+    );
+    record_u64(
+        &instruments.privileged_mode,
+        filter,
+        "system.systrace.privileged.mode",
+        bool_as_u64(snapshot.privileged_mode),
+    );
+    record_u64(
+        &instruments.ebpf_available,
+        filter,
+        "system.systrace.ebpf.available",
+        bool_as_u64(snapshot.ebpf_available),
+    );
+    record_u64(
+        &instruments.uprobes_available,
+        filter,
+        "system.systrace.uprobes.available",
+        bool_as_u64(snapshot.uprobes_available),
+    );
+    record_u64(
+        &instruments.usdt_available,
+        filter,
+        "system.systrace.usdt.available",
+        bool_as_u64(snapshot.usdt_available),
+    );
+    record_u64(
+        &instruments.symbolizer_available,
+        filter,
+        "system.systrace.symbolizer.available",
+        bool_as_u64(snapshot.symbolizer_available),
+    );
+    record_u64(
+        &instruments.archive_writer_healthy,
+        filter,
+        "system.systrace.archive.writer.healthy",
+        bool_as_u64(snapshot.archive_writer_healthy),
+    );
+    record_u64(
+        &instruments.archive_events_total,
+        filter,
+        "system.systrace.archive.events.total",
+        snapshot.archive_events_total,
+    );
+    record_u64(
+        &instruments.archive_bytes_total,
+        filter,
+        "system.systrace.archive.bytes.total",
+        snapshot.archive_bytes_total,
+    );
+    record_u64(
+        &instruments.runtime_probes_configured_total,
+        filter,
+        "system.systrace.runtime.probes.configured.total",
+        snapshot.runtime_probes_configured_total,
+    );
+    record_u64(
+        &instruments.validation_datasets_total,
+        filter,
+        "system.systrace.validation.datasets.total",
+        snapshot.validation_datasets_total,
+    );
+    record_u64(
+        &instruments.validation_last_success,
+        filter,
+        "system.systrace.validation.last_success",
+        bool_as_u64(snapshot.validation_last_success),
+    );
 }
 
 fn emit_trace_snapshot<T: Tracer>(
@@ -549,6 +920,74 @@ fn emit_trace_snapshot<T: Tracer>(
         "systrace.trace.user_stack_samples.total",
         snapshot.user_stack_samples_total as i64,
     ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.events.enabled_inventory.total",
+        snapshot.enabled_events_inventory_total as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.coverage.high_value_categories.targeted",
+        snapshot.high_value_categories_targeted as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.coverage.high_value_categories.enabled",
+        snapshot.high_value_categories_enabled as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.trace.stream.lines_captured.total",
+        snapshot.trace_stream_lines_captured_total as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.trace.stream.continuity",
+        snapshot.trace_stream_continuity,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.trace.dropped_events.total",
+        snapshot.trace_dropped_events_total as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.trace.overrun_events.total",
+        snapshot.trace_overrun_events_total as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.syscalls.enter.enabled",
+        snapshot.syscall_enter_enabled,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.syscalls.exit.enabled",
+        snapshot.syscall_exit_enabled,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.privileged.mode",
+        snapshot.privileged_mode,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.ebpf.available",
+        snapshot.ebpf_available,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.uprobes.available",
+        snapshot.uprobes_available,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.usdt.available",
+        snapshot.usdt_available,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.symbolizer.available",
+        snapshot.symbolizer_available,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.archive.writer.healthy",
+        snapshot.archive_writer_healthy,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.archive.events.total",
+        snapshot.archive_events_total as i64,
+    ));
+    root_span.set_attribute(KeyValue::new(
+        "systrace.archive.bytes.total",
+        snapshot.archive_bytes_total as i64,
+    ));
 
     let root_cx = opentelemetry::Context::current()
         .with_remote_span_context(root_span.span_context().clone());
@@ -578,8 +1017,20 @@ fn emit_trace_snapshot<T: Tracer>(
         "systrace.threads.total",
         snapshot.threads_total as i64,
     ));
-    let mut parent_cx = opentelemetry::Context::current()
-        .with_remote_span_context(summary.span_context().clone());
+    summary.set_attribute(KeyValue::new(
+        "systrace.events.enabled_inventory.total",
+        snapshot.enabled_events_inventory_total as i64,
+    ));
+    summary.set_attribute(KeyValue::new(
+        "systrace.trace.stream.lines_captured.total",
+        snapshot.trace_stream_lines_captured_total as i64,
+    ));
+    summary.set_attribute(KeyValue::new(
+        "systrace.trace.stream.continuity",
+        snapshot.trace_stream_continuity,
+    ));
+    let mut parent_cx =
+        opentelemetry::Context::current().with_remote_span_context(summary.span_context().clone());
     summary.end();
 
     let sampled_lines: Vec<&str> = snapshot
@@ -670,19 +1121,17 @@ fn parse_trace_line_seconds_token(line: &str) -> Option<f64> {
 
 #[cfg(test)]
 fn parse_trace_line_timestamp(line: &str) -> Option<std::time::SystemTime> {
-    let token = line
-        .split_whitespace()
-        .find_map(|part| {
-            let candidate = part.trim_end_matches(':');
-            if candidate.contains('.')
-                && candidate.chars().all(|ch| ch.is_ascii_digit() || ch == '.')
-                && candidate.chars().any(|ch| ch.is_ascii_digit())
-            {
-                Some(candidate)
-            } else {
-                None
-            }
-        })?;
+    let token = line.split_whitespace().find_map(|part| {
+        let candidate = part.trim_end_matches(':');
+        if candidate.contains('.')
+            && candidate.chars().all(|ch| ch.is_ascii_digit() || ch == '.')
+            && candidate.chars().any(|ch| ch.is_ascii_digit())
+        {
+            Some(candidate)
+        } else {
+            None
+        }
+    })?;
     let event_offset = parse_trace_line_seconds(token)?;
     let boot_time = uptime_boot_time()?;
     boot_time.checked_add(event_offset)
@@ -713,8 +1162,9 @@ fn parse_trace_line_seconds(value: &str) -> Option<Duration> {
 
 #[cfg(test)]
 fn uptime_boot_time() -> Option<std::time::SystemTime> {
-    let uptime = parse_trace_line_seconds(&fs::read_to_string("/proc/uptime").ok()?.split_whitespace().next()?)?;
-    std::time::SystemTime::now().checked_sub(uptime)
+    let contents = fs::read_to_string("/proc/uptime").ok()?;
+    let uptime = contents.split_whitespace().next()?;
+    std::time::SystemTime::now().checked_sub(parse_trace_line_seconds(uptime)?)
 }
 
 fn infer_platform_component(snapshot: &SystraceSnapshot) -> String {
@@ -891,6 +1341,57 @@ impl Config {
                 .include
                 .unwrap_or_else(|| vec!["systrace.".to_string()]),
             trace_exclude: traces.exclude.unwrap_or_default(),
+            archive_enabled: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_enabled.or(s.enabled))
+                .unwrap_or(true),
+            archive_dir: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_dir.clone())
+                .unwrap_or_else(|| "services/systrace/data".to_string()),
+            archive_max_file_bytes: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_max_file_bytes.or(s.max_file_bytes))
+                .unwrap_or(64 * 1024 * 1024),
+            archive_retain_files: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_retain_files.or(s.retain_files))
+                .unwrap_or(8),
+            trace_stream_max_lines: collection.trace_stream_max_lines.unwrap_or(2048).max(1)
+                as usize,
+            privileged_expected: file_cfg
+                .instrumentation
+                .as_ref()
+                .and_then(|i| i.privileged_expected)
+                .unwrap_or(true),
+            ebpf_enabled: file_cfg
+                .instrumentation
+                .as_ref()
+                .and_then(|i| i.ebpf_enabled)
+                .unwrap_or(true),
+            uprobes_enabled: file_cfg
+                .instrumentation
+                .as_ref()
+                .and_then(|i| i.uprobes_enabled)
+                .unwrap_or(true),
+            usdt_enabled: file_cfg
+                .instrumentation
+                .as_ref()
+                .and_then(|i| i.usdt_enabled)
+                .unwrap_or(true),
+            runtime_probe_profiles: file_cfg
+                .instrumentation
+                .as_ref()
+                .and_then(|i| i.runtime_probe_profiles.clone())
+                .unwrap_or_default(),
+            validation_dataset_dir: file_cfg
+                .validation
+                .as_ref()
+                .and_then(|v| v.dataset_dir.clone()),
             once,
         })
     }
@@ -960,13 +1461,19 @@ fn run() -> Result<()> {
     let metric_filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
     let trace_filter = PrefixFilter::new(cfg.trace_include.clone(), cfg.trace_exclude.clone());
     let mut export_state = ExportState::Pending;
+    let mut archive = ArchivePipeline::from_config(&cfg);
+
+    std::env::set_var(
+        "OJO_SYSTRACE_TRACE_STREAM_MAX_LINES",
+        cfg.trace_stream_max_lines.to_string(),
+    );
 
     let running = Arc::new(AtomicBool::new(true));
     ctrlc::set_handler(make_stop_handler(Arc::clone(&running)))?;
 
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
-        let snapshot = if cfg.trace_enabled {
+        let mut snapshot = if cfg.trace_enabled {
             let mut root_span = tracer.start("systrace.collect");
             let snapshot = platform::collect_snapshot();
             emit_trace_snapshot(&tracer, &mut root_span, &trace_filter, &snapshot);
@@ -975,6 +1482,33 @@ fn run() -> Result<()> {
         } else {
             platform::collect_snapshot()
         };
+
+        if !cfg.ebpf_enabled {
+            snapshot.ebpf_available = false;
+        }
+        if !cfg.uprobes_enabled {
+            snapshot.uprobes_available = false;
+        }
+        if !cfg.usdt_enabled {
+            snapshot.usdt_available = false;
+        }
+        snapshot.runtime_probes_configured_total = cfg.runtime_probe_profiles.len() as u64;
+        snapshot.validation_datasets_total = cfg
+            .validation_dataset_dir
+            .as_ref()
+            .and_then(|dir| stdfs::read_dir(dir).ok())
+            .map(|entries| entries.flatten().count() as u64)
+            .unwrap_or(0);
+        snapshot.validation_last_success = snapshot.validation_datasets_total > 0;
+
+        if cfg.privileged_expected && !snapshot.privileged_mode {
+            warn!("systrace configured for privileged mode but current process is unprivileged");
+        }
+
+        archive.write_snapshot(&snapshot);
+        snapshot.archive_writer_healthy = archive.healthy;
+        snapshot.archive_events_total = archive.total_events;
+        snapshot.archive_bytes_total = archive.total_bytes;
 
         record_snapshot(&instruments, &metric_filter, &snapshot);
         let _ = metric_provider.force_flush();
@@ -1025,6 +1559,9 @@ struct FileConfig {
     service: Option<ServiceSection>,
     collection: Option<CollectionSection>,
     export: Option<ExportSection>,
+    storage: Option<StorageSection>,
+    instrumentation: Option<InstrumentationSection>,
+    validation: Option<ValidationSection>,
     metrics: Option<MetricSection>,
     traces: Option<TraceSection>,
 }
@@ -1038,6 +1575,32 @@ struct ServiceSection {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct CollectionSection {
     poll_interval_secs: Option<u64>,
+    trace_stream_max_lines: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StorageSection {
+    archive_enabled: Option<bool>,
+    enabled: Option<bool>,
+    archive_dir: Option<String>,
+    archive_max_file_bytes: Option<u64>,
+    max_file_bytes: Option<u64>,
+    archive_retain_files: Option<usize>,
+    retain_files: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct InstrumentationSection {
+    privileged_expected: Option<bool>,
+    ebpf_enabled: Option<bool>,
+    uprobes_enabled: Option<bool>,
+    usdt_enabled: Option<bool>,
+    runtime_probe_profiles: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct ValidationSection {
+    dataset_dir: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

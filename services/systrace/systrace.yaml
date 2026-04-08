@@ -4,6 +4,18 @@ service:
 
 collection:
   poll_interval_secs: 5
+  trace_stream_max_lines: 4096
+
+
+instrumentation:
+  privileged_expected: true
+  ebpf_enabled: true
+  uprobes_enabled: true
+  usdt_enabled: true
+  runtime_probe_profiles: [tokio, libc, openssl, libcurl]
+
+validation:
+  dataset_dir: "services/systrace/validation"
 
 export:
   otlp:
@@ -22,3 +34,10 @@ traces:
   enabled: true
   include: [systrace.]
   exclude: []
+
+
+storage:
+  archive_enabled: true
+  archive_dir: services/systrace/data
+  archive_max_file_bytes: 67108864
+  archive_retain_files: 8
