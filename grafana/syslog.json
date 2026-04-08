@@ -1,0 +1,334 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ],
+  "editable": true,
+  "id": null,
+  "title": "Ojo Syslog",
+  "uid": "ojo-syslog",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "tags": [
+    "ojo",
+    "syslog"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_syslog_source_available, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Syslog Up",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_syslog_up{service_name=~\"$service\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Exporter Available",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_syslog_exporter_available{service_name=~\"$service\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Queued Buffer Records",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_syslog_buffer_queued_records{service_name=~\"$service\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Watch Targets Active",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_syslog_file_watch_targets_active{service_name=~\"$service\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Source Availability",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_syslog_source_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_syslog_journald_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_syslog_etw_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "D",
+          "expr": "system_syslog_kernel_dmesg_available{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Log Pipeline Throughput",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(system_syslog_logs_collected_total{service_name=~\"$service\"}[5m])"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(system_syslog_logs_exported_total{service_name=~\"$service\"}[5m])"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(system_syslog_buffer_dropped_total{service_name=~\"$service\"}[5m])"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Retry and Export Errors",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(system_syslog_logs_retry_total{service_name=~\"$service\"}[5m])"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(system_syslog_logs_export_errors_total{service_name=~\"$service\"}[5m])"
+        },
+        {
+          "refId": "C",
+          "expr": "system_syslog_exporter_reconnecting{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Batch and Payload Size",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_syslog_logs_batch_size{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_syslog_logs_payload_bytes{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Watch and Buffer Capacity",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_syslog_file_watch_targets_configured{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_syslog_buffer_capacity_records{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_syslog_buffer_queued_records{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Log Class Coverage",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_syslog_process_logs_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_syslog_application_logs_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_syslog_collection_errors{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    }
+  ]
+}

@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/Language-Rust-1f2937?style=flat-square&logo=rust&logoColor=white" alt="Language" />
     <img src="https://img.shields.io/badge/Telemetry-OpenTelemetry%20OTLP-0f766e?style=flat-square" alt="Telemetry" />
     <img src="https://img.shields.io/badge/Dashboards-Grafana-0ea5e9?style=flat-square&logo=grafana&logoColor=white" alt="Dashboards" />
-    <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS%20%7C%20Systrace-7c3aed?style=flat-square" alt="Services" />
+    <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS%20%7C%20Systrace%20%7C%20Syslog-7c3aed?style=flat-square" alt="Services" />
   </p>
   <p>
     <a href="DEPLOYMENT.md">
@@ -39,7 +39,7 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 - Optionally collects per-process metrics
 - Computes deltas and rates where applicable
 - Exports to any OTLP-compatible backend directly or through an OpenTelemetry Collector
-- Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, NFS client stats, and low-level systrace metrics/traces
+- Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, NFS client stats, low-level systrace metrics/traces, and low-cardinality syslog ingestion
 
 ## Optional extension services (sidecars)
 
@@ -54,6 +54,7 @@ These binaries are separate workspace crates under `services/<name>/`. Each runs
 | Postgres | `ojo-postgres` | `services/postgres/postgres.yaml` | `system.postgres.*` |
 | NFS client | `ojo-nfs-client` | `services/nfs-client/nfs-client.yaml` | `system.nfs_client.*` |
 | Systrace | `ojo-systrace` | `services/systrace/systrace.yaml` | `system.systrace.*` |
+| Syslog | `ojo-syslog` | `services/syslog/syslog.yaml` | `system.syslog.*` |
 
 Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`).
 
@@ -137,6 +138,7 @@ services/mysql/mysql.yaml    MySQL extension config example
 services/postgres/postgres.yaml Postgres extension config example
 services/nfs-client/nfs-client.yaml NFS client extension config example
 services/systrace/systrace.yaml Systrace extension config example
+services/syslog/syslog.yaml     Syslog extension config example
 grafana/docker.json          Docker dashboard
 grafana/gpu.json             GPU dashboard
 grafana/sensors.json         Sensors dashboard
@@ -144,6 +146,7 @@ grafana/mysql.json           MySQL dashboard
 grafana/postgres.json        Postgres dashboard
 grafana/nfs-client.json      NFS client dashboard
 grafana/systrace.json        Systrace dashboard
+grafana/syslog.json          Syslog dashboard
 otel.yaml                    OpenTelemetry Collector example
 tests/qa_json_schema.rs      QA snapshot schema tests
 tests/qa_platform_metric_contracts.rs  Platform metric namespace tests
@@ -155,6 +158,7 @@ services/mysql/              MySQL sidecar service crate
 services/postgres/           Postgres sidecar service crate
 services/nfs-client/         NFS client sidecar service crate
 services/systrace/           Systrace sidecar service crate
+services/syslog/             Syslog sidecar service crate
 crates/host-collectors/      Shared OTLP and metric helper crate
 docker.dev/                  QA Dockerfiles and Compose services
 ```
@@ -203,6 +207,10 @@ cargo run -p ojo-nfs-client -- --config services/nfs-client/nfs-client.yaml
 
 ```bash
 cargo run -p ojo-systrace -- --config services/systrace/systrace.yaml
+
+```bash
+cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
+```
 ```
 
 Each extension can run independently and send OTLP metrics to the same collector endpoint as `ojo`.
@@ -217,6 +225,7 @@ cd services/mysql && cargo run -- --config mysql.yaml
 cd services/postgres && cargo run -- --config postgres.yaml
 cd services/nfs-client && cargo run -- --config nfs-client.yaml
 cd services/systrace && cargo run -- --config systrace.yaml
+cd services/syslog && cargo run -- --config syslog.yaml
 ```
 
 **3. Dump a snapshot for debugging**
@@ -274,6 +283,7 @@ Extension naming guidance:
 - Postgres metrics use `system.postgres.*`
 - NFS client metrics use `system.nfs_client.*`
 - Systrace metrics use `system.systrace.*`
+- Syslog metrics use `system.syslog.*`
 - Keep custom extensions under `system.*` / `process.*` to preserve QA naming contracts
 
 ## Environment Variables
@@ -302,7 +312,7 @@ A sample collector config is included in `otel.yaml`.
 
 Suggested deployment patterns:
 - Single host: run `ojo` + optional sidecars directly on the host
-- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client/systrace)
+- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client/systrace/syslog)
 - Centralized backend: route all producers through the same OTel Collector
 
 ## Docker QA

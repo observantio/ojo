@@ -17,9 +17,48 @@ processors:
     send_batch_max_size: 2000
     timeout: 10s
 
+  transform/reduce_loki_streams:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["host.name"], resource.attributes["host.name"])
+          - set(attributes["trace.id"], resource.attributes["trace.id"])
+          - set(attributes["request.id"], resource.attributes["request.id"])
+          - set(attributes["duration_ms"], resource.attributes["duration_ms"])
+          - set(attributes["http.status_code"], resource.attributes["http.status_code"])
+          - set(attributes["http.method"], resource.attributes["http.method"])
+          - set(attributes["http.route"], resource.attributes["http.route"])
+          - set(attributes["error.code"], resource.attributes["error.code"])
+      - context: resource
+        statements:
+          - delete_key(attributes, "host.name")
+          - delete_key(attributes, "trace.id")
+          - delete_key(attributes, "request.id")
+          - delete_key(attributes, "duration_ms")
+          - delete_key(attributes, "http.status_code")
+          - delete_key(attributes, "http.method")
+          - delete_key(attributes, "http.route")
+          - delete_key(attributes, "error.code")
+
 exporters:
   debug:
     verbosity: detailed
+
+  otlp_http/loki:
+    endpoint: "http://localhost:4320/loki/otlp"
+    headers:
+      x-otlp-token: "${OTEL_OTLP_TOKEN}"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 2000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
 
   prometheusremotewrite/mimir:
     endpoint: "http://localhost:4320/mimir/api/v1/push"
@@ -52,6 +91,10 @@ exporters:
 
 service:
   pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/reduce_loki_streams, batch]
+      exporters: [otlp_http/loki]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
