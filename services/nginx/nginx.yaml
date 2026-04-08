@@ -17,7 +17,7 @@ export:
     timeout_secs: 10
 
 storage:
-  archive_enabled: true
+  archive_enabled: false
   archive_dir: services/nginx/data
   archive_max_file_bytes: 67108864
   archive_retain_files: 8

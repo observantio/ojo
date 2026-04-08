@@ -50,7 +50,6 @@ struct Config {
     uprobes_enabled: bool,
     usdt_enabled: bool,
     runtime_probe_profiles: Vec<String>,
-    validation_dataset_dir: Option<String>,
     once: bool,
 }
 
@@ -179,8 +178,6 @@ struct Instruments {
     archive_events_total: Gauge<u64>,
     archive_bytes_total: Gauge<u64>,
     runtime_probes_configured_total: Gauge<u64>,
-    validation_datasets_total: Gauge<u64>,
-    validation_last_success: Gauge<u64>,
 }
 
 impl Instruments {
@@ -304,12 +301,6 @@ impl Instruments {
             runtime_probes_configured_total: meter
                 .u64_gauge("system.systrace.runtime.probes.configured.total")
                 .build(),
-            validation_datasets_total: meter
-                .u64_gauge("system.systrace.validation.datasets.total")
-                .build(),
-            validation_last_success: meter
-                .u64_gauge("system.systrace.validation.last_success")
-                .build(),
         }
     }
 }
@@ -364,8 +355,6 @@ pub(crate) struct SystraceSnapshot {
     pub(crate) archive_events_total: u64,
     pub(crate) archive_bytes_total: u64,
     pub(crate) runtime_probes_configured_total: u64,
-    pub(crate) validation_datasets_total: u64,
-    pub(crate) validation_last_success: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -803,18 +792,6 @@ fn record_snapshot(instruments: &Instruments, filter: &PrefixFilter, snapshot: &
         filter,
         "system.systrace.runtime.probes.configured.total",
         snapshot.runtime_probes_configured_total,
-    );
-    record_u64(
-        &instruments.validation_datasets_total,
-        filter,
-        "system.systrace.validation.datasets.total",
-        snapshot.validation_datasets_total,
-    );
-    record_u64(
-        &instruments.validation_last_success,
-        filter,
-        "system.systrace.validation.last_success",
-        bool_as_u64(snapshot.validation_last_success),
     );
 }
 
@@ -1388,10 +1365,6 @@ impl Config {
                 .as_ref()
                 .and_then(|i| i.runtime_probe_profiles.clone())
                 .unwrap_or_default(),
-            validation_dataset_dir: file_cfg
-                .validation
-                .as_ref()
-                .and_then(|v| v.dataset_dir.clone()),
             once,
         })
     }
@@ -1493,13 +1466,6 @@ fn run() -> Result<()> {
             snapshot.usdt_available = false;
         }
         snapshot.runtime_probes_configured_total = cfg.runtime_probe_profiles.len() as u64;
-        snapshot.validation_datasets_total = cfg
-            .validation_dataset_dir
-            .as_ref()
-            .and_then(|dir| stdfs::read_dir(dir).ok())
-            .map(|entries| entries.flatten().count() as u64)
-            .unwrap_or(0);
-        snapshot.validation_last_success = snapshot.validation_datasets_total > 0;
 
         if cfg.privileged_expected && !snapshot.privileged_mode {
             warn!("systrace configured for privileged mode but current process is unprivileged");
@@ -1561,7 +1527,6 @@ struct FileConfig {
     export: Option<ExportSection>,
     storage: Option<StorageSection>,
     instrumentation: Option<InstrumentationSection>,
-    validation: Option<ValidationSection>,
     metrics: Option<MetricSection>,
     traces: Option<TraceSection>,
 }
@@ -1596,11 +1561,6 @@ struct InstrumentationSection {
     uprobes_enabled: Option<bool>,
     usdt_enabled: Option<bool>,
     runtime_probe_profiles: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct ValidationSection {
-    dataset_dir: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

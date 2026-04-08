@@ -52,7 +52,5 @@ pub(crate) fn collect_snapshot() -> crate::SystraceSnapshot {
         archive_events_total: 1024,
         archive_bytes_total: 65536,
         runtime_probes_configured_total: 4,
-        validation_datasets_total: 2,
-        validation_last_success: true,
     }
 }
