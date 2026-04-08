@@ -1,4 +1,7 @@
 use std::collections::BTreeSet;
+use std::fs;
+
+use serde_json::Value;
 
 const DOCKER_METRICS: &[(&str, &str)] = &[
     ("system.docker.containers.total", "gauge"),
@@ -156,9 +159,11 @@ const SYSTRACE_METRICS: &[(&str, &str)] = &[
     ("system.systrace.tracers.available", "inventory"),
     ("system.systrace.events.total", "counter"),
     ("system.systrace.events.enabled", "counter"),
+    ("system.systrace.event.categories.total", "inventory"),
     ("system.systrace.buffer.total_kb", "gauge"),
     ("system.systrace.etw.sessions.total", "gauge"),
     ("system.systrace.etw.sessions.running", "gauge"),
+    ("system.systrace.etw.providers.total", "inventory"),
     ("system.systrace.exporter.available", "state"),
     ("system.systrace.exporter.reconnecting", "state"),
     ("system.systrace.exporter.errors.total", "counter"),
@@ -258,4 +263,57 @@ fn extension_label_cardinality_budgets_are_reasonable() {
     assert!(docker_max_labeled_containers <= 100);
     assert!(gpu_max_labeled_devices <= 64);
     assert!(sensor_max_labeled_sensors <= 200);
+}
+
+fn collect_systrace_metric_names_from_expr(expr: &str, out: &mut BTreeSet<String>) {
+    let needle = "system_systrace_";
+    let bytes = expr.as_bytes();
+    let mut index = 0usize;
+    while let Some(found) = expr[index..].find(needle) {
+        let start = index + found;
+        let mut end = start + needle.len();
+        while end < bytes.len() {
+            let b = bytes[end];
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        out.insert(expr[start..end].to_string());
+        index = end;
+    }
+}
+
+#[test]
+fn systrace_dashboard_covers_all_systrace_metrics() {
+    let raw = fs::read_to_string("grafana/systrace.json")
+        .expect("failed to read grafana/systrace.json");
+    let dashboard: Value =
+        serde_json::from_str(&raw).expect("failed to parse grafana/systrace.json as JSON");
+    let panels = dashboard
+        .get("panels")
+        .and_then(Value::as_array)
+        .expect("dashboard.panels must be an array");
+
+    let mut referenced = BTreeSet::new();
+    for panel in panels {
+        let Some(targets) = panel.get("targets").and_then(Value::as_array) else {
+            continue;
+        };
+        for target in targets {
+            let Some(expr) = target.get("expr").and_then(Value::as_str) else {
+                continue;
+            };
+            collect_systrace_metric_names_from_expr(expr, &mut referenced);
+        }
+    }
+
+    for (metric_name, _) in SYSTRACE_METRICS {
+        let prom_name = metric_name.replace('.', "_");
+        assert!(
+            referenced.contains(&prom_name),
+            "systrace dashboard is missing metric query for {metric_name} ({prom_name})"
+        );
+    }
 }
