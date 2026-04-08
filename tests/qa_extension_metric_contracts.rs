@@ -147,6 +147,39 @@ const SYSTEMD_METRICS: &[(&str, &str)] = &[
     ("system.systemd.units.active.ratio", "gauge_ratio"),
 ];
 
+const SYSTRACE_METRICS: &[(&str, &str)] = &[
+    ("system.systrace.source.available", "state"),
+    ("system.systrace.up", "state"),
+    ("system.systrace.tracefs.available", "state"),
+    ("system.systrace.etw.available", "state"),
+    ("system.systrace.tracing.on", "state"),
+    ("system.systrace.tracers.available", "inventory"),
+    ("system.systrace.events.total", "counter"),
+    ("system.systrace.events.enabled", "counter"),
+    ("system.systrace.buffer.total_kb", "gauge"),
+    ("system.systrace.etw.sessions.total", "gauge"),
+    ("system.systrace.etw.sessions.running", "gauge"),
+    ("system.systrace.exporter.available", "state"),
+    ("system.systrace.exporter.reconnecting", "state"),
+    ("system.systrace.exporter.errors.total", "counter"),
+    ("system.systrace.context_switches_per_sec", "gauge_derived"),
+    ("system.systrace.interrupts_per_sec", "gauge_derived"),
+    ("system.systrace.system_calls_per_sec", "gauge_derived"),
+    ("system.systrace.system_calls.source", "inventory"),
+    ("system.systrace.system_calls.coverage_ratio", "gauge_ratio"),
+    ("system.systrace.dpcs_per_sec", "gauge_derived"),
+    ("system.systrace.process_forks_per_sec", "gauge_derived"),
+    ("system.systrace.run_queue.depth", "gauge_approximation"),
+    ("system.systrace.processes.total", "gauge"),
+    ("system.systrace.threads.total", "gauge"),
+    (
+        "system.systrace.trace.kernel_stack_samples.total",
+        "counter",
+    ),
+    ("system.systrace.trace.user_stack_samples.total", "counter"),
+    ("system.systrace.collection.errors", "counter"),
+];
+
 #[test]
 fn extension_metric_namespaces_and_semantics_are_supported() {
     let allowed_semantics = BTreeSet::from([
@@ -169,6 +202,7 @@ fn extension_metric_namespaces_and_semantics_are_supported() {
         .chain(NGINX_METRICS.iter())
         .chain(REDIS_METRICS.iter())
         .chain(SYSTEMD_METRICS.iter())
+        .chain(SYSTRACE_METRICS.iter())
     {
         assert!(
             name.starts_with("system."),
@@ -193,6 +227,7 @@ fn extension_metrics_cover_all_domains() {
         .chain(NGINX_METRICS.iter())
         .chain(REDIS_METRICS.iter())
         .chain(SYSTEMD_METRICS.iter())
+        .chain(SYSTRACE_METRICS.iter())
         .map(|(name, _)| {
             let mut parts = name.split('.');
             format!(
@@ -211,6 +246,7 @@ fn extension_metrics_cover_all_domains() {
     assert!(namespaces.contains("system.nginx"));
     assert!(namespaces.contains("system.redis"));
     assert!(namespaces.contains("system.systemd"));
+    assert!(namespaces.contains("system.systrace"));
 }
 
 #[test]

@@ -17,6 +17,7 @@ members = [
   "services/redis",
   "services/nginx",
   "services/systemd",
+  "services/systrace",
 ]
 
 [dependencies]
@@ -31,10 +32,11 @@ tokio = { version = "1", features = [
   "signal",
   "time",
 ] }
-opentelemetry = { version = "0.31", features = ["metrics"] }
-opentelemetry_sdk = { version = "0.31", features = ["metrics", "rt-tokio"] }
+opentelemetry = { version = "0.31", features = ["metrics", "trace"] }
+opentelemetry_sdk = { version = "0.31", features = ["metrics", "trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = [
   "metrics",
+  "trace",
   "grpc-tonic",
   "http-proto",
   "reqwest-blocking-client",

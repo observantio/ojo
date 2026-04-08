@@ -75,4 +75,5 @@ if ! command -v otelcol-contrib >/dev/null 2>&1; then
 fi
 
 exec env MIMIR_OTLP_TOKEN="$MIMIR_OTLP_TOKEN" \
+    OTEL_OTLP_TOKEN="$MIMIR_OTLP_TOKEN" \
     otelcol-contrib --config "$CONFIG_FILE"

@@ -1,6 +1,6 @@
 use super::{
-    build_meter_provider, default_protocol_for_endpoint, hostname, init_meter_provider,
-    OtlpSettings, PrefixFilter, METRIC_PREFIX_SYSTEM,
+    build_meter_provider, build_tracer_provider, default_protocol_for_endpoint, hostname,
+    init_meter_provider, init_tracer_provider, OtlpSettings, PrefixFilter, METRIC_PREFIX_SYSTEM,
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -159,5 +159,45 @@ fn init_meter_provider_propagates_build_errors() {
     let mut settings = test_settings("grpc");
     settings.otlp_endpoint = "not a valid endpoint".to_string();
     let err = init_meter_provider(&settings).unwrap_err();
+    assert!(!err.to_string().trim().is_empty());
+}
+
+#[test]
+fn build_tracer_provider_grpc_succeeds() {
+    let settings = test_settings("grpc");
+    let result = build_tracer_provider(&settings);
+    assert!(result.is_ok(), "grpc tracer builder: {result:?}");
+}
+
+#[test]
+fn build_tracer_provider_http_protobuf_succeeds() {
+    let mut settings = test_settings("http/protobuf");
+    settings.otlp_endpoint = "http://127.0.0.1:4318/v1/traces".to_string();
+    let result = build_tracer_provider(&settings);
+    assert!(result.is_ok(), "http/protobuf tracer builder: {result:?}");
+}
+
+#[test]
+fn build_tracer_provider_rejects_unknown_protocol() {
+    let settings = test_settings("h2");
+    let err = build_tracer_provider(&settings).unwrap_err();
+    assert!(
+        err.to_string().contains("unsupported OTLP protocol"),
+        "{err}"
+    );
+}
+
+#[test]
+fn init_tracer_provider_sets_global_provider() {
+    let settings = test_settings("grpc");
+    let result = init_tracer_provider(&settings);
+    assert!(result.is_ok(), "init tracer provider: {result:?}");
+}
+
+#[test]
+fn init_tracer_provider_propagates_build_errors() {
+    let mut settings = test_settings("grpc");
+    settings.otlp_endpoint = "not a valid endpoint".to_string();
+    let err = init_tracer_provider(&settings).unwrap_err();
     assert!(!err.to_string().trim().is_empty());
 }
