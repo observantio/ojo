@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use host_collectors::{
-    default_protocol_for_endpoint, init_meter_provider, OtlpSettings, PrefixFilter,
+    default_protocol_for_endpoint, init_meter_provider, ArchiveStorageConfig, JsonArchiveWriter,
+    OtlpSettings, PrefixFilter,
 };
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
@@ -35,6 +36,7 @@ struct Config {
     export_timeout: Option<Duration>,
     metrics_include: Vec<String>,
     metrics_exclude: Vec<String>,
+    archive: ArchiveStorageConfig,
     once: bool,
 }
 
@@ -45,6 +47,7 @@ struct FileConfig {
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
     gpu: Option<GpuSection>,
+    storage: Option<StorageSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -89,6 +92,15 @@ struct BatchSection {
 struct MetricSection {
     include: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StorageSection {
+    archive_enabled: Option<bool>,
+    archive_dir: Option<String>,
+    archive_max_file_bytes: Option<u64>,
+    archive_retain_files: Option<usize>,
+    archive_file_stem: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -275,12 +287,16 @@ fn run() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     install_signal_handler(&running);
+    let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
 
     let mut export_state = ExportState::Pending;
     let mut continue_running = true;
     while continue_running && running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot();
+        if let Ok(raw) = serde_json::to_value(&snapshot) {
+            archive.write_json_line(&raw);
+        }
         record_snapshot(&instruments, &filter, &cfg, &snapshot);
         let flush_result = provider.force_flush();
         log_flush_result(started_at, flush_result.is_ok());
@@ -482,6 +498,7 @@ impl Config {
         let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
         let gpu = file_cfg.gpu.unwrap_or_default();
+        let storage = file_cfg.storage.unwrap_or_default();
 
         let otlp_endpoint = otlp
             .endpoint
@@ -511,6 +528,17 @@ impl Config {
                 .include
                 .unwrap_or_else(|| vec!["system.gpu.".to_string()]),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
+            archive: ArchiveStorageConfig {
+                enabled: storage.archive_enabled.unwrap_or(true),
+                archive_dir: storage
+                    .archive_dir
+                    .unwrap_or_else(|| "services/gpu/data".to_string()),
+                max_file_bytes: storage.archive_max_file_bytes.unwrap_or(67_108_864),
+                retain_files: storage.archive_retain_files.unwrap_or(8),
+                file_stem: storage
+                    .archive_file_stem
+                    .unwrap_or_else(|| "gpu-snapshots".to_string()),
+            },
             once,
         })
     }

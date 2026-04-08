@@ -1,3 +1,4 @@
+mod buffers;
 mod catalog;
 mod collector;
 mod config;
@@ -13,8 +14,10 @@ mod solaris;
 mod windows;
 
 use anyhow::Result;
+use buffers::IntervalBuffer;
 use config::Config;
 use delta::PrevState;
+use host_collectors::JsonArchiveWriter;
 use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig};
 use opentelemetry::global;
 use std::sync::{
@@ -154,13 +157,18 @@ fn main() -> Result<()> {
     }
 
     let mut prev = PrevState::default();
+    let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
     let mut export_state = ExportState::Pending;
+    let mut offline_buffer = IntervalBuffer::new(cfg.offline_buffer_intervals);
 
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
         debug!("poll tick start");
 
         let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        if let Ok(raw) = serde_json::to_value(&snap) {
+            archive.write_json_line(&raw);
+        }
         #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
@@ -191,6 +199,20 @@ fn main() -> Result<()> {
 
         let flush_result = provider.force_flush();
         log_flush_result(started_at, flush_result.is_ok());
+
+        if flush_result.is_ok() {
+            while offline_buffer.pop().is_some() {}
+            debug!(buffered_intervals = offline_buffer.len(), "offline buffer drained");
+        } else {
+            let dropped_oldest = offline_buffer.push(());
+            debug!(buffered_intervals = offline_buffer.len(), "offline buffer appended");
+            if dropped_oldest {
+                warn!(
+                    dropped_intervals = offline_buffer.dropped_intervals(),
+                    "offline buffer is full; dropping oldest failed interval marker"
+                );
+            }
+        }
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
         let flush_error = flush_result

@@ -3,7 +3,7 @@ use crate::{
     record_u64, resolve_default_config_path, run, saturating_rate, Config, Instruments,
     NginxConfig, NginxRates, NginxSnapshot, PrevState,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -345,6 +345,13 @@ fn config_shape_covers_all_fields() {
         nginx: NginxConfig {
             executable: "curl".to_string(),
             status_url: "http://127.0.0.1/nginx_status".to_string(),
+        },
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "nginx-snapshots".to_string(),
         },
         once: true,
     };

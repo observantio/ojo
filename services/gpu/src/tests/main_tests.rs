@@ -4,7 +4,7 @@ use crate::{
     record_f64, record_snapshot, record_u64, resolve_default_config_path, run, sleep_until, Config,
     ExportState, FlushEvent, GpuSample, GpuSnapshot, Instruments,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::collections::BTreeMap;
 use std::fs;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex, OnceLock};
@@ -163,6 +163,13 @@ fn config_load_and_record_snapshot_cover_main_paths() {
         export_timeout: None,
         metrics_include: vec![],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "gpu-snapshots".to_string(),
+        },
         once: true,
     };
 
@@ -366,6 +373,13 @@ fn record_snapshot_handles_available_empty_samples() {
         export_timeout: None,
         metrics_include: vec!["system.gpu.".to_string()],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "gpu-snapshots".to_string(),
+        },
         once: true,
     };
     let snap = GpuSnapshot {
@@ -395,6 +409,13 @@ fn record_snapshot_returns_early_when_device_labels_disabled() {
         export_timeout: None,
         metrics_include: vec!["system.gpu.".to_string()],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "gpu-snapshots".to_string(),
+        },
         once: true,
     };
     let snap = GpuSnapshot {
@@ -433,6 +454,13 @@ fn record_snapshot_labeled_throttled_false_branch() {
         export_timeout: None,
         metrics_include: vec!["system.gpu.".to_string()],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "gpu-snapshots".to_string(),
+        },
         once: true,
     };
     let snap = GpuSnapshot {

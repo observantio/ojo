@@ -2,6 +2,7 @@ use super::{
     default_protocol_for_endpoint, has_non_root_path, hostname_fallback, load_yaml_config_file,
     parse_bool_env, validate_required_yaml_fields, Config, FileConfig,
 };
+use host_collectors::ArchiveStorageConfig;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -145,6 +146,7 @@ fn apply_otel_env_sets_and_clears_environment_values() {
         process_include_pid_label: true,
         process_include_command_label: false,
         process_include_state_label: true,
+        offline_buffer_intervals: 5,
         otlp_endpoint: "http://127.0.0.1:4318/v1/metrics".to_string(),
         otlp_protocol: "http/protobuf".to_string(),
         otlp_headers: headers,
@@ -154,6 +156,13 @@ fn apply_otel_env_sets_and_clears_environment_values() {
         export_timeout: Some(Duration::from_millis(4500)),
         metrics_include: vec![],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: true,
+            archive_dir: "data/ojo".to_string(),
+            max_file_bytes: 64 * 1024 * 1024,
+            retain_files: 8,
+            file_stem: "ojo-snapshots".to_string(),
+        },
     };
     cfg.apply_otel_env();
 
@@ -223,6 +232,7 @@ fn config_load_reads_yaml_and_token_header_fields() {
     assert!(cfg.process_include_pid_label);
     assert!(!cfg.process_include_command_label);
     assert!(!cfg.process_include_state_label);
+    assert_eq!(cfg.offline_buffer_intervals, 5);
     assert_eq!(cfg.otlp_endpoint, "http://127.0.0.1:4318/v1/metrics");
     assert_eq!(cfg.otlp_protocol, "http/protobuf");
     assert_eq!(
@@ -261,6 +271,7 @@ fn config_load_applies_bool_env_parsing() {
     assert!(cfg.process_include_pid_label);
     assert!(!cfg.process_include_command_label);
     assert!(cfg.process_include_state_label);
+    assert_eq!(cfg.offline_buffer_intervals, 5);
 
     std::env::remove_var("PROC_OTEL_CONFIG");
     std::env::remove_var("PROC_INCLUDE_PROCESS_METRICS");

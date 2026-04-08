@@ -164,9 +164,12 @@ fn init_meter_provider_propagates_build_errors() {
 
 #[test]
 fn build_tracer_provider_grpc_succeeds() {
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
     let settings = test_settings("grpc");
-    let result = build_tracer_provider(&settings);
-    assert!(result.is_ok(), "grpc tracer builder: {result:?}");
+    rt.block_on(async {
+        let result = build_tracer_provider(&settings);
+        assert!(result.is_ok(), "grpc tracer builder: {result:?}");
+    });
 }
 
 #[test]
@@ -189,15 +192,21 @@ fn build_tracer_provider_rejects_unknown_protocol() {
 
 #[test]
 fn init_tracer_provider_sets_global_provider() {
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
     let settings = test_settings("grpc");
-    let result = init_tracer_provider(&settings);
-    assert!(result.is_ok(), "init tracer provider: {result:?}");
+    rt.block_on(async {
+        let result = init_tracer_provider(&settings);
+        assert!(result.is_ok(), "init tracer provider: {result:?}");
+    });
 }
 
 #[test]
 fn init_tracer_provider_propagates_build_errors() {
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
     let mut settings = test_settings("grpc");
     settings.otlp_endpoint = "not a valid endpoint".to_string();
-    let err = init_tracer_provider(&settings).unwrap_err();
-    assert!(!err.to_string().trim().is_empty());
+    rt.block_on(async {
+        let err = init_tracer_provider(&settings).unwrap_err();
+        assert!(!err.to_string().trim().is_empty());
+    });
 }

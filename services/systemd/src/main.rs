@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
-use host_collectors::{init_meter_provider, OtlpSettings, PrefixFilter};
+use host_collectors::{
+    init_meter_provider, ArchiveStorageConfig, JsonArchiveWriter, OtlpSettings, PrefixFilter,
+};
 use opentelemetry::metrics::Gauge;
 use opentelemetry::KeyValue;
 use serde::{Deserialize, Serialize};
@@ -24,6 +26,7 @@ struct Config {
     export_timeout: Option<Duration>,
     metrics_include: Vec<String>,
     metrics_exclude: Vec<String>,
+    archive: ArchiveStorageConfig,
     once: bool,
 }
 
@@ -319,6 +322,7 @@ impl Config {
         let otlp = export.otlp.unwrap_or_default();
         let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
+        let storage = file_cfg.storage.unwrap_or_default();
 
         let otlp_endpoint = otlp
             .endpoint
@@ -344,6 +348,17 @@ impl Config {
                 .include
                 .unwrap_or_else(|| vec!["system.systemd.".to_string()]),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
+            archive: ArchiveStorageConfig {
+                enabled: storage.archive_enabled.unwrap_or(true),
+                archive_dir: storage
+                    .archive_dir
+                    .unwrap_or_else(|| "services/systemd/data".to_string()),
+                max_file_bytes: storage.archive_max_file_bytes.unwrap_or(64 * 1024 * 1024),
+                retain_files: storage.archive_retain_files.unwrap_or(8),
+                file_stem: storage
+                    .archive_file_stem
+                    .unwrap_or_else(|| "systemd-snapshots".to_string()),
+            },
             once,
         })
     }
@@ -378,12 +393,16 @@ fn run() -> Result<()> {
     let meter = opentelemetry::global::meter("ojo-systemd");
     let instruments = Instruments::new(&meter);
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
+    let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
 
     #[cfg(test)]
     let mut iterations = 0u64;
     loop {
         let started_at = Instant::now();
         let snapshot = collect_snapshot();
+        if let Ok(raw) = serde_json::to_value(&snapshot) {
+            archive.write_json_line(&raw);
+        }
         record_snapshot(&instruments, &filter, &snapshot);
         let _ = provider.force_flush();
 
@@ -424,6 +443,7 @@ struct FileConfig {
     collection: Option<CollectionSection>,
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
+    storage: Option<StorageSection>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -460,6 +480,15 @@ struct BatchSection {
 struct MetricSection {
     include: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StorageSection {
+    archive_enabled: Option<bool>,
+    archive_dir: Option<String>,
+    archive_max_file_bytes: Option<u64>,
+    archive_retain_files: Option<usize>,
+    archive_file_stem: Option<String>,
 }
 
 #[cfg(test)]

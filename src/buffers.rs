@@ -42,7 +42,6 @@ impl<T> IntervalBuffer<T> {
     }
 }
 
-
 #[cfg(test)]
 #[path = "tests/buffers_tests.rs"]
 mod tests;

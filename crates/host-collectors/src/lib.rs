@@ -8,11 +8,131 @@ use opentelemetry_sdk::{
     resource::Resource,
     trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider, SpanData, SpanExporter},
 };
+use serde_json::Value;
 use std::collections::BTreeMap;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 pub const METRIC_PREFIX_SYSTEM: &str = "system.";
+
+#[derive(Clone, Debug)]
+pub struct ArchiveStorageConfig {
+    pub enabled: bool,
+    pub archive_dir: String,
+    pub max_file_bytes: u64,
+    pub retain_files: usize,
+    pub file_stem: String,
+}
+
+impl ArchiveStorageConfig {
+    pub fn disabled(default_stem: &str) -> Self {
+        Self {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: default_stem.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct JsonArchiveWriter {
+    enabled: bool,
+    dir: String,
+    max_file_bytes: u64,
+    retain_files: usize,
+    file_stem: String,
+    pub total_records: u64,
+    pub total_bytes: u64,
+    pub healthy: bool,
+    pub last_error: Option<String>,
+}
+
+impl JsonArchiveWriter {
+    pub fn from_config(config: &ArchiveStorageConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            dir: config.archive_dir.clone(),
+            max_file_bytes: config.max_file_bytes,
+            retain_files: config.retain_files,
+            file_stem: config.file_stem.clone(),
+            total_records: 0,
+            total_bytes: 0,
+            healthy: true,
+            last_error: None,
+        }
+    }
+
+    pub fn write_json_line(&mut self, value: &Value) {
+        if !self.enabled {
+            return;
+        }
+        if let Err(err) = self.write_json_line_impl(value) {
+            self.healthy = false;
+            self.last_error = Some(err.to_string());
+        } else {
+            self.healthy = true;
+            self.last_error = None;
+        }
+    }
+
+    fn write_json_line_impl(&mut self, value: &Value) -> anyhow::Result<()> {
+        fs::create_dir_all(&self.dir)?;
+        let path = format!("{}/{}.ndjson", self.dir, self.file_stem);
+        self.rotate_if_needed(&path)?;
+
+        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+        let line = serde_json::to_string(value)?;
+        file.write_all(line.as_bytes())?;
+        file.write_all(b"\n")?;
+        self.total_records = self.total_records.saturating_add(1);
+        self.total_bytes = self
+            .total_bytes
+            .saturating_add((line.len() as u64).saturating_add(1));
+
+        self.prune_rotated_files(&path)?;
+        Ok(())
+    }
+
+    fn rotate_if_needed(&self, path: &str) -> anyhow::Result<()> {
+        let metadata = match fs::metadata(path) {
+            Ok(md) => md,
+            Err(_) => return Ok(()),
+        };
+        if metadata.len() < self.max_file_bytes {
+            return Ok(());
+        }
+        for idx in (1..=self.retain_files).rev() {
+            let src = format!("{}.{}", path, idx);
+            let dst = format!("{}.{}", path, idx + 1);
+            if Path::new(&src).exists() {
+                let _ = fs::rename(&src, &dst);
+            }
+        }
+        let _ = fs::rename(path, format!("{}.1", path));
+        Ok(())
+    }
+
+    fn prune_rotated_files(&self, prefix: &str) -> anyhow::Result<()> {
+        if self.retain_files == 0 {
+            return Ok(());
+        }
+        let mut idx = self.retain_files + 2;
+        loop {
+            let candidate = format!("{}.{}", prefix, idx);
+            if !Path::new(&candidate).exists() {
+                break;
+            }
+            fs::remove_file(&candidate)?;
+            idx += 1;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PrefixFilter {

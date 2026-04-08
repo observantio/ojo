@@ -5,7 +5,7 @@ use crate::{
     parse_size_to_bytes, record_f64, record_snapshot, record_u64, resolve_default_config_path, run,
     sleep_until, Config, DockerSample, DockerSnapshot, ExportState, FlushEvent, Instruments,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::collections::BTreeMap;
 use std::fs;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex, OnceLock};
@@ -387,6 +387,13 @@ fn record_snapshot_covers_available_unavailable_and_labeled_paths() {
         export_timeout: None,
         metrics_include: vec![],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "docker-snapshots".to_string(),
+        },
         once: true,
     };
 
@@ -446,6 +453,13 @@ fn record_snapshot_returns_early_when_labels_disabled() {
         export_timeout: None,
         metrics_include: vec![],
         metrics_exclude: vec![],
+        archive: ArchiveStorageConfig {
+            enabled: false,
+            archive_dir: String::new(),
+            max_file_bytes: 0,
+            retain_files: 0,
+            file_stem: "docker-snapshots".to_string(),
+        },
         once: true,
     };
 

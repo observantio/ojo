@@ -15,3 +15,10 @@ export:
   batch:
     interval_secs: 5
     timeout_secs: 10
+
+storage:
+  archive_enabled: true
+  archive_dir: services/redis/data
+  archive_max_file_bytes: 67108864
+  archive_retain_files: 8
+  archive_file_stem: redis-snapshots
