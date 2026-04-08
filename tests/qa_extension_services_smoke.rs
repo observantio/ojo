@@ -28,6 +28,7 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let provider_nginx = build_meter_provider(&settings("ojo-nginx", "nginx-smoke"))?;
     let provider_redis = build_meter_provider(&settings("ojo-redis", "redis-smoke"))?;
     let provider_systemd = build_meter_provider(&settings("ojo-systemd", "systemd-smoke"))?;
+    let provider_systrace = build_meter_provider(&settings("ojo-systrace", "systrace-smoke"))?;
 
     let meter_docker = provider_docker.meter("ojo-docker-smoke");
     let meter_gpu = provider_gpu.meter("ojo-gpu-smoke");
@@ -38,6 +39,7 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let meter_nginx = provider_nginx.meter("ojo-nginx-smoke");
     let meter_redis = provider_redis.meter("ojo-redis-smoke");
     let meter_systemd = provider_systemd.meter("ojo-systemd-smoke");
+    let meter_systrace = provider_systrace.meter("ojo-systrace-smoke");
 
     let docker_gauge = meter_docker.f64_gauge("system.docker.smoke.value").build();
     let gpu_gauge = meter_gpu.f64_gauge("system.gpu.smoke.value").build();
@@ -52,6 +54,9 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let systemd_gauge = meter_systemd
         .f64_gauge("system.systemd.smoke.value")
         .build();
+    let systrace_gauge = meter_systrace
+        .f64_gauge("system.systrace.smoke.value")
+        .build();
 
     docker_gauge.record(1.0, &[]);
     gpu_gauge.record(1.0, &[]);
@@ -62,6 +67,7 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     nginx_gauge.record(1.0, &[]);
     redis_gauge.record(1.0, &[]);
     systemd_gauge.record(1.0, &[]);
+    systrace_gauge.record(1.0, &[]);
 
     let _ = provider_docker.force_flush();
     let _ = provider_gpu.force_flush();
@@ -72,6 +78,7 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let _ = provider_nginx.force_flush();
     let _ = provider_redis.force_flush();
     let _ = provider_systemd.force_flush();
+    let _ = provider_systrace.force_flush();
 
     let _ = provider_docker.shutdown();
     let _ = provider_gpu.shutdown();
@@ -82,5 +89,6 @@ fn extension_services_can_share_single_otlp_endpoint() -> Result<()> {
     let _ = provider_nginx.shutdown();
     let _ = provider_redis.shutdown();
     let _ = provider_systemd.shutdown();
+    let _ = provider_systrace.shutdown();
     Ok(())
 }

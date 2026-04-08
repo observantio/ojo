@@ -22,12 +22,28 @@ exporters:
     verbosity: detailed
 
   prometheusremotewrite/mimir:
-    # endpoint: "http://localhost:4320/mimir/api/v1/push"
-    endpoint: "http://host.docker.internal:4320/mimir/api/v1/push"
+    endpoint: "http://localhost:4320/mimir/api/v1/push"
+    #endpoint: "http://host.docker.internal:4320/mimir/api/v1/push"
     headers:
       x-otlp-token: "${MIMIR_OTLP_TOKEN}"
     tls:
       insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+
+  otlp_http/tempo:
+    endpoint: "http://localhost:4320/tempo"
+    headers:
+      x-otlp-token: "${OTEL_OTLP_TOKEN}"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 2000
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -40,6 +56,10 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [prometheusremotewrite/mimir]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/tempo]
 
   telemetry:
     logs:

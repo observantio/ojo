@@ -1,0 +1,24 @@
+service:
+  name: ojo-systrace
+  instance_id: systrace-0001
+
+collection:
+  poll_interval_secs: 5
+
+export:
+  otlp:
+    endpoint: "http://localhost:4355/v1/metrics"
+    protocol: http/protobuf
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include: [system.systrace.]
+  exclude: []
+
+traces:
+  enabled: true
+  include: [systrace.]
+  exclude: []

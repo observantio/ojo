@@ -54,8 +54,10 @@ From Watchdog:
 From the repository root:
 
 ```bash
-sudo bash run_otel_collector.sh -t <MIMIR_OTLP_TOKEN> -c <CONFIG_PATH>
+sudo bash run_otel_collector.sh -t <OTLP_TOKEN> -c <CONFIG_PATH>
 ```
+
+The same token is used for both the Mimir metrics exporter and Tempo traces exporter.
 
 ### Example
 
@@ -170,6 +172,8 @@ curl http://localhost:4320/ready
 | `ojo-postgres-win-{version}.exe` | `x86_64-pc-windows-gnu` |
 | `ojo-nfs-client-unix-{version}` | `x86_64-unknown-linux-gnu` |
 | `ojo-nfs-client-win-{version}.exe` | `x86_64-pc-windows-gnu` |
+| `ojo-systrace-unix-{version}` | `x86_64-unknown-linux-gnu` |
+| `ojo-systrace-win-{version}.exe` | `x86_64-pc-windows-gnu` |
 
 ### Download and run - Linux
 
