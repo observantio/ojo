@@ -72,8 +72,6 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
         archive_events_total: 0,
         archive_bytes_total: 0,
         runtime_probes_configured_total: 0,
-        validation_datasets_total: 0,
-        validation_last_success: false,
     }
 }
 

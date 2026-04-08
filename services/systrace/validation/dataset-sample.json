@@ -1,7 +1,0 @@
-{
-  "name": "sample-http-flow",
-  "description": "Synthetic request/response flow for reconstruction checks",
-  "expected_spans": 6,
-  "expected_syscalls": ["accept4", "read", "write", "epoll_wait"],
-  "expected_pid_count": 2
-}

@@ -14,9 +14,6 @@ instrumentation:
   usdt_enabled: true
   runtime_probe_profiles: [tokio, libc, openssl, libcurl]
 
-validation:
-  dataset_dir: "services/systrace/validation"
-
 export:
   otlp:
     endpoint: "http://localhost:4355/v1/metrics"
@@ -37,7 +34,7 @@ traces:
 
 
 storage:
-  archive_enabled: true
+  archive_enabled: false
   archive_dir: services/systrace/data
   archive_max_file_bytes: 67108864
   archive_retain_files: 8

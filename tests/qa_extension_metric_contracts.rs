@@ -216,8 +216,6 @@ const SYSTRACE_METRICS: &[(&str, &str)] = &[
         "system.systrace.runtime.probes.configured.total",
         "inventory",
     ),
-    ("system.systrace.validation.datasets.total", "inventory"),
-    ("system.systrace.validation.last_success", "state"),
     ("system.systrace.collection.errors", "counter"),
 ];
 
