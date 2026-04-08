@@ -182,7 +182,67 @@ const SYSTRACE_METRICS: &[(&str, &str)] = &[
         "counter",
     ),
     ("system.systrace.trace.user_stack_samples.total", "counter"),
+    ("system.systrace.trace.sample_lines.total", "inventory"),
+    (
+        "system.systrace.events.enabled_inventory.total",
+        "inventory",
+    ),
+    (
+        "system.systrace.coverage.high_value_categories.targeted",
+        "inventory",
+    ),
+    (
+        "system.systrace.coverage.high_value_categories.enabled",
+        "inventory",
+    ),
+    (
+        "system.systrace.trace.stream.lines_captured.total",
+        "counter",
+    ),
+    ("system.systrace.trace.stream.continuity", "state"),
+    ("system.systrace.trace.dropped_events.total", "counter"),
+    ("system.systrace.trace.overrun_events.total", "counter"),
+    ("system.systrace.syscalls.enter.enabled", "state"),
+    ("system.systrace.syscalls.exit.enabled", "state"),
+    ("system.systrace.privileged.mode", "state"),
+    ("system.systrace.ebpf.available", "state"),
+    ("system.systrace.uprobes.available", "state"),
+    ("system.systrace.usdt.available", "state"),
+    ("system.systrace.symbolizer.available", "state"),
+    ("system.systrace.archive.writer.healthy", "state"),
+    ("system.systrace.archive.events.total", "counter"),
+    ("system.systrace.archive.bytes.total", "counter"),
+    (
+        "system.systrace.runtime.probes.configured.total",
+        "inventory",
+    ),
+    ("system.systrace.validation.datasets.total", "inventory"),
+    ("system.systrace.validation.last_success", "state"),
     ("system.systrace.collection.errors", "counter"),
+];
+
+const SYSLOG_METRICS: &[(&str, &str)] = &[
+    ("system.syslog.source.available", "state"),
+    ("system.syslog.up", "state"),
+    ("system.syslog.journald.available", "state"),
+    ("system.syslog.etw.available", "state"),
+    ("system.syslog.kernel.dmesg.available", "state"),
+    ("system.syslog.process.logs.available", "state"),
+    ("system.syslog.application.logs.available", "state"),
+    ("system.syslog.file.watch.targets.configured", "inventory"),
+    ("system.syslog.file.watch.targets.active", "inventory"),
+    ("system.syslog.buffer.capacity.records", "gauge"),
+    ("system.syslog.buffer.queued.records", "gauge"),
+    ("system.syslog.buffer.dropped.total", "counter"),
+    ("system.syslog.exporter.available", "state"),
+    ("system.syslog.exporter.reconnecting", "state"),
+    ("system.syslog.logs.batch.size", "gauge"),
+    ("system.syslog.logs.payload.bytes", "gauge"),
+    ("system.syslog.collection.errors", "counter"),
+    ("system.syslog.logs.collected.total", "counter"),
+    ("system.syslog.logs.exported.total", "counter"),
+    ("system.syslog.logs.retry.total", "counter"),
+    ("system.syslog.logs.export.errors.total", "counter"),
 ];
 
 #[test]
@@ -208,6 +268,7 @@ fn extension_metric_namespaces_and_semantics_are_supported() {
         .chain(REDIS_METRICS.iter())
         .chain(SYSTEMD_METRICS.iter())
         .chain(SYSTRACE_METRICS.iter())
+        .chain(SYSLOG_METRICS.iter())
     {
         assert!(
             name.starts_with("system."),
@@ -233,6 +294,7 @@ fn extension_metrics_cover_all_domains() {
         .chain(REDIS_METRICS.iter())
         .chain(SYSTEMD_METRICS.iter())
         .chain(SYSTRACE_METRICS.iter())
+        .chain(SYSLOG_METRICS.iter())
         .map(|(name, _)| {
             let mut parts = name.split('.');
             format!(
@@ -252,6 +314,7 @@ fn extension_metrics_cover_all_domains() {
     assert!(namespaces.contains("system.redis"));
     assert!(namespaces.contains("system.systemd"));
     assert!(namespaces.contains("system.systrace"));
+    assert!(namespaces.contains("system.syslog"));
 }
 
 #[test]
@@ -285,10 +348,30 @@ fn collect_systrace_metric_names_from_expr(expr: &str, out: &mut BTreeSet<String
     }
 }
 
+fn collect_syslog_metric_names_from_expr(expr: &str, out: &mut BTreeSet<String>) {
+    let needle = "system_syslog_";
+    let bytes = expr.as_bytes();
+    let mut index = 0usize;
+    while let Some(found) = expr[index..].find(needle) {
+        let start = index + found;
+        let mut end = start + needle.len();
+        while end < bytes.len() {
+            let b = bytes[end];
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        out.insert(expr[start..end].to_string());
+        index = end;
+    }
+}
+
 #[test]
 fn systrace_dashboard_covers_all_systrace_metrics() {
-    let raw = fs::read_to_string("grafana/systrace.json")
-        .expect("failed to read grafana/systrace.json");
+    let raw =
+        fs::read_to_string("grafana/systrace.json").expect("failed to read grafana/systrace.json");
     let dashboard: Value =
         serde_json::from_str(&raw).expect("failed to parse grafana/systrace.json as JSON");
     let panels = dashboard
@@ -314,6 +397,39 @@ fn systrace_dashboard_covers_all_systrace_metrics() {
         assert!(
             referenced.contains(&prom_name),
             "systrace dashboard is missing metric query for {metric_name} ({prom_name})"
+        );
+    }
+}
+
+#[test]
+fn syslog_dashboard_covers_all_syslog_metrics() {
+    let raw =
+        fs::read_to_string("grafana/syslog.json").expect("failed to read grafana/syslog.json");
+    let dashboard: Value =
+        serde_json::from_str(&raw).expect("failed to parse grafana/syslog.json as JSON");
+    let panels = dashboard
+        .get("panels")
+        .and_then(Value::as_array)
+        .expect("dashboard.panels must be an array");
+
+    let mut referenced = BTreeSet::new();
+    for panel in panels {
+        let Some(targets) = panel.get("targets").and_then(Value::as_array) else {
+            continue;
+        };
+        for target in targets {
+            let Some(expr) = target.get("expr").and_then(Value::as_str) else {
+                continue;
+            };
+            collect_syslog_metric_names_from_expr(expr, &mut referenced);
+        }
+    }
+
+    for (metric_name, _) in SYSLOG_METRICS {
+        let prom_name = metric_name.replace('.', "_");
+        assert!(
+            referenced.contains(&prom_name),
+            "syslog dashboard is missing metric query for {metric_name} ({prom_name})"
         );
     }
 }

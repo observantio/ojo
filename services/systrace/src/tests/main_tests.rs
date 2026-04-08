@@ -1,7 +1,7 @@
 use crate::{
     bool_as_u64, default_traces_endpoint, derive_trace_line_delta_us, infer_platform_component,
-    infer_trace_line_component,
-    load_yaml_config_file, parse_bool_env, resolve_default_config_path, Config, SystraceSnapshot,
+    infer_trace_line_component, load_yaml_config_file, parse_bool_env, resolve_default_config_path,
+    Config, SystraceSnapshot,
 };
 use std::fs;
 use std::sync::{Mutex, OnceLock};
@@ -194,7 +194,10 @@ fn parse_trace_line_timestamp_yields_boot_relative_time() {
     let line = "<idle>-0     [002] d..2  12.34: func";
     let timestamp = super::parse_trace_line_timestamp(line).expect("should parse timestamp");
     let now = SystemTime::now();
-    assert!(timestamp <= now, "parsed timestamp should not be in the future");
+    assert!(
+        timestamp <= now,
+        "parsed timestamp should not be in the future"
+    );
 }
 
 #[test]
@@ -202,7 +205,10 @@ fn parse_trace_line_timestamp_handles_colons_in_task_name() {
     let line = "kworker/0:1-123 [000] .... 1024.000123: sched_switch: prev=foo next=bar";
     let timestamp = super::parse_trace_line_timestamp(line).expect("should parse timestamp");
     let now = SystemTime::now();
-    assert!(timestamp <= now, "parsed timestamp should not be in the future");
+    assert!(
+        timestamp <= now,
+        "parsed timestamp should not be in the future"
+    );
 }
 
 #[test]

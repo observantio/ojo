@@ -8,6 +8,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 const DEFAULT_BUFFER_SIZE_KB: u64 = 16384;
+const DEFAULT_TRACE_STREAM_LINES: usize = 2048;
 const BASELINE_EVENTS: &[&str] = &[
     "sched/sched_switch",
     "sched/sched_wakeup",
@@ -31,6 +32,49 @@ const BASELINE_EVENTS: &[&str] = &[
     "block/block_rq_complete",
     "net/netif_receive_skb",
     "net/net_dev_queue",
+    "syscalls/sys_enter_openat",
+    "syscalls/sys_exit_openat",
+    "syscalls/sys_enter_read",
+    "syscalls/sys_exit_read",
+    "syscalls/sys_enter_write",
+    "syscalls/sys_exit_write",
+    "syscalls/sys_enter_connect",
+    "syscalls/sys_exit_connect",
+    "syscalls/sys_enter_accept4",
+    "syscalls/sys_exit_accept4",
+    "syscalls/sys_enter_epoll_wait",
+    "syscalls/sys_exit_epoll_wait",
+    "workqueue/workqueue_execute_start",
+    "workqueue/workqueue_execute_end",
+    "sched/sched_stat_runtime",
+    "sched/sched_stat_wait",
+    "signal/signal_generate",
+    "signal/signal_deliver",
+    "cgroup/cgroup_attach_task",
+    "mm_vmscan/mm_vmscan_direct_reclaim_begin",
+    "mm_vmscan/mm_vmscan_direct_reclaim_end",
+    "tcp/tcp_retransmit_skb",
+    "tcp/tcp_receive_reset",
+    "futex/futex_wake",
+    "futex/futex_wait",
+];
+
+const HIGH_VALUE_EVENT_CATEGORIES: &[&str] = &[
+    "sched",
+    "syscalls",
+    "raw_syscalls",
+    "irq",
+    "softirq",
+    "block",
+    "workqueue",
+    "timer",
+    "mm",
+    "exceptions",
+    "net",
+    "tcp",
+    "signal",
+    "cgroup",
+    "task",
 ];
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -99,6 +143,23 @@ struct TraceSample {
     lines: Vec<String>,
     kernel_stack_samples_total: u64,
     user_stack_samples_total: u64,
+    continuity: bool,
+}
+
+#[derive(Default)]
+struct EventInventory {
+    enabled_events_total: u64,
+    enabled_events_sample: Vec<String>,
+    syscall_enter_enabled: bool,
+    syscall_exit_enabled: bool,
+    high_value_categories_targeted: u64,
+    high_value_categories_enabled: u64,
+}
+
+#[derive(Default)]
+struct TraceLossStats {
+    dropped_events_total: u64,
+    overrun_events_total: u64,
 }
 
 pub(crate) fn collect_snapshot() -> SystraceSnapshot {
@@ -110,6 +171,11 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     let setup_errors = maybe_configure_tracefs(&tracefs_root);
 
     snap.available = true;
+    snap.privileged_mode = is_root();
+    snap.ebpf_available = detect_ebpf_available();
+    snap.uprobes_available = tracefs_root.join("uprobe_events").exists();
+    snap.usdt_available = detect_usdt_available();
+    snap.symbolizer_available = detect_symbolizer_available();
     snap.tracefs_available = true;
     snap.tracing_on = read_bool_file(&tracefs_root.join("tracing_on")).unwrap_or(false);
     snap.current_tracer = read_trimmed(&tracefs_root.join("current_tracer")).unwrap_or_default();
@@ -121,11 +187,26 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     snap.events_total = events_total;
     snap.events_enabled = events_enabled;
     snap.event_categories_total = categories_total;
-    let trace_sample = sample_trace_pipe(&tracefs_root);
+
+    let event_inventory = collect_enabled_event_inventory(&tracefs_root.join("events"));
+    snap.enabled_events_inventory_total = event_inventory.enabled_events_total;
+    snap.enabled_events_inventory_sample = event_inventory.enabled_events_sample;
+    snap.syscall_enter_enabled = event_inventory.syscall_enter_enabled;
+    snap.syscall_exit_enabled = event_inventory.syscall_exit_enabled;
+    snap.high_value_categories_targeted = event_inventory.high_value_categories_targeted;
+    snap.high_value_categories_enabled = event_inventory.high_value_categories_enabled;
+
+    let trace_sample = sample_trace_pipe(&tracefs_root, trace_stream_line_limit());
     snap.trace_sample_lines_total = trace_sample.lines.len() as u64;
+    snap.trace_stream_lines_captured_total = trace_sample.lines.len() as u64;
+    snap.trace_stream_continuity = trace_sample.continuity;
     snap.trace_sample = trace_sample.lines;
     snap.kernel_stack_samples_total = trace_sample.kernel_stack_samples_total;
     snap.user_stack_samples_total = trace_sample.user_stack_samples_total;
+
+    let loss = collect_trace_loss_stats(&tracefs_root);
+    snap.trace_dropped_events_total = loss.dropped_events_total;
+    snap.trace_overrun_events_total = loss.overrun_events_total;
 
     let counters = read_kernel_counters();
     let rates = derive_rates(counters);
@@ -145,9 +226,50 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     snap
 }
 
+fn is_root() -> bool {
+    // SAFETY: geteuid has no side effects and does not require invariants beyond libc linkage.
+    unsafe { libc::geteuid() == 0 }
+}
+
+fn detect_ebpf_available() -> bool {
+    Path::new("/sys/fs/bpf").exists() && binary_exists_in_path("bpftool")
+}
+
+fn detect_usdt_available() -> bool {
+    // bpftrace/perf provide practical user-space probe attachment points.
+    binary_exists_in_path("bpftrace") || binary_exists_in_path("perf")
+}
+
+fn detect_symbolizer_available() -> bool {
+    binary_exists_in_path("addr2line") || binary_exists_in_path("llvm-symbolizer")
+}
+
+fn binary_exists_in_path(name: &str) -> bool {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path_var).any(|dir| {
+        let candidate = dir.join(name);
+        candidate.is_file()
+    })
+}
+
+fn trace_stream_line_limit() -> usize {
+    std::env::var("OJO_SYSTRACE_TRACE_STREAM_MAX_LINES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_TRACE_STREAM_LINES)
+}
+
 fn maybe_configure_tracefs(tracefs_root: &Path) -> u64 {
     if !std::env::var("OJO_SYSTRACE_AUTO_CONFIG")
-        .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off"))
+        .map(|v| {
+            !matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "off"
+            )
+        })
         .unwrap_or(true)
     {
         return 0;
@@ -502,7 +624,7 @@ fn count_stack_sample_markers(line: &str) -> (u64, u64) {
     (kernel, user)
 }
 
-fn sample_trace_pipe(tracefs_root: &Path) -> TraceSample {
+fn sample_trace_pipe(tracefs_root: &Path, max_lines: usize) -> TraceSample {
     let path = tracefs_root.join("trace_pipe");
     let file = OpenOptions::new()
         .read(true)
@@ -515,9 +637,19 @@ fn sample_trace_pipe(tracefs_root: &Path) -> TraceSample {
 
     let reader = BufReader::new(file);
     let mut sample = TraceSample::default();
-    for line in reader.lines().take(20) {
+    let mut last_ts = None;
+    let mut continuity = true;
+    for line in reader.lines().take(max_lines) {
         match line {
             Ok(text) if !text.trim().is_empty() => {
+                if let Some(ts) = parse_trace_line_seconds_token(&text) {
+                    if let Some(prev) = last_ts {
+                        if ts < prev {
+                            continuity = false;
+                        }
+                    }
+                    last_ts = Some(ts);
+                }
                 let (kernel, user) = count_stack_sample_markers(&text);
                 sample.kernel_stack_samples_total =
                     sample.kernel_stack_samples_total.saturating_add(kernel);
@@ -528,7 +660,127 @@ fn sample_trace_pipe(tracefs_root: &Path) -> TraceSample {
             _ => break,
         }
     }
+    sample.continuity = continuity;
     sample
+}
+
+fn parse_trace_line_seconds_token(line: &str) -> Option<f64> {
+    line.split_whitespace().find_map(|part| {
+        let candidate = part.trim_end_matches(':');
+        if !candidate.contains('.') {
+            return None;
+        }
+        if !candidate.chars().any(|ch| ch.is_ascii_digit()) {
+            return None;
+        }
+        if !candidate.chars().all(|ch| ch.is_ascii_digit() || ch == '.') {
+            return None;
+        }
+        candidate.parse::<f64>().ok()
+    })
+}
+
+fn collect_enabled_event_inventory(events_root: &Path) -> EventInventory {
+    let mut inventory = EventInventory {
+        high_value_categories_targeted: HIGH_VALUE_EVENT_CATEGORIES.len() as u64,
+        ..EventInventory::default()
+    };
+
+    let categories_dir = match fs::read_dir(events_root) {
+        Ok(it) => it,
+        Err(_) => return inventory,
+    };
+
+    let mut seen_high_value = std::collections::BTreeSet::new();
+    let mut enabled_sample = Vec::new();
+
+    for category in categories_dir.flatten() {
+        let category_path = category.path();
+        if !category_path.is_dir() {
+            continue;
+        }
+        let category_name = category.file_name().to_string_lossy().to_string();
+
+        let events = match fs::read_dir(&category_path) {
+            Ok(it) => it,
+            Err(_) => continue,
+        };
+
+        for event in events.flatten() {
+            let event_path = event.path();
+            if !event_path.is_dir() {
+                continue;
+            }
+            let enabled = fs::read_to_string(event_path.join("enable"))
+                .map(|value| matches!(value.trim(), "1" | "Y" | "y"))
+                .unwrap_or(false);
+            if !enabled {
+                continue;
+            }
+
+            inventory.enabled_events_total = inventory.enabled_events_total.saturating_add(1);
+            let event_name = event.file_name().to_string_lossy().to_string();
+            if enabled_sample.len() < 512 {
+                enabled_sample.push(format!("{category_name}/{event_name}"));
+            }
+            if category_name == "raw_syscalls" || category_name == "syscalls" {
+                if event_name.contains("sys_enter") {
+                    inventory.syscall_enter_enabled = true;
+                }
+                if event_name.contains("sys_exit") {
+                    inventory.syscall_exit_enabled = true;
+                }
+            }
+
+            if HIGH_VALUE_EVENT_CATEGORIES.contains(&category_name.as_str()) {
+                seen_high_value.insert(category_name.clone());
+            }
+        }
+    }
+
+    inventory.high_value_categories_enabled = seen_high_value.len() as u64;
+    inventory.enabled_events_sample = enabled_sample;
+    inventory
+}
+
+fn collect_trace_loss_stats(tracefs_root: &Path) -> TraceLossStats {
+    let mut stats = TraceLossStats::default();
+    let per_cpu_root = tracefs_root.join("per_cpu");
+    let entries = match fs::read_dir(per_cpu_root) {
+        Ok(it) => it,
+        Err(_) => return stats,
+    };
+
+    for cpu in entries.flatten() {
+        let cpu_path = cpu.path();
+        if !cpu_path.is_dir() {
+            continue;
+        }
+        let stats_file = cpu_path.join("stats");
+        let Ok(content) = fs::read_to_string(stats_file) else {
+            continue;
+        };
+        let mut overrun_seen = 0u64;
+        for line in content.lines() {
+            let mut parts = line.split_whitespace();
+            let Some(key) = parts.next() else {
+                continue;
+            };
+            let value = parts
+                .next()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0);
+            if key.contains("dropped") || key.contains("lost") {
+                stats.dropped_events_total = stats.dropped_events_total.saturating_add(value);
+            }
+            if key.contains("overrun") {
+                overrun_seen = overrun_seen.saturating_add(value);
+            }
+        }
+        stats.overrun_events_total = stats.overrun_events_total.saturating_add(overrun_seen);
+    }
+
+    stats
 }
 
 fn collect_event_counts(events_root: &Path) -> (u64, u64, u64, u64) {

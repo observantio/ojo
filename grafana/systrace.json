@@ -399,6 +399,226 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Enabled Events Inventory and Syscall Hooks",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_events_enabled_inventory_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_syscalls_enter_enabled{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_systrace_syscalls_exit_enabled{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "High-Value Category Coverage",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_coverage_high_value_categories_targeted{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_coverage_high_value_categories_enabled{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "100 * system_systrace_coverage_high_value_categories_enabled{service_name=~\"$service\"} / clamp_min(system_systrace_coverage_high_value_categories_targeted{service_name=~\"$service\"}, 1)"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Trace Stream Continuity",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_trace_stream_lines_captured_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_trace_stream_continuity{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Trace Loss and Overrun",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_trace_dropped_events_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_trace_overrun_events_total{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Privilege and Probe Capability",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_privileged_mode{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_ebpf_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_systrace_uprobes_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "D",
+          "expr": "system_systrace_usdt_available{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "E",
+          "expr": "system_systrace_symbolizer_available{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Archive Pipeline Health",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_archive_writer_healthy{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_archive_events_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "C",
+          "expr": "system_systrace_archive_bytes_total{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Runtime Probes Configured",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_runtime_probes_configured_total{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 69
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Validation Dataset Status",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "system_systrace_validation_datasets_total{service_name=~\"$service\"}"
+        },
+        {
+          "refId": "B",
+          "expr": "system_systrace_validation_last_success{service_name=~\"$service\"}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     }
   ]
 }
