@@ -1,5 +1,6 @@
 use crate::{RedisConfig, RedisSnapshot};
 use std::collections::BTreeMap;
+use std::io::ErrorKind;
 use std::process::Child;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -106,6 +107,7 @@ fn run_with_timeout_using_waiter<W>(
 where
     W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
 {
+    let program = cmd.get_program().to_string_lossy().into_owned();
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -113,7 +115,20 @@ where
     let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
-            warn!(error = %e, "failed to spawn command");
+            if e.kind() == ErrorKind::NotFound {
+                let remediation = if cfg!(target_os = "windows") {
+                    "Install `redis-cli.exe` and ensure it is on PATH, or set `redis.executable` in services/redis/redis.yaml (for example `C:\\Program Files\\Redis\\redis-cli.exe`)."
+                } else {
+                    "Install `redis-cli` (Ubuntu: `sudo apt install redis-tools`) or set `redis.executable` in services/redis/redis.yaml."
+                };
+                warn!(
+                    command = %program,
+                    %remediation,
+                    "Redis command not found"
+                );
+            } else {
+                warn!(error = %e, command = %program, "failed to spawn redis command");
+            }
             return None;
         }
     };

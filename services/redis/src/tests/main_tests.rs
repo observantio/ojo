@@ -2,6 +2,7 @@ use crate::{
     derive_rates_or_reset, hit_ratio, load_yaml_config_file, parse_bool_env, record_f64,
     record_snapshot, record_u64, resolve_default_config_path, run, saturating_rate, Config,
     Instruments, PrevState, RedisConfig, RedisRates, RedisSnapshot,
+    RedisConnectionState, update_redis_connection_state,
 };
 use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
@@ -96,6 +97,49 @@ fn rates_helpers_cover_counter_reset_and_ratios() {
     assert!(rates.commands_per_second > 0.0);
     assert!(rates.connections_per_second > 0.0);
     assert!(rates.hit_ratio > 0.0);
+}
+
+#[test]
+fn redis_connection_state_transitions() {
+    assert_eq!(
+        update_redis_connection_state(
+            RedisConnectionState::Unknown,
+            &RedisSnapshot {
+                available: true,
+                up: true,
+                ..RedisSnapshot::default()
+            },
+        ),
+        RedisConnectionState::Connected,
+    );
+
+    assert_eq!(
+        update_redis_connection_state(
+            RedisConnectionState::Connected,
+            &RedisSnapshot::default(),
+        ),
+        RedisConnectionState::Disconnected,
+    );
+
+    assert_eq!(
+        update_redis_connection_state(
+            RedisConnectionState::Disconnected,
+            &RedisSnapshot {
+                available: true,
+                up: true,
+                ..RedisSnapshot::default()
+            },
+        ),
+        RedisConnectionState::Connected,
+    );
+
+    assert_eq!(
+        update_redis_connection_state(
+            RedisConnectionState::Disconnected,
+            &RedisSnapshot::default(),
+        ),
+        RedisConnectionState::Disconnected,
+    );
 }
 
 #[test]
@@ -281,7 +325,7 @@ fn run_once_with_temp_config() {
     let path = unique_temp_path("redis-run.yaml");
     fs::write(
         &path,
-        "service:\n  name: ojo-redis-test\ncollection:\n  poll_interval_secs: 1\nredis:\n  executable: redis-cli\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+        "service:\n  name: ojo-redis-test\ncollection:\n  poll_interval_secs: 1\nredis:\n  executable: redis-cli\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\nstorage:\n  archive_enabled: false\n",
     )
     .expect("write config");
 
@@ -311,7 +355,7 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
     let path = unique_temp_path("redis-loop.yaml");
     fs::write(
         &path,
-        "service:\n  name: ojo-redis-test\ncollection:\n  poll_interval_secs: 1\nredis:\n  executable: redis-cli\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+        "service:\n  name: ojo-redis-test\ncollection:\n  poll_interval_secs: 1\nredis:\n  executable: redis-cli\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\nstorage:\n  archive_enabled: false\n",
     )
     .expect("write config");
 

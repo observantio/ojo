@@ -20,6 +20,43 @@ use tracing_subscriber::EnvFilter;
 
 mod platform;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum MysqlConnectionState {
+    Unknown,
+    Connected,
+    Disconnected,
+}
+
+fn update_mysql_connection_state(
+    previous: MysqlConnectionState,
+    snapshot: &MysqlSnapshot,
+) -> MysqlConnectionState {
+    let is_connected = snapshot.available && snapshot.up;
+    match (previous, is_connected) {
+        (MysqlConnectionState::Unknown, true) => {
+            info!("MySQL connected successfully");
+            MysqlConnectionState::Connected
+        }
+        (MysqlConnectionState::Unknown, false) => {
+            warn!("MySQL failed to connect or is not available");
+            MysqlConnectionState::Disconnected
+        }
+        (MysqlConnectionState::Disconnected, true) => {
+            info!("MySQL reconnected successfully");
+            MysqlConnectionState::Connected
+        }
+        (MysqlConnectionState::Disconnected, false) => {
+            warn!("MySQL still unavailable");
+            MysqlConnectionState::Disconnected
+        }
+        (MysqlConnectionState::Connected, true) => MysqlConnectionState::Connected,
+        (MysqlConnectionState::Connected, false) => {
+            warn!("MySQL disconnected");
+            MysqlConnectionState::Disconnected
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ExportState {
     Pending,
@@ -311,6 +348,7 @@ fn run() -> Result<()> {
         install_signal_handler(&running)?;
     }
 
+    let mut source_state = MysqlConnectionState::Unknown;
     let mut export_state = ExportState::Pending;
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
@@ -318,6 +356,7 @@ fn run() -> Result<()> {
         if let Ok(raw) = serde_json::to_value(&snapshot) {
             archive.write_json_line(&raw);
         }
+        source_state = update_mysql_connection_state(source_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 
