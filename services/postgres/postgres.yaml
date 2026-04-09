@@ -11,7 +11,7 @@ postgres:
 
 export:
   otlp:
-    endpoint: "http://127.0.0.1:4355/v1/metrics"
+    endpoint: "http://localhost:4355/v1/metrics"
     protocol: http/protobuf
     timeout_secs: 10
   batch:

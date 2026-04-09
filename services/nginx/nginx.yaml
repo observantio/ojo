@@ -1,15 +1,21 @@
 service:
   name: ojo-nginx
   instance_id: nginx-01
+  
+nginx:
+  executable: curl
+  status_url: http://127.0.0.1:8088/nginx_status
+
 collection:
   poll_interval_secs: 10
+
 metrics:
   include:
     - system.nginx.
   exclude: []
 export:
   otlp:
-    endpoint: http://127.0.0.1:4318/v1/metrics
+    endpoint: http://localhost:4355/v1/metrics
     protocol: http/protobuf
     timeout_secs: 10
   batch:
