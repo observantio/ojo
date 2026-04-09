@@ -62,7 +62,7 @@ exporters:
 
   prometheusremotewrite/mimir:
     endpoint: "http://localhost:4320/mimir/api/v1/push"
-    #endpoint: "http://host.docker.internal:4320/mimir/api/v1/push"
+    # endpoint: "http://host.docker.internal:4320/mimir/api/v1/push"
     headers:
       x-otlp-token: "${MIMIR_OTLP_TOKEN}"
     tls:

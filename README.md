@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/Language-Rust-1f2937?style=flat-square&logo=rust&logoColor=white" alt="Language" />
     <img src="https://img.shields.io/badge/Telemetry-OpenTelemetry%20OTLP-0f766e?style=flat-square" alt="Telemetry" />
     <img src="https://img.shields.io/badge/Dashboards-Grafana-0ea5e9?style=flat-square&logo=grafana&logoColor=white" alt="Dashboards" />
-    <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS%20%7C%20Systrace%20%7C%20Syslog-7c3aed?style=flat-square" alt="Services" />
+    <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS%20%7C%20NGINX%20%7C%20Redis%20%7C%20Systemd%20%7C%20Systrace%20%7C%20Syslog-7c3aed?style=flat-square" alt="Services" />
   </p>
   <p>
     <a href="DEPLOYMENT.md">
@@ -39,7 +39,7 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 - Optionally collects per-process metrics
 - Computes deltas and rates where applicable
 - Exports to any OTLP-compatible backend directly or through an OpenTelemetry Collector
-- Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, NFS client stats, low-level systrace metrics/traces, and low-cardinality syslog ingestion
+- Supports optional extension services for Docker, GPU, sensors, MySQL, Postgres, NFS client stats, NGINX status, Redis INFO telemetry, systemd unit/job health, low-level systrace metrics/traces, and low-cardinality syslog ingestion
 
 ## Optional extension services (sidecars)
 
@@ -53,10 +53,13 @@ These binaries are separate workspace crates under `services/<name>/`. Each runs
 | MySQL | `ojo-mysql` | `services/mysql/mysql.yaml` | `system.mysql.*` |
 | Postgres | `ojo-postgres` | `services/postgres/postgres.yaml` | `system.postgres.*` |
 | NFS client | `ojo-nfs-client` | `services/nfs-client/nfs-client.yaml` | `system.nfs_client.*` |
+| NGINX | `ojo-nginx` | `services/nginx/nginx.yaml` | `system.nginx.*` |
+| Redis | `ojo-redis` | `services/redis/redis.yaml` | `system.redis.*` |
+| Systemd | `ojo-systemd` | `services/systemd/systemd.yaml` | `system.systemd.*` |
 | Systrace | `ojo-systrace` | `services/systrace/systrace.yaml` | `system.systrace.*` |
 | Syslog | `ojo-syslog` | `services/syslog/syslog.yaml` | `system.syslog.*` |
 
-Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`).
+Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`, `nginx.json`, `redis.json`, `systemd.json`, `systrace.json`, `syslog.json`).
 
 Release archives include the main `ojo` agent and all sidecar services for Linux (`-unix`) and Windows (`-win`).
 
@@ -115,7 +118,11 @@ The extension metric contracts are validated by `tests/qa_extension_metric_contr
 | MySQL (`ojo-mysql`) | `system.mysql.*` | `system.mysql.source.available -> state`<br>`system.mysql.up -> state`<br>`system.mysql.connections -> gauge`<br>`system.mysql.threads.running -> gauge`<br>`system.mysql.queries.total -> counter`<br>`system.mysql.slow_queries.total -> counter`<br>`system.mysql.bytes.received.total -> counter`<br>`system.mysql.bytes.sent.total -> counter`<br>`system.mysql.queries.rate_per_second -> gauge_derived`<br>`system.mysql.bytes.received.rate_per_second -> gauge_derived`<br>`system.mysql.bytes.sent.rate_per_second -> gauge_derived` |
 | Postgres (`ojo-postgres`) | `system.postgres.*` | `system.postgres.source.available -> state`<br>`system.postgres.up -> state`<br>`system.postgres.connections -> gauge`<br>`system.postgres.transactions.committed.total -> counter`<br>`system.postgres.transactions.rolled_back.total -> counter`<br>`system.postgres.deadlocks.total -> counter`<br>`system.postgres.blocks.read.total -> counter`<br>`system.postgres.blocks.hit.total -> counter`<br>`system.postgres.transactions.committed.rate_per_second -> gauge_derived`<br>`system.postgres.transactions.rolled_back.rate_per_second -> gauge_derived` |
 | NFS client (`ojo-nfs-client`) | `system.nfs_client.*` | `system.nfs_client.source.available -> state`<br>`system.nfs_client.mounts -> inventory`<br>`system.nfs_client.rpc.calls.total -> counter`<br>`system.nfs_client.rpc.retransmissions.total -> counter`<br>`system.nfs_client.rpc.auth_refreshes.total -> counter`<br>`system.nfs_client.rpc.calls.rate_per_second -> gauge_derived`<br>`system.nfs_client.rpc.retransmissions.rate_per_second -> gauge_derived` |
+| NGINX (`ojo-nginx`) | `system.nginx.*` | `system.nginx.source.available -> state`<br>`system.nginx.up -> state`<br>`system.nginx.connections.active -> gauge`<br>`system.nginx.connections.reading -> gauge`<br>`system.nginx.connections.writing -> gauge`<br>`system.nginx.connections.waiting -> gauge`<br>`system.nginx.connections.accepted.total -> counter`<br>`system.nginx.connections.handled.total -> counter`<br>`system.nginx.requests.total -> counter`<br>`system.nginx.connections.accepted.rate_per_second -> gauge_derived`<br>`system.nginx.requests.rate_per_second -> gauge_derived` |
+| Redis (`ojo-redis`) | `system.redis.*` | `system.redis.source.available -> state`<br>`system.redis.up -> state`<br>`system.redis.clients.connected -> gauge`<br>`system.redis.clients.blocked -> gauge`<br>`system.redis.memory.used.bytes -> gauge`<br>`system.redis.memory.max.bytes -> gauge`<br>`system.redis.uptime.seconds -> gauge`<br>`system.redis.commands.processed.total -> counter`<br>`system.redis.connections.received.total -> counter`<br>`system.redis.keyspace.hits.total -> counter`<br>`system.redis.keyspace.misses.total -> counter`<br>`system.redis.keys.expired.total -> counter`<br>`system.redis.keys.evicted.total -> counter`<br>`system.redis.commands.processed.rate_per_second -> gauge_derived`<br>`system.redis.connections.received.rate_per_second -> gauge_derived`<br>`system.redis.keyspace.hit.ratio -> gauge_ratio` |
+| Systemd (`ojo-systemd`) | `system.systemd.*` | `system.systemd.source.available -> state`<br>`system.systemd.up -> state`<br>`system.systemd.units.total -> gauge`<br>`system.systemd.units.active -> gauge`<br>`system.systemd.units.inactive -> gauge`<br>`system.systemd.units.failed -> gauge`<br>`system.systemd.units.activating -> gauge`<br>`system.systemd.units.deactivating -> gauge`<br>`system.systemd.units.reloading -> gauge`<br>`system.systemd.units.not_found -> gauge`<br>`system.systemd.units.maintenance -> gauge`<br>`system.systemd.jobs.queued -> gauge`<br>`system.systemd.jobs.running -> gauge`<br>`system.systemd.failed_units.reported -> gauge`<br>`system.systemd.units.failed.ratio -> gauge_ratio`<br>`system.systemd.units.active.ratio -> gauge_ratio` |
 | Systrace (`ojo-systrace`) | `system.systrace.*` | `system.systrace.source.available -> state`<br>`system.systrace.up -> state`<br>`system.systrace.tracefs.available -> state`<br>`system.systrace.etw.available -> state`<br>`system.systrace.tracing.on -> state`<br>`system.systrace.tracers.available -> inventory`<br>`system.systrace.events.total -> counter`<br>`system.systrace.events.enabled -> counter`<br>`system.systrace.buffer.total_kb -> gauge`<br>`system.systrace.etw.sessions.total -> gauge`<br>`system.systrace.etw.sessions.running -> gauge`<br>`system.systrace.exporter.available -> state`<br>`system.systrace.exporter.reconnecting -> state`<br>`system.systrace.exporter.errors.total -> counter`<br>`system.systrace.context_switches_per_sec -> gauge_derived`<br>`system.systrace.interrupts_per_sec -> gauge_derived`<br>`system.systrace.system_calls_per_sec -> gauge_derived`<br>`system.systrace.system_calls.source -> inventory`<br>`system.systrace.system_calls.coverage_ratio -> gauge_ratio`<br>`system.systrace.dpcs_per_sec -> gauge_derived`<br>`system.systrace.process_forks_per_sec -> gauge_derived`<br>`system.systrace.run_queue.depth -> gauge_approximation`<br>`system.systrace.processes.total -> gauge`<br>`system.systrace.threads.total -> gauge`<br>`system.systrace.trace.kernel_stack_samples.total -> counter`<br>`system.systrace.trace.user_stack_samples.total -> counter`<br>`system.systrace.collection.errors -> counter` |
+| Syslog (`ojo-syslog`) | `system.syslog.*` | `system.syslog.source.available -> state`<br>`system.syslog.up -> state`<br>`system.syslog.journald.available -> state`<br>`system.syslog.etw.available -> state`<br>`system.syslog.kernel.dmesg.available -> state`<br>`system.syslog.process.logs.available -> state`<br>`system.syslog.application.logs.available -> state`<br>`system.syslog.file.watch.targets.configured -> inventory`<br>`system.syslog.file.watch.targets.active -> inventory`<br>`system.syslog.buffer.capacity.records -> gauge`<br>`system.syslog.buffer.queued.records -> gauge`<br>`system.syslog.buffer.dropped.total -> counter`<br>`system.syslog.exporter.available -> state`<br>`system.syslog.exporter.reconnecting -> state`<br>`system.syslog.logs.batch.size -> gauge`<br>`system.syslog.logs.payload.bytes -> gauge`<br>`system.syslog.collection.errors -> counter`<br>`system.syslog.logs.collected.total -> counter`<br>`system.syslog.logs.exported.total -> counter`<br>`system.syslog.logs.retry.total -> counter`<br>`system.syslog.logs.export.errors.total -> counter` |
 
 Allowed semantic kinds for extensions are: `counter`, `gauge`, `gauge_approximation`, `gauge_derived`, `gauge_derived_ratio`, `gauge_ratio`, `inventory`, and `state`.
 
@@ -137,6 +144,9 @@ services/sensors/sensors.yaml Sensor extension config example
 services/mysql/mysql.yaml    MySQL extension config example
 services/postgres/postgres.yaml Postgres extension config example
 services/nfs-client/nfs-client.yaml NFS client extension config example
+services/nginx/nginx.yaml    NGINX extension config example
+services/redis/redis.yaml    Redis extension config example
+services/systemd/systemd.yaml Systemd extension config example
 services/systrace/systrace.yaml Systrace extension config example
 services/syslog/syslog.yaml     Syslog extension config example
 grafana/docker.json          Docker dashboard
@@ -145,6 +155,9 @@ grafana/sensors.json         Sensors dashboard
 grafana/mysql.json           MySQL dashboard
 grafana/postgres.json        Postgres dashboard
 grafana/nfs-client.json      NFS client dashboard
+grafana/nginx.json           NGINX dashboard
+grafana/redis.json           Redis dashboard
+grafana/systemd.json         Systemd dashboard
 grafana/systrace.json        Systrace dashboard
 grafana/syslog.json          Syslog dashboard
 otel.yaml                    OpenTelemetry Collector example
@@ -157,6 +170,9 @@ services/sensors/            Sensor sidecar service crate
 services/mysql/              MySQL sidecar service crate
 services/postgres/           Postgres sidecar service crate
 services/nfs-client/         NFS client sidecar service crate
+services/nginx/              NGINX sidecar service crate
+services/redis/              Redis sidecar service crate
+services/systemd/            Systemd sidecar service crate
 services/systrace/           Systrace sidecar service crate
 services/syslog/             Syslog sidecar service crate
 crates/host-collectors/      Shared OTLP and metric helper crate
@@ -206,11 +222,23 @@ cargo run -p ojo-nfs-client -- --config services/nfs-client/nfs-client.yaml
 ```
 
 ```bash
+cargo run -p ojo-nginx -- --config services/nginx/nginx.yaml
+```
+
+```bash
+cargo run -p ojo-redis -- --config services/redis/redis.yaml
+```
+
+```bash
+cargo run -p ojo-systemd -- --config services/systemd/systemd.yaml
+```
+
+```bash
 cargo run -p ojo-systrace -- --config services/systrace/systrace.yaml
+```
 
 ```bash
 cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
-```
 ```
 
 Each extension can run independently and send OTLP metrics to the same collector endpoint as `ojo`.
@@ -224,6 +252,9 @@ cd services/sensors && cargo run -- --config sensors.yaml
 cd services/mysql && cargo run -- --config mysql.yaml
 cd services/postgres && cargo run -- --config postgres.yaml
 cd services/nfs-client && cargo run -- --config nfs-client.yaml
+cd services/nginx && cargo run -- --config nginx.yaml
+cd services/redis && cargo run -- --config redis.yaml
+cd services/systemd && cargo run -- --config systemd.yaml
 cd services/systrace && cargo run -- --config systrace.yaml
 cd services/syslog && cargo run -- --config syslog.yaml
 ```
@@ -282,6 +313,9 @@ Extension naming guidance:
 - MySQL metrics use `system.mysql.*`
 - Postgres metrics use `system.postgres.*`
 - NFS client metrics use `system.nfs_client.*`
+- NGINX metrics use `system.nginx.*`
+- Redis metrics use `system.redis.*`
+- Systemd metrics use `system.systemd.*`
 - Systrace metrics use `system.systrace.*`
 - Syslog metrics use `system.syslog.*`
 - Keep custom extensions under `system.*` / `process.*` to preserve QA naming contracts
@@ -312,7 +346,7 @@ A sample collector config is included in `otel.yaml`.
 
 Suggested deployment patterns:
 - Single host: run `ojo` + optional sidecars directly on the host
-- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client/systrace/syslog)
+- Containerized host monitoring: run one sidecar per host domain (docker/gpu/sensors/mysql/postgres/nfs-client/nginx/redis/systemd/systrace/syslog)
 - Centralized backend: route all producers through the same OTel Collector
 
 ## Docker QA
