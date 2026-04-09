@@ -22,12 +22,20 @@ All notable changes to this project will be documented in this file.
 - Updated Linux snapshot support-state assertions to match current key naming (`system.linux.cgroup.mode`).
 - Improved config validation behavior to accept `PROC_POLL_INTERVAL_SECS` when YAML omits `collection.poll_interval_secs`.
 - Updated service and core test paths to avoid flaky Ctrl-C handler re-registration failures during repeated test runs.
+- Systrace trace export now groups sampled trace lines by inferred component (for example `kernel.userstack`) instead of emitting one child span per line, reducing Tempo service-graph fan-out noise while preserving representative trace context.
+- Systrace Linux event discovery now uses a single `events/` traversal to compute both counts and enabled-event inventory, reducing per-poll overhead in trace-heavy environments.
+- Added Redis/NGINX-style source connection lifecycle logging to MySQL and Postgres sidecars (`connected`, `failed`, `reconnected`, `still unavailable`, `disconnected`) for clearer runtime status.
+- Expanded NGINX exporter lifecycle reporting with explicit OTLP state transitions and exporter health metrics (`system.nginx.exporter.available`, `system.nginx.exporter.reconnecting`, `system.nginx.exporter.errors.total`).
+- Updated NGINX and Redis Grafana traffic-rate queries to include robust PromQL fallback derivation from counter totals when direct rate gauges are sparse.
+- Refined systrace span topology and service-graph compatibility for clearer parent/child relationships and improved trace readability.
 
 ### Fixed
 - Resolved a Clippy warning in GPU platform tests (`bool_assert_comparison`) by switching to idiomatic boolean assertion style.
+- Improved Redis command-spawn failure messaging to surface missing client executable cases more clearly (for example when `redis-cli` is unavailable on PATH).
 
 ### Documentation
 - Expanded deployment and README operator guidance with practical configuration/cardinality tuning details and a broader collected-metrics reference.
+- Updated `README.md` sidecar coverage to include all current services (`ojo-docker`, `ojo-gpu`, `ojo-mysql`, `ojo-nfs-client`, `ojo-nginx`, `ojo-postgres`, `ojo-redis`, `ojo-sensors`, `ojo-syslog`, `ojo-systemd`, `ojo-systrace`), including service table, Grafana/dashboard references, repository layout, quick-start commands, and extension metric-prefix guidance; also fixed a broken quick-start code fence.
 
 ## [0.0.2] - 2026-03-26
 
