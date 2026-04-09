@@ -162,6 +162,15 @@ struct TraceLossStats {
     overrun_events_total: u64,
 }
 
+#[derive(Default)]
+struct EventScan {
+    events_total: u64,
+    events_enabled: u64,
+    categories_total: u64,
+    errors: u64,
+    inventory: EventInventory,
+}
+
 pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     let mut snap = SystraceSnapshot::default();
     let Some(tracefs_root) = detect_tracefs_root() else {
@@ -182,19 +191,16 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     snap.tracers_available = read_whitespace_count(&tracefs_root.join("available_tracers"));
     snap.buffer_total_kb = read_u64_file(&tracefs_root.join("buffer_total_size_kb")).unwrap_or(0);
 
-    let (events_total, events_enabled, categories_total, errors) =
-        collect_event_counts(&tracefs_root.join("events"));
-    snap.events_total = events_total;
-    snap.events_enabled = events_enabled;
-    snap.event_categories_total = categories_total;
-
-    let event_inventory = collect_enabled_event_inventory(&tracefs_root.join("events"));
-    snap.enabled_events_inventory_total = event_inventory.enabled_events_total;
-    snap.enabled_events_inventory_sample = event_inventory.enabled_events_sample;
-    snap.syscall_enter_enabled = event_inventory.syscall_enter_enabled;
-    snap.syscall_exit_enabled = event_inventory.syscall_exit_enabled;
-    snap.high_value_categories_targeted = event_inventory.high_value_categories_targeted;
-    snap.high_value_categories_enabled = event_inventory.high_value_categories_enabled;
+    let event_scan = collect_event_scan(&tracefs_root.join("events"));
+    snap.events_total = event_scan.events_total;
+    snap.events_enabled = event_scan.events_enabled;
+    snap.event_categories_total = event_scan.categories_total;
+    snap.enabled_events_inventory_total = event_scan.inventory.enabled_events_total;
+    snap.enabled_events_inventory_sample = event_scan.inventory.enabled_events_sample;
+    snap.syscall_enter_enabled = event_scan.inventory.syscall_enter_enabled;
+    snap.syscall_exit_enabled = event_scan.inventory.syscall_exit_enabled;
+    snap.high_value_categories_targeted = event_scan.inventory.high_value_categories_targeted;
+    snap.high_value_categories_enabled = event_scan.inventory.high_value_categories_enabled;
 
     let trace_sample = sample_trace_pipe(&tracefs_root, trace_stream_line_limit());
     snap.trace_sample_lines_total = trace_sample.lines.len() as u64;
@@ -222,7 +228,7 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     snap.processes_total = processes_total;
     snap.threads_total = threads_total;
     snap.dpcs_per_sec = 0.0;
-    snap.collection_errors = errors.saturating_add(setup_errors);
+    snap.collection_errors = event_scan.errors.saturating_add(setup_errors);
     snap
 }
 
@@ -680,15 +686,23 @@ fn parse_trace_line_seconds_token(line: &str) -> Option<f64> {
     })
 }
 
-fn collect_enabled_event_inventory(events_root: &Path) -> EventInventory {
-    let mut inventory = EventInventory {
-        high_value_categories_targeted: HIGH_VALUE_EVENT_CATEGORIES.len() as u64,
-        ..EventInventory::default()
+fn collect_event_scan(events_root: &Path) -> EventScan {
+    let mut scan = EventScan {
+        inventory: EventInventory {
+            high_value_categories_targeted: HIGH_VALUE_EVENT_CATEGORIES.len() as u64,
+            ..EventInventory::default()
+        },
+        ..EventScan::default()
     };
 
     let categories_dir = match fs::read_dir(events_root) {
         Ok(it) => it,
-        Err(_) => return inventory,
+        Err(err) => {
+            if !matches!(err.kind(), ErrorKind::PermissionDenied) {
+                scan.errors = scan.errors.saturating_add(1);
+            }
+            return scan;
+        }
     };
 
     let mut seen_high_value = std::collections::BTreeSet::new();
@@ -699,11 +713,17 @@ fn collect_enabled_event_inventory(events_root: &Path) -> EventInventory {
         if !category_path.is_dir() {
             continue;
         }
+        scan.categories_total = scan.categories_total.saturating_add(1);
         let category_name = category.file_name().to_string_lossy().to_string();
 
         let events = match fs::read_dir(&category_path) {
             Ok(it) => it,
-            Err(_) => continue,
+            Err(err) => {
+                if !matches!(err.kind(), ErrorKind::PermissionDenied) {
+                    scan.errors = scan.errors.saturating_add(1);
+                }
+                continue;
+            }
         };
 
         for event in events.flatten() {
@@ -711,36 +731,45 @@ fn collect_enabled_event_inventory(events_root: &Path) -> EventInventory {
             if !event_path.is_dir() {
                 continue;
             }
-            let enabled = fs::read_to_string(event_path.join("enable"))
-                .map(|value| matches!(value.trim(), "1" | "Y" | "y"))
-                .unwrap_or(false);
-            if !enabled {
-                continue;
-            }
+            scan.events_total = scan.events_total.saturating_add(1);
+            match fs::read_to_string(event_path.join("enable")) {
+                Ok(value) => {
+                    let enabled = matches!(value.trim(), "1" | "Y" | "y");
+                    if !enabled {
+                        continue;
+                    }
+                    scan.events_enabled = scan.events_enabled.saturating_add(1);
+                    scan.inventory.enabled_events_total =
+                        scan.inventory.enabled_events_total.saturating_add(1);
 
-            inventory.enabled_events_total = inventory.enabled_events_total.saturating_add(1);
-            let event_name = event.file_name().to_string_lossy().to_string();
-            if enabled_sample.len() < 512 {
-                enabled_sample.push(format!("{category_name}/{event_name}"));
-            }
-            if category_name == "raw_syscalls" || category_name == "syscalls" {
-                if event_name.contains("sys_enter") {
-                    inventory.syscall_enter_enabled = true;
+                    let event_name = event.file_name().to_string_lossy().to_string();
+                    if enabled_sample.len() < 512 {
+                        enabled_sample.push(format!("{category_name}/{event_name}"));
+                    }
+                    if category_name == "raw_syscalls" || category_name == "syscalls" {
+                        if event_name.contains("sys_enter") {
+                            scan.inventory.syscall_enter_enabled = true;
+                        }
+                        if event_name.contains("sys_exit") {
+                            scan.inventory.syscall_exit_enabled = true;
+                        }
+                    }
+                    if HIGH_VALUE_EVENT_CATEGORIES.contains(&category_name.as_str()) {
+                        seen_high_value.insert(category_name.clone());
+                    }
                 }
-                if event_name.contains("sys_exit") {
-                    inventory.syscall_exit_enabled = true;
+                Err(err) => {
+                    if !matches!(err.kind(), ErrorKind::PermissionDenied | ErrorKind::NotFound) {
+                        scan.errors = scan.errors.saturating_add(1);
+                    }
                 }
-            }
-
-            if HIGH_VALUE_EVENT_CATEGORIES.contains(&category_name.as_str()) {
-                seen_high_value.insert(category_name.clone());
             }
         }
     }
 
-    inventory.high_value_categories_enabled = seen_high_value.len() as u64;
-    inventory.enabled_events_sample = enabled_sample;
-    inventory
+    scan.inventory.high_value_categories_enabled = seen_high_value.len() as u64;
+    scan.inventory.enabled_events_sample = enabled_sample;
+    scan
 }
 
 fn collect_trace_loss_stats(tracefs_root: &Path) -> TraceLossStats {
@@ -781,65 +810,6 @@ fn collect_trace_loss_stats(tracefs_root: &Path) -> TraceLossStats {
     }
 
     stats
-}
-
-fn collect_event_counts(events_root: &Path) -> (u64, u64, u64, u64) {
-    let mut total = 0u64;
-    let mut enabled = 0u64;
-    let mut categories = 0u64;
-    let mut errors = 0u64;
-
-    let categories_dir = match fs::read_dir(events_root) {
-        Ok(it) => it,
-        Err(err) => {
-            if err.kind() == ErrorKind::PermissionDenied {
-                return (0, 0, 0, 0);
-            }
-            return (0, 0, 0, 1);
-        }
-    };
-
-    for category in categories_dir.flatten() {
-        let category_path = category.path();
-        if !category_path.is_dir() {
-            continue;
-        }
-        categories = categories.saturating_add(1);
-        let events = match fs::read_dir(&category_path) {
-            Ok(it) => it,
-            Err(err) => {
-                if err.kind() != ErrorKind::PermissionDenied {
-                    errors = errors.saturating_add(1);
-                }
-                continue;
-            }
-        };
-        for event in events.flatten() {
-            let event_path = event.path();
-            if !event_path.is_dir() {
-                continue;
-            }
-            total = total.saturating_add(1);
-            match fs::read_to_string(event_path.join("enable")) {
-                Ok(value) => {
-                    let value = value.trim();
-                    if matches!(value, "1" | "Y" | "y") {
-                        enabled = enabled.saturating_add(1);
-                    }
-                }
-                Err(err) => {
-                    if !matches!(
-                        err.kind(),
-                        ErrorKind::PermissionDenied | ErrorKind::NotFound
-                    ) {
-                        errors = errors.saturating_add(1);
-                    }
-                }
-            }
-        }
-    }
-
-    (total, enabled, categories, errors)
 }
 
 #[cfg(test)]
