@@ -594,31 +594,6 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       }
-    },
-    {
-      "id": 20,
-      "type": "timeseries",
-      "title": "Validation Dataset Status",
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "system_systrace_validation_datasets_total{service_name=~\"$service\"}"
-        },
-        {
-          "refId": "B",
-          "expr": "system_systrace_validation_last_success{service_name=~\"$service\"}"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 69
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      }
     }
   ]
 }

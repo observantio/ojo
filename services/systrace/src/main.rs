@@ -1006,7 +1006,7 @@ fn emit_trace_snapshot<T: Tracer>(
         "systrace.trace.stream.continuity",
         snapshot.trace_stream_continuity,
     ));
-    let mut parent_cx =
+    let parent_cx =
         opentelemetry::Context::current().with_remote_span_context(summary.span_context().clone());
     summary.end();
 
@@ -1018,25 +1018,185 @@ fn emit_trace_snapshot<T: Tracer>(
         .collect();
     let line_delta_us = derive_trace_line_delta_us(&sampled_lines);
 
+    let mut component_summaries: BTreeMap<String, ComponentTraceSummary> = BTreeMap::new();
     for (index, line) in sampled_lines.iter().enumerate() {
         let component =
             infer_trace_line_component(line).unwrap_or_else(|| platform_component.clone());
-
-        let mut child = tracer
-            .span_builder("systrace.trace.line")
-            .with_kind(SpanKind::Client)
-            .start_with_context(tracer, &parent_cx);
-        child.set_attribute(KeyValue::new("peer.service", component.clone()));
-        child.set_attribute(KeyValue::new("systrace.component", component));
-        child.set_attribute(KeyValue::new("systrace.trace.line", (*line).to_string()));
-        child.set_attribute(KeyValue::new(
-            "systrace.trace.line.delta_us",
-            line_delta_us.get(index).copied().unwrap_or(1) as i64,
-        ));
-        parent_cx = opentelemetry::Context::current()
-            .with_remote_span_context(child.span_context().clone());
-        child.end();
+        let summary = component_summaries.entry(component).or_default();
+        summary.lines_total = summary.lines_total.saturating_add(1);
+        summary.delta_us_total = summary
+            .delta_us_total
+            .saturating_add(line_delta_us.get(index).copied().unwrap_or(1));
+        if summary.sample_line.is_empty() {
+            summary.sample_line = (*line).to_string();
+        }
     }
+
+    let entry_key = find_component_key(
+        &component_summaries,
+        &["kernel.entry_syscall", "kernel.entry_sysca", "kernel.entry"],
+    );
+    let do_syscall_key = find_component_key(
+        &component_summaries,
+        &["kernel.do_syscall", "kernel.do_syscal", "kernel.do_sys"],
+    );
+    let syscall_trace_key = find_component_key(
+        &component_summaries,
+        &["kernel.syscall_trace", "kernel.syscall_tra", "kernel.syscall"],
+    );
+    let code_key = find_component_key(&component_summaries, &["kernel.code"]);
+    let traceiter_key = find_component_key(
+        &component_summaries,
+        &["kernel.__traceiter", "kernel.traceiter"],
+    );
+    let userstack_key = find_component_key(&component_summaries, &["kernel.userstack"]);
+
+    if let Some(key) = userstack_key.as_deref() {
+        if let Some(summary_stats) = component_summaries.remove(key) {
+            emit_component_summary_span(tracer, &parent_cx, key, &summary_stats, false);
+        }
+    }
+
+    let mut syscall_parent_cx = parent_cx.clone();
+    let mut emitted_syscall_chain = false;
+    for key in [
+        entry_key.as_deref(),
+        do_syscall_key.as_deref(),
+        syscall_trace_key.as_deref(),
+        code_key.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(summary_stats) = component_summaries.remove(key) {
+            syscall_parent_cx =
+                emit_component_summary_span(tracer, &syscall_parent_cx, key, &summary_stats, false);
+            emitted_syscall_chain = true;
+        }
+    }
+
+    if let Some(key) = traceiter_key.as_deref() {
+        if let Some(summary_stats) = component_summaries.remove(key) {
+            let traceiter_cx = emit_component_summary_span(
+                tracer,
+                if emitted_syscall_chain {
+                    &syscall_parent_cx
+                } else {
+                    &parent_cx
+                },
+                key,
+                &summary_stats,
+                false,
+            );
+            let mut probe_components: Vec<String> = component_summaries
+                .keys()
+                .filter(|name| name.starts_with("kernel.") && !is_reserved_component(name))
+                .cloned()
+                .collect();
+            probe_components.sort_unstable();
+            for component in probe_components {
+                if let Some(probe_summary) = component_summaries.remove(&component) {
+                    let _ =
+                        emit_component_summary_span(tracer, &traceiter_cx, &component, &probe_summary, true);
+                }
+            }
+        }
+    }
+
+    if emitted_syscall_chain {
+        let return_summary = ComponentTraceSummary {
+            lines_total: 1,
+            delta_us_total: line_delta_us.iter().copied().sum::<u64>().max(1),
+            sample_line: "synthetic syscall return to userspace".to_string(),
+        };
+        let _ = emit_component_summary_span(
+            tracer,
+            &syscall_parent_cx,
+            "kernel.return_to_userspace",
+            &return_summary,
+            true,
+        );
+    }
+
+    let mut remaining_components: Vec<String> = component_summaries.keys().cloned().collect();
+    remaining_components.sort_unstable();
+    for component in remaining_components {
+        if let Some(summary_stats) = component_summaries.remove(&component) {
+            let _ = emit_component_summary_span(tracer, &parent_cx, &component, &summary_stats, false);
+        }
+    }
+}
+
+fn emit_component_summary_span<T: Tracer>(
+    tracer: &T,
+    parent_cx: &opentelemetry::Context,
+    component: &str,
+    summary_stats: &ComponentTraceSummary,
+    synthetic: bool,
+) -> opentelemetry::Context {
+    let mut child = tracer
+        .span_builder("systrace.trace.component")
+        .with_kind(SpanKind::Client)
+        .start_with_context(tracer, parent_cx);
+    child.set_attribute(KeyValue::new("peer.service", component.to_string()));
+    child.set_attribute(KeyValue::new("systrace.component", component.to_string()));
+    child.set_attribute(KeyValue::new(
+        "systrace.trace.lines.total",
+        summary_stats.lines_total as i64,
+    ));
+    child.set_attribute(KeyValue::new(
+        "systrace.trace.lines.delta_us_total",
+        summary_stats.delta_us_total as i64,
+    ));
+    child.set_attribute(KeyValue::new(
+        "systrace.trace.line.sample",
+        summary_stats.sample_line.clone(),
+    ));
+    child.set_attribute(KeyValue::new("systrace.synthetic", synthetic));
+    let next_cx =
+        opentelemetry::Context::current().with_remote_span_context(child.span_context().clone());
+    child.end();
+    next_cx
+}
+
+#[derive(Default)]
+struct ComponentTraceSummary {
+    lines_total: u64,
+    delta_us_total: u64,
+    sample_line: String,
+}
+
+fn find_component_key(
+    summaries: &BTreeMap<String, ComponentTraceSummary>,
+    preferred_prefixes: &[&str],
+) -> Option<String> {
+    preferred_prefixes.iter().find_map(|prefix| {
+        summaries
+            .keys()
+            .find(|key| key.starts_with(prefix))
+            .map(|s| s.to_string())
+    })
+}
+
+fn is_reserved_component(component: &str) -> bool {
+    [
+        "kernel.entry_syscall",
+        "kernel.entry_sysca",
+        "kernel.entry",
+        "kernel.do_syscall",
+        "kernel.do_syscal",
+        "kernel.do_sys",
+        "kernel.syscall_trace",
+        "kernel.syscall_tra",
+        "kernel.syscall",
+        "kernel.code",
+        "kernel.__traceiter",
+        "kernel.traceiter",
+        "kernel.userstack",
+        "kernel.return_to_userspace",
+    ]
+    .iter()
+    .any(|prefix| component.starts_with(prefix))
 }
 
 fn derive_trace_line_delta_us(lines: &[&str]) -> Vec<u64> {
