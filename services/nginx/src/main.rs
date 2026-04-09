@@ -3,7 +3,7 @@ use host_collectors::{
     default_protocol_for_endpoint, init_meter_provider, ArchiveStorageConfig, JsonArchiveWriter,
     OtlpSettings, PrefixFilter,
 };
-use opentelemetry::metrics::Gauge;
+use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry::KeyValue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -11,6 +11,7 @@ use std::env;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod platform;
@@ -112,10 +113,99 @@ fn derive_rates_or_reset(prev: &mut PrevState, snapshot: &NginxSnapshot) -> Ngin
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum NginxConnectionState {
+    Unknown,
+    Connected,
+    Disconnected,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExportState {
+    Pending,
+    Connected,
+    Reconnecting,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEvent {
+    None,
+    Connected,
+    Reconnected,
+    Reconnecting,
+    StillUnavailable,
+}
+
+fn update_nginx_connection_state(
+    previous: NginxConnectionState,
+    snapshot: &NginxSnapshot,
+) -> NginxConnectionState {
+    let is_connected = snapshot.available && snapshot.up;
+    match (previous, is_connected) {
+        (NginxConnectionState::Unknown, true) => {
+            info!("Nginx status endpoint connected successfully");
+            NginxConnectionState::Connected
+        }
+        (NginxConnectionState::Unknown, false) => {
+            warn!("Nginx status endpoint failed or Nginx not available");
+            NginxConnectionState::Disconnected
+        }
+        (NginxConnectionState::Disconnected, true) => {
+            info!("Nginx status endpoint reconnected successfully");
+            NginxConnectionState::Connected
+        }
+        (NginxConnectionState::Disconnected, false) => {
+            warn!("Nginx status endpoint still unavailable");
+            NginxConnectionState::Disconnected
+        }
+        (NginxConnectionState::Connected, true) => NginxConnectionState::Connected,
+        (NginxConnectionState::Connected, false) => {
+            warn!("Nginx status endpoint disconnected");
+            NginxConnectionState::Disconnected
+        }
+    }
+}
+
+fn advance_export_state(current: ExportState, flush_succeeded: bool) -> (ExportState, FlushEvent) {
+    if flush_succeeded {
+        let event = match current {
+            ExportState::Pending => FlushEvent::Connected,
+            ExportState::Reconnecting => FlushEvent::Reconnected,
+            ExportState::Connected => FlushEvent::None,
+        };
+        (ExportState::Connected, event)
+    } else {
+        let event = match current {
+            ExportState::Connected => FlushEvent::Reconnecting,
+            ExportState::Pending | ExportState::Reconnecting => FlushEvent::StillUnavailable,
+        };
+        (ExportState::Reconnecting, event)
+    }
+}
+
+fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
+    if let Some(err) = flush_error {
+        match event {
+            FlushEvent::Reconnecting => warn!(error = %err, "Exporter flush failed; reconnecting"),
+            FlushEvent::StillUnavailable => warn!(error = %err, "Exporter still unavailable"),
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Exporter connected successfully"),
+            FlushEvent::Reconnected => info!("Exporter reconnected successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Instruments {
     source_available: Gauge<u64>,
     up: Gauge<u64>,
+    exporter_available: Gauge<u64>,
+    exporter_reconnecting: Gauge<u64>,
+    exporter_errors_total: Counter<u64>,
     connections_active: Gauge<u64>,
     connections_reading: Gauge<u64>,
     connections_writing: Gauge<u64>,
@@ -132,6 +222,15 @@ impl Instruments {
         Self {
             source_available: meter.u64_gauge("system.nginx.source.available").build(),
             up: meter.u64_gauge("system.nginx.up").build(),
+            exporter_available: meter
+                .u64_gauge("system.nginx.exporter.available")
+                .build(),
+            exporter_reconnecting: meter
+                .u64_gauge("system.nginx.exporter.reconnecting")
+                .build(),
+            exporter_errors_total: meter
+                .u64_counter("system.nginx.exporter.errors.total")
+                .build(),
             connections_active: meter.u64_gauge("system.nginx.connections.active").build(),
             connections_reading: meter.u64_gauge("system.nginx.connections.reading").build(),
             connections_writing: meter.u64_gauge("system.nginx.connections.writing").build(),
@@ -153,6 +252,23 @@ impl Instruments {
                 .build(),
         }
     }
+}
+
+fn record_exporter_state(instruments: &Instruments, filter: &PrefixFilter, state: ExportState) {
+    let connected = matches!(state, ExportState::Connected) as u64;
+    let reconnecting = matches!(state, ExportState::Reconnecting) as u64;
+    record_u64(
+        &instruments.exporter_available,
+        filter,
+        "system.nginx.exporter.available",
+        connected,
+    );
+    record_u64(
+        &instruments.exporter_reconnecting,
+        filter,
+        "system.nginx.exporter.reconnecting",
+        reconnecting,
+    );
 }
 
 fn parse_bool_env(name: &str) -> Option<bool> {
@@ -182,6 +298,11 @@ fn run() -> Result<()> {
         )
         .try_init()
         .ok();
+    info!(
+        endpoint = %cfg.otlp_endpoint,
+        protocol = %cfg.otlp_protocol,
+        "Initializing metrics exporter"
+    );
 
     let provider = init_meter_provider(&OtlpSettings {
         service_name: cfg.service_name.clone(),
@@ -198,6 +319,8 @@ fn run() -> Result<()> {
     let instruments = Instruments::new(&meter);
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
     let mut prev = PrevState::default();
+    let mut source_state = NginxConnectionState::Unknown;
+    let mut export_state = ExportState::Pending;
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
 
     #[cfg(test)]
@@ -208,9 +331,23 @@ fn run() -> Result<()> {
         if let Ok(raw) = serde_json::to_value(&snapshot) {
             archive.write_json_line(&raw);
         }
+        source_state = update_nginx_connection_state(source_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
-        let _ = provider.force_flush();
+        let flush_result = provider.force_flush();
+        let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
+        if flush_result.is_err() {
+            instruments.exporter_errors_total.add(1, &[]);
+        }
+        record_exporter_state(&instruments, &filter, next_state);
+        handle_flush_event(
+            event,
+            flush_result
+                .as_ref()
+                .err()
+                .map(|err| err as &dyn std::fmt::Display),
+        );
+        export_state = next_state;
 
         #[cfg(test)]
         {

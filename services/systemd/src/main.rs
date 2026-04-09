@@ -10,6 +10,7 @@ use std::env;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod platform;
@@ -98,6 +99,22 @@ pub(crate) struct SystemdSnapshot {
     pub(crate) failed_units_reported: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExportState {
+    Pending,
+    Connected,
+    Reconnecting,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEvent {
+    None,
+    Connected,
+    Reconnected,
+    Reconnecting,
+    StillUnavailable,
+}
+
 fn parse_bool_env(name: &str) -> Option<bool> {
     env::var(name).ok().and_then(|v| {
         let n = v.trim().to_ascii_lowercase();
@@ -173,6 +190,58 @@ fn snapshot_up(snapshot: &SystemdSnapshot) -> u64 {
         1
     } else {
         0
+    }
+}
+
+fn advance_export_state(current: ExportState, export_succeeded: bool) -> (ExportState, FlushEvent) {
+    if export_succeeded {
+        let event = match current {
+            ExportState::Pending => FlushEvent::Connected,
+            ExportState::Reconnecting => FlushEvent::Reconnected,
+            ExportState::Connected => FlushEvent::None,
+        };
+        (ExportState::Connected, event)
+    } else {
+        let event = match current {
+            ExportState::Connected => FlushEvent::Reconnecting,
+            ExportState::Pending | ExportState::Reconnecting => FlushEvent::StillUnavailable,
+        };
+        (ExportState::Reconnecting, event)
+    }
+}
+
+fn handle_flush_event(
+    event: FlushEvent,
+    export_error: Option<&dyn std::fmt::Display>,
+    endpoint: &str,
+    protocol: &str,
+) {
+    if let Some(err) = export_error {
+        match event {
+            FlushEvent::Reconnecting => {
+                warn!(
+                    error = %err,
+                    endpoint = %endpoint,
+                    protocol = %protocol,
+                    "Systemd exporter disconnected, reconnecting"
+                )
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(
+                    error = %err,
+                    endpoint = %endpoint,
+                    protocol = %protocol,
+                    "Systemd exporter disconnected; still unavailable"
+                )
+            }
+            FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
+        }
+    } else {
+        match event {
+            FlushEvent::Connected => info!("Systemd exporter connected successfully"),
+            FlushEvent::Reconnected => info!("Systemd exporter reconnected successfully"),
+            FlushEvent::None | FlushEvent::Reconnecting | FlushEvent::StillUnavailable => {}
+        }
     }
 }
 
@@ -394,17 +463,69 @@ fn run() -> Result<()> {
     let instruments = Instruments::new(&meter);
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
+    info!(
+        service = %cfg.service_name,
+        instance_id = %cfg.instance_id,
+        endpoint = %cfg.otlp_endpoint,
+        protocol = %cfg.otlp_protocol,
+        poll_interval_secs = cfg.poll_interval.as_secs(),
+        once = cfg.once,
+        "ojo-systemd started"
+    );
+    if cfg.archive.enabled {
+        info!(
+            archive_dir = %cfg.archive.archive_dir,
+            max_file_bytes = cfg.archive.max_file_bytes,
+            retain_files = cfg.archive.retain_files,
+            "snapshot archive enabled"
+        );
+    } else {
+        info!("snapshot archive disabled");
+    }
 
+    let mut iteration: u64 = 0;
+    let mut export_state = ExportState::Pending;
+    let mut warned_source_unavailable = false;
     #[cfg(test)]
     let mut iterations = 0u64;
     loop {
+        iteration += 1;
         let started_at = Instant::now();
         let snapshot = collect_snapshot();
         if let Ok(raw) = serde_json::to_value(&snapshot) {
             archive.write_json_line(&raw);
         }
+        if iteration == 1 {
+            info!(
+                source_available = snapshot.available,
+                units_total = snapshot.units_total,
+                units_active = snapshot.units_active,
+                units_failed = snapshot.units_failed,
+                jobs_queued = snapshot.jobs_queued,
+                jobs_running = snapshot.jobs_running,
+                "first systemd snapshot collected"
+            );
+        }
+        if !snapshot.available && !warned_source_unavailable {
+            warn!("systemd source unavailable; metrics may remain zero until source becomes available");
+            warned_source_unavailable = true;
+        }
         record_snapshot(&instruments, &filter, &snapshot);
-        let _ = provider.force_flush();
+        let flush_result = provider.force_flush();
+        let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
+        export_state = next_state;
+        if iteration == 1 && flush_result.is_ok() {
+            info!("initial OTLP flush completed");
+        }
+        handle_flush_event(
+            event,
+            flush_result
+                .as_ref()
+                .err()
+                .map(|err| err as &dyn std::fmt::Display),
+            &cfg.otlp_endpoint,
+            &cfg.otlp_protocol,
+        );
 
         #[cfg(test)]
         {

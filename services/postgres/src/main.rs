@@ -20,6 +20,43 @@ use tracing_subscriber::EnvFilter;
 
 mod platform;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum PostgresConnectionState {
+    Unknown,
+    Connected,
+    Disconnected,
+}
+
+fn update_postgres_connection_state(
+    previous: PostgresConnectionState,
+    snapshot: &PostgresSnapshot,
+) -> PostgresConnectionState {
+    let is_connected = snapshot.available && snapshot.up;
+    match (previous, is_connected) {
+        (PostgresConnectionState::Unknown, true) => {
+            info!("Postgres connected successfully");
+            PostgresConnectionState::Connected
+        }
+        (PostgresConnectionState::Unknown, false) => {
+            warn!("Postgres failed to connect or is not available");
+            PostgresConnectionState::Disconnected
+        }
+        (PostgresConnectionState::Disconnected, true) => {
+            info!("Postgres reconnected successfully");
+            PostgresConnectionState::Connected
+        }
+        (PostgresConnectionState::Disconnected, false) => {
+            warn!("Postgres still unavailable");
+            PostgresConnectionState::Disconnected
+        }
+        (PostgresConnectionState::Connected, true) => PostgresConnectionState::Connected,
+        (PostgresConnectionState::Connected, false) => {
+            warn!("Postgres disconnected");
+            PostgresConnectionState::Disconnected
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ExportState {
     Pending,
@@ -224,6 +261,7 @@ fn run() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     install_signal_handler(&running);
 
+    let mut source_state = PostgresConnectionState::Unknown;
     let mut export_state = ExportState::Pending;
     let mut continue_running = true;
     while continue_running && running.load(Ordering::SeqCst) {
@@ -232,6 +270,7 @@ fn run() -> Result<()> {
         if let Ok(raw) = serde_json::to_value(&snapshot) {
             archive.write_json_line(&raw);
         }
+        source_state = update_postgres_connection_state(source_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
 

@@ -11,6 +11,7 @@ use std::env;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod platform;
@@ -70,6 +71,43 @@ struct RedisRates {
 #[derive(Clone, Debug, Default)]
 struct PrevState {
     last: Option<(RedisSnapshot, Instant)>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum RedisConnectionState {
+    Unknown,
+    Connected,
+    Disconnected,
+}
+
+fn update_redis_connection_state(
+    previous: RedisConnectionState,
+    snapshot: &RedisSnapshot,
+) -> RedisConnectionState {
+    let is_connected = snapshot.available && snapshot.up;
+    match (previous, is_connected) {
+        (RedisConnectionState::Unknown, true) => {
+            info!("Redis connected successfully");
+            RedisConnectionState::Connected
+        }
+        (RedisConnectionState::Unknown, false) => {
+            warn!("Redis connection failed or Redis not available");
+            RedisConnectionState::Disconnected
+        }
+        (RedisConnectionState::Disconnected, true) => {
+            info!("Redis reconnected successfully");
+            RedisConnectionState::Connected
+        }
+        (RedisConnectionState::Disconnected, false) => {
+            warn!("Redis still unavailable");
+            RedisConnectionState::Disconnected
+        }
+        (RedisConnectionState::Connected, true) => RedisConnectionState::Connected,
+        (RedisConnectionState::Connected, false) => {
+            warn!("Redis disconnected");
+            RedisConnectionState::Disconnected
+        }
+    }
 }
 
 impl PrevState {
@@ -237,6 +275,7 @@ fn run() -> Result<()> {
     let instruments = Instruments::new(&meter);
     let filter = PrefixFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone());
     let mut prev = PrevState::default();
+    let mut connection_state = RedisConnectionState::Unknown;
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
 
     #[cfg(test)]
@@ -247,6 +286,7 @@ fn run() -> Result<()> {
         if let Ok(raw) = serde_json::to_value(&snapshot) {
             archive.write_json_line(&raw);
         }
+        connection_state = update_redis_connection_state(connection_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
         let _ = provider.force_flush();
@@ -301,6 +341,90 @@ fn record_snapshot(
         if snap.up { 1 } else { 0 },
     );
     if !snap.available {
+        record_u64(
+            &instruments.connected_clients,
+            filter,
+            "system.redis.clients.connected",
+            0,
+        );
+        record_u64(
+            &instruments.blocked_clients,
+            filter,
+            "system.redis.clients.blocked",
+            0,
+        );
+        record_u64(
+            &instruments.memory_used_bytes,
+            filter,
+            "system.redis.memory.used.bytes",
+            0,
+        );
+        record_u64(
+            &instruments.memory_max_bytes,
+            filter,
+            "system.redis.memory.max.bytes",
+            0,
+        );
+        record_u64(
+            &instruments.uptime_seconds,
+            filter,
+            "system.redis.uptime.seconds",
+            0,
+        );
+        record_u64(
+            &instruments.commands_total,
+            filter,
+            "system.redis.commands.processed.total",
+            0,
+        );
+        record_u64(
+            &instruments.connections_total,
+            filter,
+            "system.redis.connections.received.total",
+            0,
+        );
+        record_u64(
+            &instruments.keyspace_hits_total,
+            filter,
+            "system.redis.keyspace.hits.total",
+            0,
+        );
+        record_u64(
+            &instruments.keyspace_misses_total,
+            filter,
+            "system.redis.keyspace.misses.total",
+            0,
+        );
+        record_u64(
+            &instruments.expired_keys_total,
+            filter,
+            "system.redis.keys.expired.total",
+            0,
+        );
+        record_u64(
+            &instruments.evicted_keys_total,
+            filter,
+            "system.redis.keys.evicted.total",
+            0,
+        );
+        record_f64(
+            &instruments.commands_rate,
+            filter,
+            "system.redis.commands.processed.rate_per_second",
+            0.0,
+        );
+        record_f64(
+            &instruments.connections_rate,
+            filter,
+            "system.redis.connections.received.rate_per_second",
+            0.0,
+        );
+        record_f64(
+            &instruments.hit_ratio,
+            filter,
+            "system.redis.keyspace.hit.ratio",
+            0.0,
+        );
         return;
     }
     record_u64(
