@@ -142,7 +142,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_nginx_requests_rate_per_second{service_name=~\"$service\"})"
+          "expr": "max(system_nginx_requests_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_requests_total{service_name=~\"$service\"}[1m]))"
         }
       ],
       "fieldConfig": {
@@ -201,11 +201,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_nginx_requests_rate_per_second{service_name=~\"$service\"}"
+          "expr": "system_nginx_requests_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_requests_total{service_name=~\"$service\"}[1m])"
         },
         {
           "refId": "B",
-          "expr": "system_nginx_connections_accepted_rate_per_second{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_accepted_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_connections_accepted_total{service_name=~\"$service\"}[1m])"
         }
       ],
       "gridPos": {

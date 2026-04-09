@@ -163,7 +163,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_commands_processed_rate_per_second{service_name=~\"$service\"})"
+          "expr": "max(system_redis_commands_processed_rate_per_second{service_name=~\"$service\"} or rate(system_redis_commands_processed_total{service_name=~\"$service\"}[1m]))"
         }
       ],
       "fieldConfig": {
@@ -247,7 +247,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_redis_commands_processed_rate_per_second{service_name=~\"$service\"}"
+          "expr": "system_redis_commands_processed_rate_per_second{service_name=~\"$service\"} or rate(system_redis_commands_processed_total{service_name=~\"$service\"}[1m])"
         },
         {
           "refId": "B",
