@@ -11,6 +11,11 @@
     <img src="https://img.shields.io/badge/Services-Docker%20%7C%20GPU%20%7C%20Sensors%20%7C%20MySQL%20%7C%20Postgres%20%7C%20NFS%20%7C%20NGINX%20%7C%20Redis%20%7C%20Systemd%20%7C%20Systrace%20%7C%20Syslog-7c3aed?style=flat-square" alt="Services" />
   </p>
   <p>
+    <a href="https://github.com/observantio/ojo/actions/workflows/ci.yml">
+      <img src="https://github.com/observantio/ojo/actions/workflows/ci.yml/badge.svg?branch=main" alt="Ojo CI" />
+    </a>
+  </p>
+  <p>
     <a href="DEPLOYMENT.md">
       <img src="https://img.shields.io/badge/🚀%20Deploy-Setup%20Guide-0ea5e9?style=flat-square&logo=docker&logoColor=white" alt="Deploy" />
     </a>
