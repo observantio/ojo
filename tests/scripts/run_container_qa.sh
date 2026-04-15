@@ -9,6 +9,7 @@ TMP_FILE="$OUT_FILE.tmp"
 TARGET_DIR="$ROOT_DIR/target-qa/${DISTRO}"
 BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 QA_TIMEOUT_SECS="${QA_TIMEOUT_SECS:-1800}"
+QA_CONFIG_PATH="${PROC_OTEL_CONFIG:-linux.yaml}"
 
 mkdir -p "$OUT_DIR"
 cd "$ROOT_DIR"
@@ -24,9 +25,9 @@ fi
 
 echo "[$DISTRO] starting snapshot build/run (jobs=$CARGO_BUILD_JOBS timeout=${QA_TIMEOUT_SECS}s target=$CARGO_TARGET_DIR)"
 if command -v timeout >/dev/null 2>&1; then
-  timeout "$QA_TIMEOUT_SECS" cargo run -j "$CARGO_BUILD_JOBS" -- --dump-snapshot >"$TMP_FILE"
+  timeout "$QA_TIMEOUT_SECS" cargo run -j "$CARGO_BUILD_JOBS" -- --config "$QA_CONFIG_PATH" --dump-snapshot >"$TMP_FILE"
 else
-  cargo run -j "$CARGO_BUILD_JOBS" -- --dump-snapshot >"$TMP_FILE"
+  cargo run -j "$CARGO_BUILD_JOBS" -- --config "$QA_CONFIG_PATH" --dump-snapshot >"$TMP_FILE"
 fi
 mv "$TMP_FILE" "$OUT_FILE"
 

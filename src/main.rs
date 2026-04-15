@@ -20,6 +20,7 @@ use delta::PrevState;
 use host_collectors::JsonArchiveWriter;
 use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig};
 use opentelemetry::global;
+use std::io::{self, Write};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -124,13 +125,20 @@ fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
     }
 }
 
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg == flag)
+}
+
 fn main() -> Result<()> {
+    let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load()?;
     cfg.apply_otel_env();
-    let run_once = std::env::var("OJO_RUN_ONCE")
-        .ok()
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    let dump_snapshot = has_flag(&args, "--dump-snapshot");
+    let run_once = dump_snapshot
+        || std::env::var("OJO_RUN_ONCE")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -138,6 +146,14 @@ fn main() -> Result<()> {
         )
         .try_init()
         .ok();
+
+    if dump_snapshot {
+        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        let mut stdout = io::stdout();
+        serde_json::to_writer_pretty(&mut stdout, &snap)?;
+        stdout.write_all(b"\n")?;
+        return Ok(());
+    }
 
     let provider = otel::init_meter_provider(&cfg)?;
     let meter = global::meter("procfs");

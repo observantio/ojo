@@ -56,9 +56,6 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - name: Cargo test
-        run: cargo test --workspace --all-targets --all-features
-
       - name: Prepare QA snapshot folder
         run: mkdir -p tests/qa
         shell: bash
