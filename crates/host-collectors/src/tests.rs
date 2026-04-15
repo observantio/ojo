@@ -3,7 +3,9 @@ use super::{
     init_meter_provider, init_tracer_provider, ArchiveStorageConfig, JsonArchiveWriter,
     OtlpSettings, PrefixFilter, StdoutSpanExporter, METRIC_PREFIX_SYSTEM,
 };
-use opentelemetry::trace::{SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState};
+use opentelemetry::trace::{
+    SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState,
+};
 use opentelemetry::InstrumentationScope;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::error::OTelSdkError;
@@ -25,7 +27,11 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
     path
 }
 
-fn make_span_data(name: &'static str, parent_span_id: SpanId, attributes: Vec<KeyValue>) -> SpanData {
+fn make_span_data(
+    name: &'static str,
+    parent_span_id: SpanId,
+    attributes: Vec<KeyValue>,
+) -> SpanData {
     SpanData {
         span_context: SpanContext::new(
             TraceId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 66]),
