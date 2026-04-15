@@ -307,7 +307,6 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(test))]
 fn main() -> Result<()> {
     run()
 }
