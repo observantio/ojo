@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.0.3] - 2026-04-15
 
 ### Added
 - Expanded test coverage across core and sidecar services, including deterministic one-shot execution paths for integration-style `main` tests.
