@@ -45,6 +45,36 @@ jobs:
       - name: Cross target check (Windows GNU legacy i686)
         run: cargo check --workspace --all-targets --target i686-pc-windows-gnu
 
+  windows-dump:
+    name: Windows Build + Dump Snapshot
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Cargo test
+        run: cargo test --workspace --all-targets --all-features
+
+      - name: Prepare QA snapshot folder
+        run: mkdir -p tests/qa
+        shell: bash
+
+      - name: Dump windows snapshot
+        run: cargo run --release -- --config windows.yaml --dump-snapshot > tests/qa/windows.json
+        shell: bash
+
+      - name: Upload windows snapshot artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-snapshot
+          path: tests/qa/windows.json
+
   coverage:
     name: Coverage (line threshold)
     runs-on: ubuntu-22.04

@@ -21,7 +21,6 @@ RUN dnf install -y --allowerasing --setopt=install_weak_deps=False \
     pkgconf-pkg-config \
     openssl-devel \
     compat-openssl10 \
-    compat-openssl10-devel \
     glibc-headers \
     glibc-devel \
     libstdc++ \
