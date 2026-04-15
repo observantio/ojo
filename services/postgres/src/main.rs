@@ -354,7 +354,6 @@ fn maybe_sleep_until_next_poll(
     sleep_until(deadline, running, Duration::from_millis(500));
 }
 
-#[cfg(not(test))]
 fn main() -> Result<()> {
     run()
 }

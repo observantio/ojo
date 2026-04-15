@@ -1,5 +1,3 @@
-#![cfg_attr(coverage, allow(unused_imports))]
-
 use crate::model::{
     CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, LoadSnapshot, MemorySnapshot,
     MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot,
