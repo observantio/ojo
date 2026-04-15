@@ -222,9 +222,7 @@ impl Instruments {
         Self {
             source_available: meter.u64_gauge("system.nginx.source.available").build(),
             up: meter.u64_gauge("system.nginx.up").build(),
-            exporter_available: meter
-                .u64_gauge("system.nginx.exporter.available")
-                .build(),
+            exporter_available: meter.u64_gauge("system.nginx.exporter.available").build(),
             exporter_reconnecting: meter
                 .u64_gauge("system.nginx.exporter.reconnecting")
                 .build(),

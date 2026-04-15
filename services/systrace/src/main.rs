@@ -1042,7 +1042,11 @@ fn emit_trace_snapshot<T: Tracer>(
     );
     let syscall_trace_key = find_component_key(
         &component_summaries,
-        &["kernel.syscall_trace", "kernel.syscall_tra", "kernel.syscall"],
+        &[
+            "kernel.syscall_trace",
+            "kernel.syscall_tra",
+            "kernel.syscall",
+        ],
     );
     let code_key = find_component_key(&component_summaries, &["kernel.code"]);
     let traceiter_key = find_component_key(
@@ -1096,8 +1100,13 @@ fn emit_trace_snapshot<T: Tracer>(
             probe_components.sort_unstable();
             for component in probe_components {
                 if let Some(probe_summary) = component_summaries.remove(&component) {
-                    let _ =
-                        emit_component_summary_span(tracer, &traceiter_cx, &component, &probe_summary, true);
+                    let _ = emit_component_summary_span(
+                        tracer,
+                        &traceiter_cx,
+                        &component,
+                        &probe_summary,
+                        true,
+                    );
                 }
             }
         }
@@ -1122,7 +1131,8 @@ fn emit_trace_snapshot<T: Tracer>(
     remaining_components.sort_unstable();
     for component in remaining_components {
         if let Some(summary_stats) = component_summaries.remove(&component) {
-            let _ = emit_component_summary_span(tracer, &parent_cx, &component, &summary_stats, false);
+            let _ =
+                emit_component_summary_span(tracer, &parent_cx, &component, &summary_stats, false);
         }
     }
 }

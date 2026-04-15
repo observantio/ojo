@@ -202,10 +202,16 @@ fn main() -> Result<()> {
 
         if flush_result.is_ok() {
             while offline_buffer.pop().is_some() {}
-            debug!(buffered_intervals = offline_buffer.len(), "offline buffer drained");
+            debug!(
+                buffered_intervals = offline_buffer.len(),
+                "offline buffer drained"
+            );
         } else {
             let dropped_oldest = offline_buffer.push(());
-            debug!(buffered_intervals = offline_buffer.len(), "offline buffer appended");
+            debug!(
+                buffered_intervals = offline_buffer.len(),
+                "offline buffer appended"
+            );
             if dropped_oldest {
                 warn!(
                     dropped_intervals = offline_buffer.dropped_intervals(),

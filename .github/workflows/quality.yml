@@ -68,7 +68,7 @@ jobs:
         shell: bash
 
       - name: Upload windows snapshot artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-snapshot
           path: tests/qa/windows.json
