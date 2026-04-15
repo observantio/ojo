@@ -1,8 +1,8 @@
 use crate::{
     derive_rates_or_reset, hit_ratio, load_yaml_config_file, parse_bool_env, record_f64,
-    record_snapshot, record_u64, resolve_default_config_path, run, saturating_rate, Config,
-    Instruments, PrevState, RedisConfig, RedisRates, RedisSnapshot,
-    RedisConnectionState, update_redis_connection_state,
+    record_snapshot, record_u64, resolve_default_config_path, run, saturating_rate,
+    update_redis_connection_state, Config, Instruments, PrevState, RedisConfig,
+    RedisConnectionState, RedisRates, RedisSnapshot,
 };
 use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
@@ -114,10 +114,7 @@ fn redis_connection_state_transitions() {
     );
 
     assert_eq!(
-        update_redis_connection_state(
-            RedisConnectionState::Connected,
-            &RedisSnapshot::default(),
-        ),
+        update_redis_connection_state(RedisConnectionState::Connected, &RedisSnapshot::default(),),
         RedisConnectionState::Disconnected,
     );
 

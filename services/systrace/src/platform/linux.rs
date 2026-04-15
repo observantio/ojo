@@ -759,7 +759,10 @@ fn collect_event_scan(events_root: &Path) -> EventScan {
                     }
                 }
                 Err(err) => {
-                    if !matches!(err.kind(), ErrorKind::PermissionDenied | ErrorKind::NotFound) {
+                    if !matches!(
+                        err.kind(),
+                        ErrorKind::PermissionDenied | ErrorKind::NotFound
+                    ) {
                         scan.errors = scan.errors.saturating_add(1);
                     }
                 }

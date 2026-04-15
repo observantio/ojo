@@ -1,4 +1,3 @@
-
 use super::{IntervalBuffer, OFFLINE_BUFFER_INTERVALS};
 
 #[test]
