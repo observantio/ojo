@@ -1,5 +1,5 @@
 use super::{
-    advance_export_state, compute_sleep_duration, handle_flush_event, log_flush_result,
+    advance_export_state, compute_sleep_duration, handle_flush_event, has_flag, log_flush_result,
     make_stop_handler, ExportState, FlushEvent,
 };
 use std::fs;
@@ -19,6 +19,19 @@ fn unique_temp_path(name: &str) -> std::path::PathBuf {
         .expect("clock")
         .as_nanos();
     std::env::temp_dir().join(format!("ojo-main-{name}-{}-{nanos}", std::process::id()))
+}
+
+#[test]
+fn has_flag_detects_presence() {
+    let args = vec![
+        "ojo".to_string(),
+        "--config".to_string(),
+        "linux.yaml".to_string(),
+        "--dump-snapshot".to_string(),
+    ];
+    assert!(has_flag(&args, "--dump-snapshot"));
+    assert!(has_flag(&args, "--config"));
+    assert!(!has_flag(&args, "--once"));
 }
 
 #[test]
