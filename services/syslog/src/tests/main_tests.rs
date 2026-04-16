@@ -293,7 +293,9 @@ fn export_buffered_logs_returns_early_for_empty_buffer_and_zero_batch() {
         let mut req = [0u8; 4096];
         let _ = stream.read(&mut req).expect("read request");
         let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-        stream.write_all(response.as_bytes()).expect("write response");
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
     });
 
     let cfg = test_config_with_logs_endpoint(format!("http://{addr}/logs"));
