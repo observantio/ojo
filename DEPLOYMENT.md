@@ -62,7 +62,7 @@ The same token is used for both the Mimir metrics exporter and Tempo traces expo
 ### Example
 
 ```bash
-sudo bash otel/run_otel_collector.sh \
+sudo bash run_otel_collector.sh \
   -t bo_xxxxxxxxxxxxxxxxx \
   -c otel.yaml
 ```
