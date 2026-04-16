@@ -1,4 +1,12 @@
 pub(crate) fn collect_snapshot() -> crate::SystraceSnapshot {
+    let privileged_mode = std::env::var("OJO_SYSTRACE_COVERAGE_PRIVILEGED_MODE")
+        .ok()
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(true);
+
     crate::SystraceSnapshot {
         available: true,
         tracefs_available: true,
@@ -43,7 +51,7 @@ pub(crate) fn collect_snapshot() -> crate::SystraceSnapshot {
         trace_overrun_events_total: 0,
         syscall_enter_enabled: true,
         syscall_exit_enabled: true,
-        privileged_mode: true,
+        privileged_mode,
         ebpf_available: true,
         uprobes_available: true,
         usdt_available: true,
@@ -52,5 +60,26 @@ pub(crate) fn collect_snapshot() -> crate::SystraceSnapshot {
         archive_events_total: 1024,
         archive_bytes_total: 65536,
         runtime_probes_configured_total: 4,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_snapshot_returns_expected_stub_values() {
+        let snapshot = collect_snapshot();
+        assert!(snapshot.available);
+        assert!(snapshot.tracefs_available);
+        assert!(!snapshot.etw_available);
+        assert!(snapshot.tracing_on);
+        assert_eq!(snapshot.current_tracer, "function_graph");
+        assert_eq!(snapshot.events_total, 120);
+        assert_eq!(snapshot.enabled_events_inventory_total, 9);
+        assert_eq!(snapshot.trace_stream_lines_captured_total, 256);
+        assert!(snapshot.trace_stream_continuity);
+        assert!(snapshot.archive_writer_healthy);
+        assert_eq!(snapshot.archive_bytes_total, 65536);
     }
 }

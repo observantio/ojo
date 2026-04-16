@@ -1,7 +1,8 @@
 use crate::{
-    collect_snapshot, load_yaml_config_file, parse_bool_env, parse_u64_env, ratio, record_f64,
-    record_snapshot, record_u64, resolve_default_config_path, run, simulated_snapshot_from_env,
-    snapshot_up, Config, Instruments, SystemdSnapshot,
+    advance_export_state, collect_snapshot, handle_flush_event, load_yaml_config_file,
+    parse_bool_env, parse_u64_env, ratio, record_f64, record_snapshot, record_u64,
+    resolve_default_config_path, run, simulated_snapshot_from_env, snapshot_up, Config,
+    ExportState, FlushEvent, Instruments, SystemdSnapshot,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -93,6 +94,42 @@ fn ratio_and_snapshot_up_cover_core_derived_values() {
         }),
         1
     );
+}
+
+#[test]
+fn export_state_and_flush_helpers_cover_all_paths() {
+    assert_eq!(
+        advance_export_state(ExportState::Pending, true),
+        (ExportState::Connected, FlushEvent::Connected)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Reconnecting, true),
+        (ExportState::Connected, FlushEvent::Reconnected)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Connected, true),
+        (ExportState::Connected, FlushEvent::None)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Connected, false),
+        (ExportState::Reconnecting, FlushEvent::Reconnecting)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Pending, false),
+        (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+    );
+
+    let err = "flush-error";
+    handle_flush_event(FlushEvent::Reconnecting, Some(&err), "endpoint", "protocol");
+    handle_flush_event(
+        FlushEvent::StillUnavailable,
+        Some(&err),
+        "endpoint",
+        "protocol",
+    );
+    handle_flush_event(FlushEvent::None, Some(&err), "endpoint", "protocol");
+    handle_flush_event(FlushEvent::Connected, None, "endpoint", "protocol");
+    handle_flush_event(FlushEvent::Reconnected, None, "endpoint", "protocol");
 }
 
 #[test]
@@ -375,6 +412,29 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
 
     std::env::remove_var("OJO_SYSTEMD_CONFIG");
     std::env::remove_var("OJO_TEST_MAX_ITERATIONS");
+    std::env::remove_var("OJO_SYSTEMD_SIMULATE_UP");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn run_once_with_archive_disabled_and_source_unavailable() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("systemd-run-disabled.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: ojo-systemd-test\ncollection:\n  poll_interval_secs: 1\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\nstorage:\n  archive_enabled: false\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("OJO_SYSTEMD_CONFIG", &path);
+    std::env::set_var("OJO_RUN_ONCE", "1");
+    std::env::set_var("OJO_SYSTEMD_SIMULATE_UP", "0");
+
+    let result = run();
+    assert!(result.is_ok(), "{result:?}");
+
+    std::env::remove_var("OJO_SYSTEMD_CONFIG");
+    std::env::remove_var("OJO_RUN_ONCE");
     std::env::remove_var("OJO_SYSTEMD_SIMULATE_UP");
     fs::remove_file(&path).expect("cleanup config");
 }

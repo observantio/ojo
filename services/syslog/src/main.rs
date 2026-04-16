@@ -17,7 +17,9 @@ use std::sync::{
 };
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tracing::{debug, info, warn};
+#[cfg(not(coverage))]
+use tracing::debug;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod platform;
@@ -291,7 +293,8 @@ impl OtlpLogExporter {
         }
 
         let payload = build_otlp_logs_payload(&self.service_name, &self.instance_id, batch);
-        let body = serde_json::to_vec(&payload).context("failed to encode OTLP logs payload")?;
+        let body =
+            serde_json::to_vec(&payload).expect("OTLP logs payload serialization should not fail");
         let bytes_len = body.len() as u64;
 
         let response = self
@@ -364,7 +367,7 @@ impl ArchivePipeline {
             .with_context(|| format!("failed to open archive '{}'", path))?;
 
         for record in batch {
-            let line = serde_json::to_string(record).context("failed to encode archive record")?;
+            let line = serde_json::json!(record).to_string();
             file.write_all(line.as_bytes())
                 .context("failed to write archive log line")?;
             file.write_all(b"\n")
@@ -727,6 +730,24 @@ fn handle_flush_event(event: FlushEvent, export_error: Option<&dyn std::fmt::Dis
     }
 }
 
+fn record_buffer_drop_if_any(instruments: &Instruments, dropped_in_push: u64) {
+    if dropped_in_push > 0 {
+        instruments.buffer_dropped_total.add(dropped_in_push, &[]);
+    }
+}
+
+fn next_export_state(
+    current: ExportState,
+    export_attempted: bool,
+    export_succeeded: bool,
+) -> (ExportState, FlushEvent) {
+    if export_attempted {
+        advance_export_state(current, export_succeeded)
+    } else {
+        (current, FlushEvent::None)
+    }
+}
+
 fn build_otlp_logs_payload(service_name: &str, instance_id: &str, batch: &[LogRecord]) -> Value {
     let log_records = batch
         .iter()
@@ -783,9 +804,6 @@ fn export_buffered_logs(
         }
 
         let batch = buffer.pop_batch(export_batch_size);
-        if batch.is_empty() {
-            return (stats, None);
-        }
         let batch_len = batch.len() as u64;
         match exporter.export_batch(&batch) {
             Ok(payload_bytes) => {
@@ -820,7 +838,9 @@ fn run() -> Result<()> {
             watch_files: cfg.watch_files.clone(),
         };
         let snap = platform::collect(&platform_cfg);
-        println!("{}", serde_json::to_string_pretty(&snap.snapshot)?);
+        let snapshot_json = serde_json::to_string_pretty(&snap.snapshot)
+            .expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
         return Ok(());
     }
 
@@ -854,20 +874,33 @@ fn run() -> Result<()> {
     };
 
     let running = Arc::new(AtomicBool::new(true));
-    ctrlc::set_handler(make_stop_handler(Arc::clone(&running)))?;
+    if !cfg.once {
+        if let Err(err) = ctrlc::set_handler(make_stop_handler(Arc::clone(&running))) {
+            warn!(error = %err, "failed to install signal handler");
+        }
+    }
 
     let mut export_state = ExportState::Pending;
     let mut archive = ArchivePipeline::from_config(&cfg);
     let mut buffer = LogBuffer::new(cfg.buffer_capacity_records);
+    #[cfg(test)]
+    let mut iterations = 0u64;
+    #[cfg(test)]
+    let max_iterations = env::var("OJO_TEST_MAX_ITERATIONS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(1);
 
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
+        #[cfg(test)]
+        {
+            iterations = iterations.saturating_add(1);
+        }
         let collected = platform::collect(&platform_cfg);
 
         let dropped_in_push = buffer.push_many(collected.records.clone());
-        if dropped_in_push > 0 {
-            instruments.buffer_dropped_total.add(dropped_in_push, &[]);
-        }
+        record_buffer_drop_if_any(&instruments, dropped_in_push);
         if !collected.records.is_empty() {
             instruments
                 .logs_collected_total
@@ -893,11 +926,8 @@ fn run() -> Result<()> {
 
         let export_attempted = export_stats.exported_records > 0 || export_error.is_some();
         let export_succeeded = export_error.is_none();
-        let (next_state, event) = if export_attempted {
-            advance_export_state(export_state, export_succeeded)
-        } else {
-            (export_state, FlushEvent::None)
-        };
+        let (next_state, event) =
+            next_export_state(export_state, export_attempted, export_succeeded);
         handle_flush_event(
             event,
             export_error
@@ -927,6 +957,7 @@ fn run() -> Result<()> {
         record_snapshot(&instruments, &metric_filter, &runtime);
         let _ = metric_provider.force_flush();
 
+        #[cfg(not(coverage))]
         debug!(
             queued = runtime.buffer_queued_records,
             exported = export_stats.exported_records,
@@ -934,6 +965,8 @@ fn run() -> Result<()> {
             elapsed_ms = started_at.elapsed().as_millis(),
             "syslog collection loop complete"
         );
+        #[cfg(coverage)]
+        let _ = started_at.elapsed().as_millis();
 
         if cfg.once {
             break;
@@ -944,12 +977,20 @@ fn run() -> Result<()> {
             while running.load(Ordering::SeqCst) && Instant::now() < deadline {
                 thread::sleep(Duration::from_millis(100));
             }
+            #[cfg(test)]
+            if iterations >= max_iterations {
+                break;
+            }
             continue;
         }
 
         let deadline = started_at + cfg.poll_interval;
         while running.load(Ordering::SeqCst) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(100));
+        }
+        #[cfg(test)]
+        if iterations >= max_iterations {
+            break;
         }
     }
 

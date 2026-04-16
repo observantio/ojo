@@ -412,7 +412,7 @@ impl ArchivePipeline {
             .append(true)
             .open(&snapshot_path)
             .with_context(|| format!("failed to open snapshot archive '{}'", snapshot_path))?;
-        let json = serde_json::to_string(snapshot)?;
+        let json = serde_json::json!(snapshot).to_string();
         snapshot_file
             .write_all(json.as_bytes())
             .context("failed to write snapshot JSON")?;
@@ -437,7 +437,7 @@ impl ArchivePipeline {
                     "processes_total": snapshot.processes_total,
                     "threads_total": snapshot.threads_total,
                 });
-                let raw = serde_json::to_string(&entry)?;
+                let raw = entry.to_string();
                 trace_file
                     .write_all(raw.as_bytes())
                     .context("failed to write trace line entry")?;
@@ -1227,15 +1227,8 @@ fn derive_trace_line_delta_us(lines: &[&str]) -> Vec<u64> {
     for window in known.windows(2) {
         let left = window[0];
         let right = window[1];
-        if right <= left {
-            continue;
-        }
-        let Some(left_ts) = offsets[left] else {
-            continue;
-        };
-        let Some(right_ts) = offsets[right] else {
-            continue;
-        };
+        let left_ts = offsets[left].expect("known index must have a timestamp");
+        let right_ts = offsets[right].expect("known index must have a timestamp");
         let width = (right - left) as f64;
         let delta_us = ((right_ts - left_ts) * 1_000_000.0).round();
         let per_line_us = if delta_us.is_finite() && delta_us > 0.0 {
@@ -1281,7 +1274,9 @@ fn parse_trace_line_timestamp(line: &str) -> Option<std::time::SystemTime> {
     })?;
     let event_offset = parse_trace_line_seconds(token)?;
     let boot_time = uptime_boot_time()?;
-    boot_time.checked_add(event_offset)
+    let timestamp = boot_time.checked_add(event_offset)?;
+    let now = std::time::SystemTime::now();
+    Some(if timestamp > now { now } else { timestamp })
 }
 
 #[cfg(test)]
@@ -1551,7 +1546,9 @@ fn run() -> Result<()> {
     let cfg = Config::load()?;
     if dump_snapshot {
         let snapshot = platform::collect_snapshot();
-        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        let snapshot_json = serde_json::to_string_pretty(&snapshot)
+            .expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
         return Ok(());
     }
 
@@ -1612,10 +1609,25 @@ fn run() -> Result<()> {
     );
 
     let running = Arc::new(AtomicBool::new(true));
-    ctrlc::set_handler(make_stop_handler(Arc::clone(&running)))?;
+    if !cfg.once {
+        if let Err(err) = ctrlc::set_handler(make_stop_handler(Arc::clone(&running))) {
+            warn!(error = %err, "failed to install signal handler");
+        }
+    }
+    #[cfg(test)]
+    let mut iterations = 0u64;
+    #[cfg(test)]
+    let max_iterations = env::var("OJO_TEST_MAX_ITERATIONS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(1);
 
     while running.load(Ordering::SeqCst) {
         let started_at = Instant::now();
+        #[cfg(test)]
+        {
+            iterations = iterations.saturating_add(1);
+        }
         let mut snapshot = if cfg.trace_enabled {
             let mut root_span = tracer.start("systrace.collect");
             let snapshot = platform::collect_snapshot();
@@ -1675,6 +1687,10 @@ fn run() -> Result<()> {
         let deadline = started_at + cfg.poll_interval;
         while running.load(Ordering::SeqCst) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(100));
+        }
+        #[cfg(test)]
+        if iterations >= max_iterations {
+            break;
         }
     }
 

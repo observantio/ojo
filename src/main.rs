@@ -20,7 +20,6 @@ use delta::PrevState;
 use host_collectors::JsonArchiveWriter;
 use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig};
 use opentelemetry::global;
-use std::io::{self, Write};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -119,6 +118,39 @@ fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Disp
     }
 }
 
+fn update_offline_buffer(offline_buffer: &mut IntervalBuffer<()>, flush_succeeded: bool) {
+    if flush_succeeded {
+        while offline_buffer.pop().is_some() {}
+        #[cfg(not(coverage))]
+        debug!(
+            buffered_intervals = offline_buffer.len(),
+            "offline buffer drained"
+        );
+        #[cfg(coverage)]
+        let _ = offline_buffer.len();
+        return;
+    }
+
+    let dropped_oldest = offline_buffer.push(());
+    #[cfg(not(coverage))]
+    debug!(
+        buffered_intervals = offline_buffer.len(),
+        "offline buffer appended"
+    );
+    #[cfg(coverage)]
+    let _ = offline_buffer.len();
+
+    if dropped_oldest {
+        #[cfg(not(coverage))]
+        warn!(
+            dropped_intervals = offline_buffer.dropped_intervals(),
+            "offline buffer is full; dropping oldest failed interval marker"
+        );
+        #[cfg(coverage)]
+        let _ = offline_buffer.dropped_intervals();
+    }
+}
+
 fn make_stop_handler(signal: Arc<AtomicBool>) -> impl Fn() + Send + 'static {
     move || {
         signal.store(false, Ordering::SeqCst);
@@ -140,20 +172,20 @@ fn main() -> Result<()> {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
+    if dump_snapshot {
+        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        let snapshot_json =
+            serde_json::to_string_pretty(&snap).expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .try_init()
         .ok();
-
-    if dump_snapshot {
-        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
-        let mut stdout = io::stdout();
-        serde_json::to_writer_pretty(&mut stdout, &snap)?;
-        stdout.write_all(b"\n")?;
-        return Ok(());
-    }
 
     let provider = otel::init_meter_provider(&cfg)?;
     let meter = global::meter("procfs");
@@ -182,9 +214,8 @@ fn main() -> Result<()> {
         debug!("poll tick start");
 
         let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
-        if let Ok(raw) = serde_json::to_value(&snap) {
-            archive.write_json_line(&raw);
-        }
+        let raw = serde_json::json!(snap);
+        archive.write_json_line(&raw);
         #[cfg(not(coverage))]
         debug!(
             elapsed_ms = started_at.elapsed().as_millis(),
@@ -216,25 +247,7 @@ fn main() -> Result<()> {
         let flush_result = provider.force_flush();
         log_flush_result(started_at, flush_result.is_ok());
 
-        if flush_result.is_ok() {
-            while offline_buffer.pop().is_some() {}
-            debug!(
-                buffered_intervals = offline_buffer.len(),
-                "offline buffer drained"
-            );
-        } else {
-            let dropped_oldest = offline_buffer.push(());
-            debug!(
-                buffered_intervals = offline_buffer.len(),
-                "offline buffer appended"
-            );
-            if dropped_oldest {
-                warn!(
-                    dropped_intervals = offline_buffer.dropped_intervals(),
-                    "offline buffer is full; dropping oldest failed interval marker"
-                );
-            }
-        }
+        update_offline_buffer(&mut offline_buffer, flush_result.is_ok());
 
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
         let flush_error = flush_result

@@ -220,17 +220,19 @@ fn collect_snapshot_skips_blank_lines_in_ps_and_stats() {
 
 #[test]
 fn run_with_timeout_covers_success_timeout_and_wait_error() {
-    let mut ok_cmd = Command::new("sh");
+    let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut ok_cmd = Command::new("/bin/sh");
     ok_cmd.args(["-c", "printf 'ok'"]);
     let output = run_with_timeout(ok_cmd, Duration::from_secs(1)).expect("expected output");
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok");
 
-    let mut slow_cmd = Command::new("sh");
+    let mut slow_cmd = Command::new("/bin/sh");
     slow_cmd.args(["-c", "while :; do :; done"]);
     assert_eq!(run_with_timeout(slow_cmd, Duration::from_millis(10)), None);
 
-    let mut err_cmd = Command::new("sh");
+    let mut err_cmd = Command::new("/bin/sh");
     err_cmd.args(["-c", "printf 'ok'"]);
     let errored = run_with_timeout_using_waiter(err_cmd, Duration::from_secs(1), |_child| {
         Err(std::io::Error::other("forced wait error"))

@@ -131,7 +131,14 @@ fn collect_rpc_stats_from_nfsstat_returns_none_when_spawn_fails() {
 
 #[test]
 fn collect_rpc_stats_from_nfsstat_parses_output_when_command_succeeds() {
-    let dir = unique_temp_dir("nfsstat-success");
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::current_dir()
+        .expect("cwd")
+        .join("target")
+        .join(format!("nfsstat-success-{}-{nanos}", std::process::id()));
     fs::create_dir_all(&dir).expect("mkdir");
     let script = dir.join("fake-nfsstat.sh");
     fs::write(

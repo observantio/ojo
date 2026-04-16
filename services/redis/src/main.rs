@@ -250,7 +250,9 @@ fn run() -> Result<()> {
     let cfg = Config::load()?;
     if dump_snapshot {
         let snapshot = platform::collect_snapshot(&cfg.redis);
-        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        let snapshot_json = serde_json::to_string_pretty(&snapshot)
+            .expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
         return Ok(());
     }
     tracing_subscriber::fmt()
@@ -283,9 +285,8 @@ fn run() -> Result<()> {
     loop {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.redis);
-        if let Ok(raw) = serde_json::to_value(&snapshot) {
-            archive.write_json_line(&raw);
-        }
+        let raw = serde_json::json!(snapshot);
+        archive.write_json_line(&raw);
         connection_state = update_redis_connection_state(connection_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);

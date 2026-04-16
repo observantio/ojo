@@ -1,4 +1,3 @@
-#[cfg(not(coverage))]
 mod common;
 
 #[cfg(coverage)]

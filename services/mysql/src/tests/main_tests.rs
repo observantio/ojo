@@ -1,8 +1,9 @@
 use crate::{
     advance_export_state, derive_rates_or_reset, handle_flush_event, load_yaml_config_file,
     log_flush_result, make_stop_handler, maybe_sleep_until_next_poll, record_f64, record_snapshot,
-    record_u64, resolve_default_config_path, saturating_rate, sleep_until, Config, ExportState,
-    FlushEvent, Instruments, MysqlRates, MysqlSnapshot, PrevState,
+    record_u64, resolve_default_config_path, saturating_rate, sleep_until,
+    update_mysql_connection_state, Config, ExportState, FlushEvent, Instruments,
+    MysqlConnectionState, MysqlRates, MysqlSnapshot, PrevState,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -87,6 +88,41 @@ fn derive_rates_or_reset_resets_state_when_snapshot_unavailable() {
     assert_eq!(rates.bytes_received_per_second, 0.0);
     assert_eq!(rates.bytes_sent_per_second, 0.0);
     assert!(state.last.is_none());
+}
+
+#[test]
+fn mysql_connection_state_transitions_cover_all_paths() {
+    let up = MysqlSnapshot {
+        available: true,
+        up: true,
+        ..MysqlSnapshot::default()
+    };
+    let down = MysqlSnapshot::default();
+
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Unknown, &up),
+        MysqlConnectionState::Connected
+    );
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Unknown, &down),
+        MysqlConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Disconnected, &up),
+        MysqlConnectionState::Connected
+    );
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Disconnected, &down),
+        MysqlConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Connected, &up),
+        MysqlConnectionState::Connected
+    );
+    assert_eq!(
+        update_mysql_connection_state(MysqlConnectionState::Connected, &down),
+        MysqlConnectionState::Disconnected
+    );
 }
 
 #[test]

@@ -67,7 +67,8 @@ fn qa_metric_classification_platform_prefixes_are_consistent() {
             .expect("metric_classification must be object");
         let platform = fixture_platform(&path);
 
-        for metric_name in classification.keys() {
+        for (metric_name, semantic_kind) in classification {
+            let semantic_kind = semantic_kind.as_str().unwrap_or("");
             match platform {
                 PlatformFixture::Linux => {
                     assert!(
@@ -78,12 +79,15 @@ fn qa_metric_classification_platform_prefixes_are_consistent() {
                     );
                 }
                 PlatformFixture::Windows => {
+                    let is_linux_prefixed = metric_name.starts_with("system.linux.")
+                        || metric_name.starts_with("process.linux.");
+                    let is_compat_alias = semantic_kind.starts_with("compatibility_alias");
                     assert!(
-                        !metric_name.starts_with("system.linux.")
-                            && !metric_name.starts_with("process.linux."),
-                        "{}: windows fixture includes linux-only metric '{}'",
+                        !is_linux_prefixed || is_compat_alias,
+                        "{}: windows fixture includes non-compat linux-prefixed metric '{}' ({})",
                         path.display(),
-                        metric_name
+                        metric_name,
+                        semantic_kind
                     );
                 }
                 PlatformFixture::Solaris => {

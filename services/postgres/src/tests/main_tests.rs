@@ -1,7 +1,8 @@
 use crate::{
     advance_export_state, derive_rates_or_reset, load_yaml_config_file, record_f64,
-    record_snapshot, record_u64, resolve_default_config_path, saturating_rate, sleep_until, Config,
-    ExportState, FlushEvent, Instruments, PostgresRates, PostgresSnapshot, PrevState,
+    record_snapshot, record_u64, resolve_default_config_path, saturating_rate, sleep_until,
+    update_postgres_connection_state, Config, ExportState, FlushEvent, Instruments,
+    PostgresConnectionState, PostgresRates, PostgresSnapshot, PrevState,
 };
 use host_collectors::PrefixFilter;
 use std::fs;
@@ -94,6 +95,41 @@ fn derive_rates_or_reset_resets_state_when_snapshot_unavailable() {
     assert_eq!(rates.commits_per_second, 0.0);
     assert_eq!(rates.rollbacks_per_second, 0.0);
     assert!(state.last.is_none());
+}
+
+#[test]
+fn postgres_connection_state_transitions_cover_all_paths() {
+    let up = PostgresSnapshot {
+        available: true,
+        up: true,
+        ..PostgresSnapshot::default()
+    };
+    let down = PostgresSnapshot::default();
+
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Unknown, &up),
+        PostgresConnectionState::Connected
+    );
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Unknown, &down),
+        PostgresConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Disconnected, &up),
+        PostgresConnectionState::Connected
+    );
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Disconnected, &down),
+        PostgresConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Connected, &up),
+        PostgresConnectionState::Connected
+    );
+    assert_eq!(
+        update_postgres_connection_state(PostgresConnectionState::Connected, &down),
+        PostgresConnectionState::Disconnected
+    );
 }
 
 #[test]

@@ -1,10 +1,10 @@
 #[cfg(coverage)]
 mod coverage;
 
-#[cfg(all(not(coverage), target_os = "windows"))]
+#[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(all(not(coverage), not(target_os = "windows")))]
+#[cfg(not(target_os = "windows"))]
 mod linux;
 
 #[cfg(coverage)]
