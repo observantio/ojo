@@ -3,6 +3,7 @@ name: Quality Gates
 on:
   pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -47,6 +48,7 @@ jobs:
         run: cargo check --workspace --all-targets --target i686-pc-windows-gnu
 
   windows-dump:
+    if: github.event_name == 'workflow_dispatch'
     name: Windows Build + Dump Snapshot
     runs-on: windows-latest
     steps:
