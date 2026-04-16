@@ -438,7 +438,9 @@ fn run() -> Result<()> {
     let cfg = Config::load()?;
     if dump_snapshot {
         let snapshot = collect_snapshot();
-        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        let snapshot_json = serde_json::to_string_pretty(&snapshot)
+            .expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
         return Ok(());
     }
     tracing_subscriber::fmt()
@@ -492,9 +494,8 @@ fn run() -> Result<()> {
         iteration += 1;
         let started_at = Instant::now();
         let snapshot = collect_snapshot();
-        if let Ok(raw) = serde_json::to_value(&snapshot) {
-            archive.write_json_line(&raw);
-        }
+        let raw = serde_json::json!(snapshot);
+        archive.write_json_line(&raw);
         if iteration == 1 {
             info!(
                 source_available = snapshot.available,

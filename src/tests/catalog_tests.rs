@@ -107,6 +107,7 @@ fn parses_split_pair_attributes() {
 #[test]
 fn runqueue_requires_cpu_scope() {
     assert!(runqueue_attrs("all|2").is_none());
+    assert!(runqueue_attrs("cpu").is_none());
 }
 
 #[test]

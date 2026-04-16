@@ -1,7 +1,9 @@
 use crate::{
-    derive_rates_or_reset, load_yaml_config_file, parse_bool_env, record_f64, record_snapshot,
-    record_u64, resolve_default_config_path, run, saturating_rate, Config, Instruments,
-    NginxConfig, NginxRates, NginxSnapshot, PrevState,
+    advance_export_state, derive_rates_or_reset, handle_flush_event, load_yaml_config_file,
+    parse_bool_env, record_exporter_error_if_any, record_f64, record_snapshot, record_u64,
+    resolve_default_config_path, run, saturating_rate, update_nginx_connection_state, Config,
+    ExportState, FlushEvent, Instruments, NginxConfig, NginxConnectionState, NginxRates,
+    NginxSnapshot, PrevState,
 };
 use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
@@ -31,6 +33,83 @@ fn parse_bool_env_covers_variants() {
     std::env::set_var("OJO_NGINX_BOOL", "maybe");
     assert_eq!(parse_bool_env("OJO_NGINX_BOOL"), None);
     std::env::remove_var("OJO_NGINX_BOOL");
+}
+
+#[test]
+fn nginx_connection_state_transitions_cover_all_paths() {
+    let up = NginxSnapshot {
+        available: true,
+        up: true,
+        ..NginxSnapshot::default()
+    };
+    let down = NginxSnapshot::default();
+
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Unknown, &up),
+        NginxConnectionState::Connected
+    );
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Unknown, &down),
+        NginxConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Disconnected, &up),
+        NginxConnectionState::Connected
+    );
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Disconnected, &down),
+        NginxConnectionState::Disconnected
+    );
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Connected, &up),
+        NginxConnectionState::Connected
+    );
+    assert_eq!(
+        update_nginx_connection_state(NginxConnectionState::Connected, &down),
+        NginxConnectionState::Disconnected
+    );
+}
+
+#[test]
+fn export_state_and_flush_event_helpers_cover_all_paths() {
+    assert_eq!(
+        advance_export_state(ExportState::Pending, true),
+        (ExportState::Connected, FlushEvent::Connected)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Connected, true),
+        (ExportState::Connected, FlushEvent::None)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Reconnecting, true),
+        (ExportState::Connected, FlushEvent::Reconnected)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Connected, false),
+        (ExportState::Reconnecting, FlushEvent::Reconnecting)
+    );
+    assert_eq!(
+        advance_export_state(ExportState::Pending, false),
+        (ExportState::Reconnecting, FlushEvent::StillUnavailable)
+    );
+
+    let err = "flush-err";
+    handle_flush_event(FlushEvent::Reconnecting, Some(&err));
+    handle_flush_event(FlushEvent::StillUnavailable, Some(&err));
+    handle_flush_event(FlushEvent::Connected, Some(&err));
+    handle_flush_event(FlushEvent::Reconnected, Some(&err));
+    handle_flush_event(FlushEvent::None, Some(&err));
+    handle_flush_event(FlushEvent::Connected, None);
+    handle_flush_event(FlushEvent::Reconnected, None);
+    handle_flush_event(FlushEvent::None, None);
+}
+
+#[test]
+fn record_exporter_error_if_any_covers_true_and_false() {
+    let meter = opentelemetry::global::meter("nginx-exporter-error-test");
+    let instruments = Instruments::new(&meter);
+    record_exporter_error_if_any(&instruments, true);
+    record_exporter_error_if_any(&instruments, false);
 }
 
 #[test]

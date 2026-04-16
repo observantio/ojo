@@ -61,3 +61,48 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    fn run_command_with_timeout_returns_none_for_missing_binary() {
+        let result = run_command_with_timeout("definitely-missing-syslog-binary", &["--version"]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_command_with_timeout_covers_success_path() {
+        let out = run_command_with_timeout("sh", &["-c", "printf ok"]).expect("output");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "ok");
+    }
+
+    #[test]
+    fn run_with_timeout_using_waiter_covers_success_timeout_and_wait_error() {
+        let mut success_cmd = Command::new("sh");
+        success_cmd.arg("-c").arg("printf ok");
+        let success = run_with_timeout_using_waiter(success_cmd, Duration::from_secs(2), |child| {
+            child.try_wait()
+        })
+        .expect("successful command output");
+        assert!(success.status.success());
+        assert_eq!(String::from_utf8_lossy(&success.stdout), "ok");
+
+        let mut timeout_cmd = Command::new("sh");
+        timeout_cmd.arg("-c").arg("sleep 1");
+        let timed_out =
+            run_with_timeout_using_waiter(timeout_cmd, Duration::from_millis(1), |_| Ok(None));
+        assert!(timed_out.is_none());
+
+        let mut wait_error_cmd = Command::new("sh");
+        wait_error_cmd.arg("-c").arg("printf nope");
+        let wait_error =
+            run_with_timeout_using_waiter(wait_error_cmd, Duration::from_secs(1), |_| {
+                Err(std::io::Error::other("wait failed"))
+            });
+        assert!(wait_error.is_none());
+    }
+}

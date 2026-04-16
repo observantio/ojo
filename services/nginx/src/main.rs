@@ -199,6 +199,12 @@ fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Disp
     }
 }
 
+fn record_exporter_error_if_any(instruments: &Instruments, flush_succeeded: bool) {
+    if !flush_succeeded {
+        instruments.exporter_errors_total.add(1, &[]);
+    }
+}
+
 #[derive(Clone)]
 struct Instruments {
     source_available: Gauge<u64>,
@@ -287,7 +293,9 @@ fn run() -> Result<()> {
     let cfg = Config::load()?;
     if dump_snapshot {
         let snapshot = platform::collect_snapshot(&cfg.nginx);
-        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        let snapshot_json = serde_json::to_string_pretty(&snapshot)
+            .expect("snapshot serialization should not fail");
+        println!("{snapshot_json}");
         return Ok(());
     }
     tracing_subscriber::fmt()
@@ -326,17 +334,14 @@ fn run() -> Result<()> {
     loop {
         let started_at = Instant::now();
         let snapshot = platform::collect_snapshot(&cfg.nginx);
-        if let Ok(raw) = serde_json::to_value(&snapshot) {
-            archive.write_json_line(&raw);
-        }
+        let raw = serde_json::json!(snapshot);
+        archive.write_json_line(&raw);
         source_state = update_nginx_connection_state(source_state, &snapshot);
         let rates = derive_rates_or_reset(&mut prev, &snapshot);
         record_snapshot(&instruments, &filter, &snapshot, &rates);
         let flush_result = provider.force_flush();
         let (next_state, event) = advance_export_state(export_state, flush_result.is_ok());
-        if flush_result.is_err() {
-            instruments.exporter_errors_total.add(1, &[]);
-        }
+        record_exporter_error_if_any(&instruments, flush_result.is_ok());
         record_exporter_state(&instruments, &filter, next_state);
         handle_flush_event(
             event,

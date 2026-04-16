@@ -573,4 +573,100 @@ mod tests {
         no_load.load = None;
         metrics.record(&no_load, &DerivedMetrics::default(), false);
     }
+
+    #[test]
+    fn proc_metrics_record_covers_optional_none_and_filter_block_paths() {
+        let meter = opentelemetry::global::meter("metrics-none-coverage");
+        let metrics = crate::metrics::ProcMetrics::new(
+            meter,
+            MetricFilter::new(vec!["system.".to_string(), "process.".to_string()], vec![]),
+            ProcessLabelConfig {
+                include_pid: true,
+                include_command: false,
+                include_state: false,
+            },
+        );
+
+        let mut linux_snap = Snapshot::default();
+        linux_snap.system.os_type = "linux".to_string();
+        linux_snap.system.ticks_per_second = 100;
+        linux_snap.system.boot_time_epoch_secs = 10;
+        linux_snap.cpuinfo.push(CpuInfoSnapshot {
+            cpu: 0,
+            vendor_id: None,
+            model_name: None,
+            mhz: None,
+            cache_size_bytes: None,
+        });
+        linux_snap.disks.push(DiskSnapshot {
+            name: "sdb".to_string(),
+            has_counters: true,
+            logical_block_size: None,
+            physical_block_size: None,
+            rotational: None,
+            ..DiskSnapshot::default()
+        });
+        linux_snap.net.push(NetDevSnapshot {
+            name: "eth-none".to_string(),
+            stable_id: None,
+            interface_index: None,
+            interface_luid: None,
+            is_virtual: None,
+            is_loopback: None,
+            is_physical: None,
+            is_primary: None,
+            mtu: None,
+            speed_mbps: None,
+            tx_queue_len: None,
+            carrier_up: None,
+            ..NetDevSnapshot::default()
+        });
+        linux_snap.processes.push(ProcessSnapshot {
+            pid: 101,
+            comm: "linux-none".to_string(),
+            state: "S".to_string(),
+            start_time_ticks: 1,
+            read_bytes: None,
+            write_bytes: None,
+            cancelled_write_bytes: None,
+            vm_size_kib: None,
+            vm_rss_kib: None,
+            ..ProcessSnapshot::default()
+        });
+
+        let mut windows_snap = Snapshot::default();
+        windows_snap.system.os_type = "windows".to_string();
+        windows_snap.system.is_windows = true;
+        windows_snap.system.ticks_per_second = 100;
+        windows_snap.system.boot_time_epoch_secs = 20;
+        windows_snap.processes.push(ProcessSnapshot {
+            pid: 202,
+            comm: "win-none".to_string(),
+            state: "R".to_string(),
+            start_time_ticks: 2,
+            read_bytes: None,
+            write_bytes: None,
+            virtual_size_bytes: None,
+            working_set_bytes: None,
+            peak_working_set_bytes: None,
+            pagefile_usage_bytes: None,
+            private_bytes: None,
+            commit_charge_bytes: None,
+            ..ProcessSnapshot::default()
+        });
+
+        let mut derived = DerivedMetrics::default();
+        derived.process_cpu_ratio.insert(101, 0.1);
+        derived.process_cpu_ratio.insert(202, 0.2);
+
+        metrics.record(&linux_snap, &derived, true);
+        metrics.record(&windows_snap, &derived, true);
+
+        let blocked = crate::metrics::ProcMetrics::new(
+            opentelemetry::global::meter("metrics-none-blocked"),
+            MetricFilter::new(vec!["custom.".to_string()], vec![]),
+            ProcessLabelConfig::default(),
+        );
+        blocked.record(&linux_snap, &derived, true);
+    }
 }

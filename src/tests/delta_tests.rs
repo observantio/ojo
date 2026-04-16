@@ -376,3 +376,39 @@ fn derive_covers_zero_totals_and_zero_io_else_branches() {
     assert_eq!(out.disk_avg_write_size_bytes["sda"], 0.0);
     assert!(out.process_cpu_ratio.contains_key(&42));
 }
+
+#[test]
+fn derive_skips_non_positive_irq_deltas_and_handles_zero_packet_loss_ratio() {
+    let mut prev = Snapshot::default();
+    prev.system.ticks_per_second = 100;
+    prev.interrupts.insert("IRQ0|cpu0".to_string(), 10);
+    prev.softirqs.insert("NET_RX|cpu0".to_string(), 20);
+    prev.net.push(NetDevSnapshot {
+        name: "eth0".to_string(),
+        rx_packets: 0,
+        tx_packets: 0,
+        rx_errs: 0,
+        tx_errs: 0,
+        rx_drop: 0,
+        tx_drop: 0,
+        ..NetDevSnapshot::default()
+    });
+
+    let mut current = prev.clone();
+    current.interrupts.insert("IRQ0|cpu0".to_string(), 10);
+    current.softirqs.insert("NET_RX|cpu0".to_string(), 20);
+    current.net[0].rx_packets = 0;
+    current.net[0].tx_packets = 0;
+    current.net[0].rx_errs = 0;
+    current.net[0].tx_errs = 0;
+    current.net[0].rx_drop = 0;
+    current.net[0].tx_drop = 0;
+
+    let mut state = PrevState { last: Some(prev) };
+    let out = state.derive(&current, Duration::from_secs(1));
+
+    assert!(!out.linux_interrupts_delta.contains_key("IRQ0|cpu0"));
+    assert!(!out.linux_softirqs_delta.contains_key("NET_RX|cpu0"));
+    assert_eq!(out.net_rx_loss_ratio.get("eth0").copied(), Some(0.0));
+    assert_eq!(out.net_tx_loss_ratio.get("eth0").copied(), Some(0.0));
+}

@@ -1,14 +1,23 @@
-use crate::model::{
-    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, LoadSnapshot, MemorySnapshot,
-    MountSnapshot, NetDevSnapshot, ProcessSnapshot, Snapshot, SoftnetCpuSnapshot,
-    SwapDeviceSnapshot, SystemSnapshot,
-};
+use crate::model::{LoadSnapshot, MemorySnapshot, ProcessSnapshot, Snapshot, SystemSnapshot};
 use anyhow::Result;
+use std::collections::BTreeMap;
+
+#[cfg(not(coverage))]
+use crate::model::{
+    CpuInfoSnapshot, CpuTimes, CpuTimesSeconds, DiskSnapshot, MountSnapshot, NetDevSnapshot,
+    SoftnetCpuSnapshot, SwapDeviceSnapshot,
+};
+#[cfg(not(coverage))]
 use procfs::{process::all_processes, Current, CurrentSI};
-use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(not(coverage))]
+use std::collections::{HashMap, HashSet};
+#[cfg(not(coverage))]
 use std::ffi::CString;
+#[cfg(not(coverage))]
 use std::fs;
+#[cfg(not(coverage))]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(not(coverage))]
 use std::path::{Path, PathBuf};
 
 #[cfg(not(coverage))]

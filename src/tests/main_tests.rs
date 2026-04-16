@@ -1,7 +1,8 @@
 use super::{
     advance_export_state, compute_sleep_duration, handle_flush_event, has_flag, log_flush_result,
-    make_stop_handler, ExportState, FlushEvent,
+    make_stop_handler, update_offline_buffer, ExportState, FlushEvent,
 };
+use crate::buffers::IntervalBuffer;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -114,6 +115,27 @@ fn main_runs_once_with_valid_config() {
 }
 
 #[test]
+fn main_runs_once_with_true_string_env_flag() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("valid-config-true-flag.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: ojo-test-true\n  instance_id: ojo-test-true-01\ncollection:\n  poll_interval_secs: 1\n  include_process_metrics: false\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("PROC_OTEL_CONFIG", &path);
+    std::env::set_var("OJO_RUN_ONCE", "true");
+
+    let result = super::main();
+    assert!(result.is_ok(), "{result:?}");
+
+    std::env::remove_var("PROC_OTEL_CONFIG");
+    std::env::remove_var("OJO_RUN_ONCE");
+    fs::remove_file(path).expect("cleanup config");
+}
+
+#[test]
 fn main_runs_once_with_process_metrics_enabled() {
     let _guard = env_lock().lock().expect("env lock");
     let path = unique_temp_path("valid-config-procs.yaml");
@@ -146,6 +168,20 @@ fn flush_helpers_cover_all_event_paths() {
     handle_flush_event(FlushEvent::None, Some(&"err"));
     handle_flush_event(FlushEvent::Reconnecting, Some(&"err"));
     handle_flush_event(FlushEvent::StillUnavailable, Some(&"err"));
+}
+
+#[test]
+fn update_offline_buffer_covers_success_failure_and_drop_paths() {
+    let mut buffer = IntervalBuffer::new(2);
+    assert!(!buffer.push(()));
+    assert!(!buffer.push(()));
+
+    update_offline_buffer(&mut buffer, false);
+    assert_eq!(buffer.len(), 2);
+    assert_eq!(buffer.dropped_intervals(), 1);
+
+    update_offline_buffer(&mut buffer, true);
+    assert_eq!(buffer.len(), 0);
 }
 
 #[test]

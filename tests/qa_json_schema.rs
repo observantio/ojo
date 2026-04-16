@@ -57,22 +57,97 @@ fn object_keys(value: &Value) -> BTreeSet<String> {
         .collect()
 }
 
+fn is_windows_fixture(root: &Value, path: &Path) -> bool {
+    root.get("system")
+        .and_then(Value::as_object)
+        .and_then(|system| system.get("is_windows"))
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| panic!("{}: system.is_windows must be bool", path.display()))
+}
+
+fn expected_core_top_level_keys() -> BTreeSet<&'static str> {
+    BTreeSet::from([
+        "cpuinfo",
+        "disks",
+        "filesystem",
+        "load",
+        "memory",
+        "metric_classification",
+        "mounts",
+        "net",
+        "net_snmp",
+        "processes",
+        "sockets",
+        "support_state",
+        "swaps",
+        "system",
+        "vmstat",
+    ])
+}
+
+fn expected_linux_only_top_level_keys() -> BTreeSet<&'static str> {
+    BTreeSet::from([
+        "buddyinfo",
+        "cgroup",
+        "net_stat",
+        "pressure",
+        "pressure_totals_us",
+        "runqueue_depth",
+        "schedstat",
+        "slabinfo",
+        "softirqs",
+        "softnet",
+        "zoneinfo",
+    ])
+}
+
 #[test]
 fn qa_json_files_have_consistent_top_level_schema() {
-    let files = qa_json_files();
+    let core = expected_core_top_level_keys();
+    let linux_only = expected_linux_only_top_level_keys();
 
-    let baseline = read_json(&files[0]);
-    let baseline_keys = object_keys(&baseline);
+    for path in qa_json_files() {
+        let root = read_json(&path);
+        let keys = object_keys(&root);
 
-    for path in files.iter().skip(1) {
-        let value = read_json(path);
-        let keys = object_keys(&value);
-        assert_eq!(
-            keys,
-            baseline_keys,
-            "top-level keys differ for {}",
-            path.display()
-        );
+        for required in &core {
+            assert!(
+                keys.contains(*required),
+                "{}: missing required top-level key '{}'",
+                path.display(),
+                required
+            );
+        }
+
+        if is_windows_fixture(&root, &path) {
+            assert!(
+                keys.contains("windows"),
+                "{}: windows fixture must include top-level 'windows' section",
+                path.display()
+            );
+            for linux_key in &linux_only {
+                assert!(
+                    !keys.contains(*linux_key),
+                    "{}: windows fixture should not include linux-only key '{}'",
+                    path.display(),
+                    linux_key
+                );
+            }
+        } else {
+            assert!(
+                !keys.contains("windows"),
+                "{}: linux fixture should not include top-level 'windows' section",
+                path.display()
+            );
+            for linux_key in &linux_only {
+                assert!(
+                    keys.contains(*linux_key),
+                    "{}: linux fixture missing linux-only key '{}'",
+                    path.display(),
+                    linux_key
+                );
+            }
+        }
     }
 }
 
@@ -143,19 +218,36 @@ fn qa_json_core_sections_have_expected_types() {
 #[test]
 fn qa_metric_classification_uses_supported_namespaces_and_semantics() {
     let allowed_semantics = BTreeSet::from([
+        "compatibility_alias",
+        "compatibility_alias_windows_handle_count",
+        "compatibility_alias_windows_priority_class",
         "counter",
+        "derived",
         "gauge",
         "gauge_approximation",
         "gauge_derived",
         "gauge_derived_ratio",
         "gauge_ratio",
         "inventory",
+        "native",
+        "native_windows_analogue",
         "state",
+        "synthetic_not_linux_loadavg",
+        "unsupported",
+        "unsupported_on_windows",
     ]);
-    let expected_namespaces = expected_metric_namespaces();
 
     for path in qa_json_files() {
         let root = read_json(&path);
+        let expected_namespaces = if is_windows_fixture(&root, &path) {
+            BTreeSet::from([
+                "process".to_string(),
+                "system".to_string(),
+                "windows".to_string(),
+            ])
+        } else {
+            expected_metric_namespaces()
+        };
         let classification = root
             .get("metric_classification")
             .and_then(Value::as_object)
@@ -183,8 +275,10 @@ fn qa_metric_classification_uses_supported_namespaces_and_semantics() {
             namespaces.insert(namespace.to_string());
 
             assert!(
-                metric_name.starts_with("system.") || metric_name.starts_with("process."),
-                "{}: metric namespace should start with system. or process.: {}",
+                metric_name.starts_with("system.")
+                    || metric_name.starts_with("process.")
+                    || metric_name.starts_with("windows."),
+                "{}: metric namespace should start with system., process., or windows.: {}",
                 path.display(),
                 metric_name
             );

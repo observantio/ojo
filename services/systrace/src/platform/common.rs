@@ -82,3 +82,57 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    fn parse_key_value_lines_handles_valid_invalid_and_empty_lines() {
+        let parsed = parse_key_value_lines("A=1\n\nB = not-a-number\nno-delimiter\n = 7\nC=3.5\n");
+        assert_eq!(parsed.get("a"), Some(&1.0));
+        assert_eq!(parsed.get("b"), Some(&0.0));
+        assert_eq!(parsed.get("c"), Some(&3.5));
+        assert!(!parsed.contains_key(""));
+    }
+
+    #[test]
+    fn run_command_with_timeout_returns_none_for_missing_binary() {
+        let result = run_command_with_timeout("definitely-missing-systrace-binary", &["--version"]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_command_with_timeout_covers_success_path() {
+        let out = run_command_with_timeout("sh", &["-c", "printf systrace"]).expect("output");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "systrace");
+    }
+
+    #[test]
+    fn run_with_timeout_using_waiter_covers_success_timeout_and_wait_error() {
+        let mut success_cmd = Command::new("sh");
+        success_cmd.arg("-c").arg("printf systrace");
+        let success = run_with_timeout_using_waiter(success_cmd, Duration::from_secs(2), |child| {
+            child.try_wait()
+        })
+        .expect("successful command output");
+        assert!(success.status.success());
+        assert_eq!(String::from_utf8_lossy(&success.stdout), "systrace");
+
+        let mut timeout_cmd = Command::new("sh");
+        timeout_cmd.arg("-c").arg("sleep 1");
+        let timed_out =
+            run_with_timeout_using_waiter(timeout_cmd, Duration::from_millis(1), |_| Ok(None));
+        assert!(timed_out.is_none());
+
+        let mut wait_error_cmd = Command::new("sh");
+        wait_error_cmd.arg("-c").arg("printf nope");
+        let wait_error =
+            run_with_timeout_using_waiter(wait_error_cmd, Duration::from_secs(1), |_| {
+                Err(std::io::Error::other("wait failed"))
+            });
+        assert!(wait_error.is_none());
+    }
+}

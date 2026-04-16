@@ -16,18 +16,13 @@ pub(crate) fn collect_snapshot() -> GpuSnapshot {
     }
 }
 
-#[allow(clippy::question_mark)]
 fn collect_nvidia_smi() -> Option<Vec<GpuSample>> {
     let mut cmd = Command::new("nvidia-smi");
     cmd.args([
         "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks_throttle_reasons.active",
         "--format=csv,noheader,nounits",
     ]);
-    let maybe_output = run_with_timeout(cmd, CMD_TIMEOUT);
-    let output = match maybe_output {
-        Some(output) => output,
-        None => return None,
-    };
+    let output = run_with_timeout(cmd, CMD_TIMEOUT)?;
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "nvidia-smi failed");
         return None;

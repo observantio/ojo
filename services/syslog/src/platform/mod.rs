@@ -162,18 +162,9 @@ fn collect_watched_file_records(cfg: &PlatformConfig) -> WatchedFileResult {
     let mut application_logs_available = false;
     let mut collection_errors = 0u64;
 
-    let mut offsets = match file_offsets().lock() {
-        Ok(guard) => guard,
-        Err(_) => {
-            return WatchedFileResult {
-                records,
-                active_targets,
-                process_logs_available,
-                application_logs_available,
-                collection_errors: 1,
-            }
-        }
-    };
+    let mut offsets = file_offsets()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     for watch in &cfg.watch_files {
         let path = Path::new(&watch.path);

@@ -137,6 +137,18 @@ fn redis_connection_state_transitions() {
         ),
         RedisConnectionState::Disconnected,
     );
+
+    assert_eq!(
+        update_redis_connection_state(
+            RedisConnectionState::Connected,
+            &RedisSnapshot {
+                available: true,
+                up: true,
+                ..RedisSnapshot::default()
+            }
+        ),
+        RedisConnectionState::Connected,
+    );
 }
 
 #[test]

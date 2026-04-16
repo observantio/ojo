@@ -102,7 +102,6 @@ fn parse_proc_nfs_rpc_stats(contents: &str) -> Option<(u64, u64, u64)> {
     None
 }
 
-#[allow(clippy::question_mark)]
 fn collect_rpc_stats_from_nfsstat(cfg: &NfsClientConfig) -> Option<(u64, u64, u64)> {
     let executable = cfg
         .executable
@@ -111,10 +110,7 @@ fn collect_rpc_stats_from_nfsstat(cfg: &NfsClientConfig) -> Option<(u64, u64, u6
         .unwrap_or("nfsstat");
     let mut cmd = Command::new(executable);
     cmd.args(["-c"]);
-    let output = match run_with_timeout(cmd, CMD_TIMEOUT) {
-        Some(output) => output,
-        None => return None,
-    };
+    let output = run_with_timeout(cmd, CMD_TIMEOUT)?;
     if !output.status.success() {
         warn!(stderr = %String::from_utf8_lossy(&output.stderr), "nfsstat command failed");
         return None;

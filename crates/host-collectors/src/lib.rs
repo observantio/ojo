@@ -86,7 +86,7 @@ impl JsonArchiveWriter {
         self.rotate_if_needed(&path)?;
 
         let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
-        let line = serde_json::to_string(value)?;
+        let line = value.to_string();
         file.write_all(line.as_bytes())?;
         file.write_all(b"\n")?;
         self.total_records = self.total_records.saturating_add(1);

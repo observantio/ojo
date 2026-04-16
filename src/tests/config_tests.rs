@@ -429,6 +429,20 @@ fn from_file_config_uses_default_authorization_header_for_token() {
     );
 }
 
+#[test]
+fn from_file_config_ignores_invalid_offline_buffer_env_value() {
+    let _guard = env_lock().lock().expect("env lock");
+    std::env::set_var("PROC_OFFLINE_BUFFER_INTERVALS", "not-a-number");
+
+    let cfg = Config::from_file_config(FileConfig::default());
+    assert_eq!(
+        cfg.offline_buffer_intervals,
+        crate::buffers::OFFLINE_BUFFER_INTERVALS
+    );
+
+    std::env::remove_var("PROC_OFFLINE_BUFFER_INTERVALS");
+}
+
 #[cfg(unix)]
 #[test]
 fn load_yaml_config_file_reports_read_error_context() {

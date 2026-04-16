@@ -1,4 +1,3 @@
-[2m2026-04-15T10:06:41.074019Z[0m [33m WARN[0m [2mojo::windows::collector_impl[0m[2m:[0m wincollect: windows.load.synthetic is derived from CPU busy-time EMA scaled by logical CPU entities; it is not Linux loadavg-equivalent.
 {
   "system": {
     "is_windows": true,
