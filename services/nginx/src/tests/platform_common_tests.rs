@@ -2,6 +2,7 @@ use super::{collect_snapshot_impl, run_with_timeout, run_with_timeout_using_wait
 use crate::NginxConfig;
 use std::fs;
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {
@@ -15,8 +16,17 @@ fn unique_temp_dir(name: &str) -> std::path::PathBuf {
     ))
 }
 
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    &LOCK
+}
+
 #[test]
 fn collect_snapshot_impl_returns_default_when_command_cannot_spawn() {
+    let _guard = env_lock().lock().expect("env lock");
+    let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
+    std::env::remove_var("OJO_NGINX_STUB_STATUS");
+
     let cfg = NginxConfig {
         executable: "/definitely/missing/curl".to_string(),
         status_url: "http://127.0.0.1/nginx_status".to_string(),
@@ -24,10 +34,18 @@ fn collect_snapshot_impl_returns_default_when_command_cannot_spawn() {
     let snap = collect_snapshot_impl(&cfg, "curl");
     assert!(!snap.available);
     assert_eq!(snap.requests_total, 0);
+
+    if let Some(previous) = previous {
+        std::env::set_var("OJO_NGINX_STUB_STATUS", previous);
+    }
 }
 
 #[test]
 fn collect_snapshot_impl_parses_stub_status_from_fake_script() {
+    let _guard = env_lock().lock().expect("env lock");
+    let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
+    std::env::remove_var("OJO_NGINX_STUB_STATUS");
+
     let dir = unique_temp_dir("script");
     fs::create_dir_all(&dir).expect("mkdir");
     let script = dir.join("fake-curl.sh");
@@ -59,12 +77,19 @@ fn collect_snapshot_impl_parses_stub_status_from_fake_script() {
     assert_eq!(snap.handled_total, 16_630_948);
     assert_eq!(snap.requests_total, 31_070_465);
 
+    if let Some(previous) = previous {
+        std::env::set_var("OJO_NGINX_STUB_STATUS", previous);
+    }
     fs::remove_file(&script).expect("cleanup script");
     fs::remove_dir_all(&dir).expect("cleanup dir");
 }
 
 #[test]
 fn collect_snapshot_impl_returns_default_for_invalid_status_text() {
+    let _guard = env_lock().lock().expect("env lock");
+    let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
+    std::env::remove_var("OJO_NGINX_STUB_STATUS");
+
     let dir = unique_temp_dir("invalid");
     fs::create_dir_all(&dir).expect("mkdir");
     let script = dir.join("fake-curl-invalid.sh");
@@ -84,6 +109,9 @@ fn collect_snapshot_impl_returns_default_for_invalid_status_text() {
     let snap = collect_snapshot_impl(&cfg, "curl");
     assert!(!snap.available);
 
+    if let Some(previous) = previous {
+        std::env::set_var("OJO_NGINX_STUB_STATUS", previous);
+    }
     fs::remove_file(&script).expect("cleanup script");
     fs::remove_dir_all(&dir).expect("cleanup dir");
 }
