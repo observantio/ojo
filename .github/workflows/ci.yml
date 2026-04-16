@@ -183,6 +183,46 @@ jobs:
             platform: win
             target: x86_64-pc-windows-gnu
             ext: ".exe"
+          - service: nginx
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: nginx
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: redis
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: redis
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: systemd
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: systemd
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: systrace
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: systrace
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
+          - service: syslog
+            platform: unix
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - service: syslog
+            platform: win
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
 
     steps:
       - uses: actions/checkout@v4
