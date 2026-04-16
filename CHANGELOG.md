@@ -5,16 +5,22 @@ All notable changes to this project will be documented in this file.
 ## [0.0.3] - 2026-04-15
 
 ### Added
-- Expanded test coverage across core and sidecar services, including deterministic one-shot execution paths for integration-style `main` tests.
+- Expanded test coverage across core and sidecar services to achieve above 90% coverage, including deterministic one-shot execution paths for integration-style `main` tests.
 - Added broader Linux collector helper tests (cgroup/support-state helpers, cache parsers, key formatting, scope normalization) and additional config/catalog edge-case tests.
 - Added three new cross-platform sidecar services:
   - `ojo-redis` (`system.redis.*`)
   - `ojo-nginx` (`system.nginx.*`)
   - `ojo-systemd` (`system.systemd.*`)
+- Added two more cross-platform sidecar services:
+  - `ojo-syslog` (`system.syslog.*`)
+  - `ojo-systrace` (`system.systrace.*`)
 - Added new Grafana dashboards:
   - `grafana/redis.json`
   - `grafana/nginx.json`
   - `grafana/systemd.json`
+  - `grafana/syslog.json`
+  - `grafana/systrace.json`
+- Added `run_otel_collector.sh` at project root and documented the easier OpenTelemetry Collector startup workflow in `DEPLOYMENT.md`.
 - Added `--dump-snapshot` JSON output mode to all sidecar services (`ojo-docker`, `ojo-gpu`, `ojo-mysql`, `ojo-nfs-client`, `ojo-nginx`, `ojo-postgres`, `ojo-redis`, `ojo-sensors`, `ojo-systemd`) for one-shot snapshot inspection.
 
 ### Changed
@@ -24,7 +30,7 @@ All notable changes to this project will be documented in this file.
 - Updated service and core test paths to avoid flaky Ctrl-C handler re-registration failures during repeated test runs.
 - Systrace trace export now groups sampled trace lines by inferred component (for example `kernel.userstack`) instead of emitting one child span per line, reducing Tempo service-graph fan-out noise while preserving representative trace context.
 - Systrace Linux event discovery now uses a single `events/` traversal to compute both counts and enabled-event inventory, reducing per-poll overhead in trace-heavy environments.
-- Added Redis/NGINX-style source connection lifecycle logging to MySQL and Postgres sidecars (`connected`, `failed`, `reconnected`, `still unavailable`, `disconnected`) for clearer runtime status.
+- Added Redis/NGINX-style source connection lifecycle logging to MySQL, Postgres, Syslog, and Systrace sidecars (`connected`, `failed`, `reconnected`, `still unavailable`, `disconnected`) for clearer runtime status.
 - Expanded NGINX exporter lifecycle reporting with explicit OTLP state transitions and exporter health metrics (`system.nginx.exporter.available`, `system.nginx.exporter.reconnecting`, `system.nginx.exporter.errors.total`).
 - Updated NGINX and Redis Grafana traffic-rate queries to include robust PromQL fallback derivation from counter totals when direct rate gauges are sparse.
 - Refined systrace span topology and service-graph compatibility for clearer parent/child relationships and improved trace readability.
