@@ -285,7 +285,18 @@ fn exporter_empty_batch_and_archive_prune_edges() {
 
 #[test]
 fn export_buffered_logs_returns_early_for_empty_buffer_and_zero_batch() {
-    let cfg = test_config_with_logs_endpoint("http://127.0.0.1:4318/v1/logs".to_string());
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+    let addr = listener.local_addr().expect("local addr");
+
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut req = [0u8; 4096];
+        let _ = stream.read(&mut req).expect("read request");
+        let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        stream.write_all(response.as_bytes()).expect("write response");
+    });
+
+    let cfg = test_config_with_logs_endpoint(format!("http://{addr}/logs"));
     let exporter = OtlpLogExporter::new(&cfg).expect("create exporter");
 
     let mut empty_buffer = LogBuffer::new(8);
@@ -300,6 +311,8 @@ fn export_buffered_logs_returns_early_for_empty_buffer_and_zero_batch() {
     assert!(err.is_none());
     assert_eq!(stats.exported_records, 1);
     assert_eq!(zero_batch_buffer.len(), 0);
+
+    handle.join().expect("server thread");
 }
 
 #[test]
