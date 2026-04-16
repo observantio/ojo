@@ -462,7 +462,7 @@ fn record_snapshot(
 
 fn cap_samples_for_labels(samples: &[GpuSample], limit: usize) -> Vec<GpuSample> {
     let mut out = samples.to_vec();
-    out.sort_by(|a, b| a.index.cmp(&b.index));
+    out.sort_by_key(|a| a.index);
     out.into_iter().take(limit).collect()
 }
 

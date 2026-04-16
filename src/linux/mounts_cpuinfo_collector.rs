@@ -83,10 +83,8 @@ fn collect_cpuinfo(cache: &mut ReadCache) -> Result<Vec<CpuInfoSnapshot>> {
             "vendor_id" | "CPU implementer" | "Hardware" => {
                 current.vendor_id = Some(value.to_string())
             }
-            "model name" | "Processor" | "model" | "cpu" => {
-                if current.model_name.is_none() {
-                    current.model_name = Some(value.to_string());
-                }
+            "model name" | "Processor" | "model" | "cpu" if current.model_name.is_none() => {
+                current.model_name = Some(value.to_string());
             }
             "cpu MHz" => current.mhz = value.parse::<f64>().ok(),
             "cache size" | "L2 cache" => {
