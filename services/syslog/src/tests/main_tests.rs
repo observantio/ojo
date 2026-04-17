@@ -5,7 +5,7 @@ use crate::{
     record_snapshot, resolve_default_config_path, sanitize_ascii_line, ArchivePipeline, Config,
     ExportState, FlushEvent, Instruments, LogBuffer, LogRecord, OtlpLogExporter, RuntimeSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, PrefixFilter};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -243,6 +243,10 @@ fn test_config_with_logs_endpoint(logs_endpoint: String) -> Config {
         archive_dir: "".to_string(),
         archive_max_file_bytes: 1024,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         once: true,
     }
 }
@@ -419,7 +423,7 @@ fn archive_pipeline_writes_and_rotates_records() {
     cfg.archive_retain_files = 2;
 
     let mut archive = ArchivePipeline::from_config(&cfg);
-    let path = dir.join("syslog-records.ndjson");
+    let path = dir.join("syslog-trend.parquet");
 
     archive.write_batch(&[sample_record("first")]);
     archive.write_batch(&[sample_record("second")]);

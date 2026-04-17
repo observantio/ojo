@@ -206,6 +206,7 @@ fn main() -> Result<()> {
 
     let mut prev = PrevState::default();
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
+    archive.set_default_identity(&cfg.service_name, &cfg.instance_id);
     let mut export_state = ExportState::Pending;
     let mut offline_buffer = IntervalBuffer::new(cfg.offline_buffer_intervals);
 

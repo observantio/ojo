@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use host_collectors::{
-    default_protocol_for_endpoint, init_meter_provider, init_tracer_provider, OtlpSettings,
-    PrefixFilter,
+    default_protocol_for_endpoint, init_meter_provider, init_tracer_provider, ArchiveCompression,
+    ArchiveFormat, ArchiveMode, ArchiveStorageConfig, ArchiveWriter, JsonArchiveWriter,
+    OtlpSettings, PrefixFilter,
 };
 use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry::trace::{Span, SpanKind, TraceContextExt, Tracer};
@@ -11,8 +12,6 @@ use std::collections::BTreeMap;
 use std::env;
 #[cfg(test)]
 use std::fs;
-use std::fs::{self as stdfs, OpenOptions};
-use std::io::Write;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -44,6 +43,10 @@ struct Config {
     archive_dir: String,
     archive_max_file_bytes: u64,
     archive_retain_files: usize,
+    archive_format: ArchiveFormat,
+    archive_mode: ArchiveMode,
+    archive_window_secs: u64,
+    archive_compression: ArchiveCompression,
     trace_stream_max_lines: usize,
     privileged_expected: bool,
     ebpf_enabled: bool,
@@ -357,12 +360,13 @@ pub(crate) struct SystraceSnapshot {
     pub(crate) runtime_probes_configured_total: u64,
 }
 
-#[derive(Clone, Debug)]
 struct ArchivePipeline {
     enabled: bool,
-    dir: String,
+    #[cfg(test)]
     max_file_bytes: u64,
+    #[cfg(test)]
     retain_files: usize,
+    writer: JsonArchiveWriter,
     total_events: u64,
     total_bytes: u64,
     healthy: bool,
@@ -371,11 +375,28 @@ struct ArchivePipeline {
 
 impl ArchivePipeline {
     fn from_config(cfg: &Config) -> Self {
-        Self {
+        let writer_cfg = ArchiveStorageConfig {
             enabled: cfg.archive_enabled,
-            dir: cfg.archive_dir.clone(),
+            archive_dir: cfg.archive_dir.clone(),
             max_file_bytes: cfg.archive_max_file_bytes,
             retain_files: cfg.archive_retain_files,
+            file_stem: "systrace".to_string(),
+            format: cfg.archive_format.clone(),
+            mode: cfg.archive_mode.clone(),
+            window_secs: cfg.archive_window_secs,
+            compression: cfg.archive_compression.clone(),
+        };
+        Self {
+            enabled: cfg.archive_enabled,
+            #[cfg(test)]
+            max_file_bytes: cfg.archive_max_file_bytes,
+            #[cfg(test)]
+            retain_files: cfg.archive_retain_files,
+            writer: {
+                let mut writer = JsonArchiveWriter::from_config(&writer_cfg);
+                writer.set_default_identity(&cfg.service_name, &cfg.instance_id);
+                writer
+            },
             total_events: 0,
             total_bytes: 0,
             healthy: true,
@@ -392,70 +413,47 @@ impl ArchivePipeline {
             self.healthy = false;
             self.last_error = Some(err.to_string());
             warn!(error = %err, "archive pipeline write failed");
-        } else {
-            self.healthy = true;
-            self.last_error = None;
+        } else if !self.healthy {
+            let detail = self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "unknown archive writer error".to_string());
+            warn!(error = %detail, "archive pipeline write failed");
         }
     }
 
     fn write_snapshot_impl(&mut self, snapshot: &SystraceSnapshot) -> Result<()> {
-        stdfs::create_dir_all(&self.dir)
-            .with_context(|| format!("failed to create archive dir '{}'", self.dir))?;
-
-        let snapshot_path = format!("{}/systrace-snapshots.ndjson", self.dir);
-        let trace_path = format!("{}/systrace-trace-lines.ndjson", self.dir);
-        self.rotate_if_needed(&snapshot_path)?;
-        self.rotate_if_needed(&trace_path)?;
-
-        let mut snapshot_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&snapshot_path)
-            .with_context(|| format!("failed to open snapshot archive '{}'", snapshot_path))?;
-        let json = serde_json::json!(snapshot).to_string();
-        snapshot_file
-            .write_all(json.as_bytes())
-            .context("failed to write snapshot JSON")?;
-        snapshot_file
-            .write_all(b"\n")
-            .context("failed to write snapshot newline")?;
-        self.total_events = self.total_events.saturating_add(1);
-        self.total_bytes = self
-            .total_bytes
-            .saturating_add((json.len() as u64).saturating_add(1));
-
+        let snapshot_json = serde_json::to_value(snapshot).context("snapshot serialize failed")?;
+        self.writer.write_snapshot(&snapshot_json);
         if !snapshot.trace_sample.is_empty() {
-            let mut trace_file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&trace_path)
-                .with_context(|| format!("failed to open trace archive '{}'", trace_path))?;
-            for line in &snapshot.trace_sample {
-                let entry = serde_json::json!({
-                    "line": line,
-                    "system_calls_source": snapshot.system_calls_source,
-                    "processes_total": snapshot.processes_total,
-                    "threads_total": snapshot.threads_total,
-                });
-                let raw = entry.to_string();
-                trace_file
-                    .write_all(raw.as_bytes())
-                    .context("failed to write trace line entry")?;
-                trace_file
-                    .write_all(b"\n")
-                    .context("failed to write trace line newline")?;
-                self.total_events = self.total_events.saturating_add(1);
-                self.total_bytes = self
-                    .total_bytes
-                    .saturating_add((raw.len() as u64).saturating_add(1));
-            }
+            let rows = snapshot
+                .trace_sample
+                .iter()
+                .map(|line| {
+                    serde_json::json!({
+                        "severity_text": "trace",
+                        "source": "systrace",
+                        "watch_target": "trace_sample",
+                        "body": line,
+                        "system_calls_source": snapshot.system_calls_source,
+                        "processes_total": snapshot.processes_total,
+                        "threads_total": snapshot.threads_total,
+                    })
+                })
+                .collect::<Vec<_>>();
+            self.writer.write_log_batch(&rows);
         }
-        self.prune_rotated_files()?;
+        self.writer.flush();
+        self.total_events = self.writer.total_records;
+        self.total_bytes = self.writer.total_bytes;
+        self.healthy = self.writer.healthy;
+        self.last_error = self.writer.last_error.clone();
         Ok(())
     }
 
+    #[cfg(test)]
     fn rotate_if_needed(&self, path: &str) -> Result<()> {
-        let metadata = match stdfs::metadata(path) {
+        let metadata = match fs::metadata(path) {
             Ok(md) => md,
             Err(_) => return Ok(()),
         };
@@ -466,23 +464,16 @@ impl ArchivePipeline {
         for idx in (1..=self.retain_files).rev() {
             let src = format!("{}.{}", path, idx);
             let dst = format!("{}.{}", path, idx + 1);
-            if Path::new(&src).exists() {
-                let _ = stdfs::rename(&src, &dst);
+            if std::path::Path::new(&src).exists() {
+                let _ = fs::rename(&src, &dst);
             }
         }
         let first = format!("{}.1", path);
-        let _ = stdfs::rename(path, first);
+        let _ = fs::rename(path, first);
         Ok(())
     }
 
-    fn prune_rotated_files(&self) -> Result<()> {
-        let snapshot_prefix = format!("{}/systrace-snapshots.ndjson", self.dir);
-        let trace_prefix = format!("{}/systrace-trace-lines.ndjson", self.dir);
-        self.prune_prefix(&snapshot_prefix)?;
-        self.prune_prefix(&trace_prefix)?;
-        Ok(())
-    }
-
+    #[cfg(test)]
     fn prune_prefix(&self, prefix: &str) -> Result<()> {
         if self.retain_files == 0 {
             return Ok(());
@@ -491,10 +482,10 @@ impl ArchivePipeline {
         let mut idx = cutoff + 1;
         loop {
             let candidate = format!("{}.{}", prefix, idx);
-            if !Path::new(&candidate).exists() {
+            if !std::path::Path::new(&candidate).exists() {
                 break;
             }
-            stdfs::remove_file(&candidate)
+            fs::remove_file(&candidate)
                 .with_context(|| format!("failed to remove rotated archive '{}'", candidate))?;
             idx += 1;
         }
@@ -1503,6 +1494,29 @@ impl Config {
                 .as_ref()
                 .and_then(|s| s.archive_retain_files.or(s.retain_files))
                 .unwrap_or(8),
+            archive_format: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_format.clone())
+                .map(|s| ArchiveFormat::parse(Some(&s)))
+                .unwrap_or_default(),
+            archive_mode: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_mode.clone())
+                .map(|s| ArchiveMode::parse(Some(&s)))
+                .unwrap_or_default(),
+            archive_window_secs: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_window_secs)
+                .unwrap_or(60),
+            archive_compression: file_cfg
+                .storage
+                .as_ref()
+                .and_then(|s| s.archive_compression.clone())
+                .map(|s| ArchiveCompression::parse(Some(&s)))
+                .unwrap_or_default(),
             trace_stream_max_lines: collection.trace_stream_max_lines.unwrap_or(2048).max(1)
                 as usize,
             privileged_expected: file_cfg
@@ -1737,6 +1751,10 @@ struct StorageSection {
     max_file_bytes: Option<u64>,
     archive_retain_files: Option<usize>,
     retain_files: Option<usize>,
+    archive_format: Option<String>,
+    archive_mode: Option<String>,
+    archive_window_secs: Option<u64>,
+    archive_compression: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

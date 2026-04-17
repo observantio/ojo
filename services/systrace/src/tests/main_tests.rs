@@ -7,7 +7,7 @@ use crate::{
     resolve_default_config_path, ArchivePipeline, ComponentTraceSummary, Config, ExportState,
     FlushEvent, Instruments, SystraceSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, PrefixFilter};
 use opentelemetry::trace::{Span, Tracer};
 use std::collections::BTreeMap;
 use std::fs;
@@ -382,6 +382,10 @@ fn archive_pipeline_write_snapshot_updates_counters_and_health() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 80,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Forensic,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 64,
         privileged_expected: true,
         ebpf_enabled: true,
@@ -446,6 +450,10 @@ fn archive_pipeline_write_snapshot_handles_empty_trace_sample() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 1024,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 16,
         privileged_expected: false,
         ebpf_enabled: false,
@@ -494,6 +502,10 @@ fn archive_pipeline_rotation_and_prune_edges_cover_all_paths() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 16,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 8,
         privileged_expected: false,
         ebpf_enabled: false,
