@@ -64,7 +64,7 @@ These binaries are separate workspace crates under `services/<name>/`. Each runs
 | Systrace | `ojo-systrace` | `services/systrace/systrace.yaml` | `system.systrace.*` |
 | Syslog | `ojo-syslog` | `services/syslog/syslog.yaml` | `system.syslog.*` |
 
-Shared OTLP and filtering helpers live in `crates/host-collectors`. Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`, `nginx.json`, `redis.json`, `systemd.json`, `systrace.json`, `syslog.json`).
+Shared OTLP, filtering, and archive helpers live in [`crates/host-collectors`](crates/host-collectors/README.md). Grafana dashboards for each extension are under `grafana/` (`docker.json`, `gpu.json`, `sensors.json`, `mysql.json`, `postgres.json`, `nfs-client.json`, `nginx.json`, `redis.json`, `systemd.json`, `systrace.json`, `syslog.json`).
 
 Release archives include the main `ojo` agent and all sidecar services for Linux (`-unix`) and Windows (`-win`).
 
@@ -258,6 +258,43 @@ cd services/mysql && cargo run -- --config mysql.yaml
 cd services/postgres && cargo run -- --config postgres.yaml
 cd services/nfs-client && cargo run -- --config nfs-client.yaml
 cd services/nginx && cargo run -- --config nginx.yaml
+
+## Archive Storage Modes
+
+Archive behavior is configured in each YAML `storage` section:
+
+- `archive_enabled`
+- `archive_dir`
+- `archive_max_file_bytes`
+- `archive_retain_files`
+- `archive_file_stem`
+- `archive_format` (`parquet`)
+- `archive_mode` (`trend`, `lossless`, `forensic`)
+- `archive_window_secs` (trend mode window)
+- `archive_compression` (`zstd`)
+
+Mode guidance:
+- `trend`: lossy, very compact, best for long-range dashboards and baselines.
+- `lossless`: full-fidelity records with efficient parquet+zstd compression.
+- `forensic`: compatibility row mode for deeper incident-level archives.
+
+## Archive Replay
+
+Replay archived trend parquet files to OTLP or Prometheus remote-write (Mimir compatible):
+
+```bash
+cargo run --bin archive-replay -- \
+  --archive-dir services/sensors/data \
+  --endpoint http://localhost:4320/otlp/v1/metrics \
+  --protocol otlp
+```
+
+```bash
+cargo run --bin archive-replay -- \
+  --archive-dir services/sensors/data \
+  --endpoint http://localhost:4320/mimir/api/v1/push \
+  --protocol remote-write
+```
 cd services/redis && cargo run -- --config redis.yaml
 cd services/systemd && cargo run -- --config systemd.yaml
 cd services/systrace && cargo run -- --config systrace.yaml
@@ -399,3 +436,10 @@ Cross-checking to `x86_64-pc-windows-gnu` from Linux requires a MinGW toolchain 
 - Ensure `collection.include_process_metrics: true`
 - Verify process permissions
 - Check that `metrics` filters are not excluding `process.`
+
+Shell log output (no endpoint required):
+```bash
+cargo run --bin archive-replay -- \
+  --archive-dir <archive_dir> \
+  --protocol shell-logs
+```

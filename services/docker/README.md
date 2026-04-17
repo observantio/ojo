@@ -25,6 +25,27 @@ Archive settings:
 - `storage.archive_max_file_bytes`
 - `storage.archive_retain_files`
 - `storage.archive_file_stem`
+- `storage.archive_format` (`parquet`)
+- `storage.archive_mode` (`trend`, `lossless`, `forensic`)
+- `storage.archive_window_secs` (used by `trend`)
+- `storage.archive_compression` (`zstd`)
+
+Archive modes:
+- `trend`: compact lossy summaries (`min/max/avg/count/first/last`) per window.
+- `lossless`: full-fidelity row archival with efficient parquet + zstd compression.
+- `forensic`: compatibility row mode.
+
+Typical files:
+- `<archive_file_stem>-trend.parquet`
+- `<archive_file_stem>-lossless.parquet`
+
+Replay archives (all modes):
+```bash
+cargo run --bin archive-replay -- \
+  --archive-dir services/docker/data \
+  --endpoint http://localhost:4320/otlp/v1/metrics \
+  --protocol otlp
+```
 
 ## Run
 ```bash
@@ -32,3 +53,10 @@ cargo run -p ojo-docker -- --config services/docker/docker.yaml
 ```
 
 Use `--once` for one-shot collection.
+
+Shell log output (no endpoint required):
+```bash
+cargo run --bin archive-replay -- \
+  --archive-dir <archive_dir> \
+  --protocol shell-logs
+```
