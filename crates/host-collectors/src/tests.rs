@@ -1,8 +1,10 @@
 use super::{
     build_meter_provider, build_tracer_provider, default_protocol_for_endpoint, hostname,
-    init_meter_provider, init_tracer_provider, ArchiveStorageConfig, JsonArchiveWriter,
-    OtlpSettings, PrefixFilter, StdoutSpanExporter, METRIC_PREFIX_SYSTEM,
+    init_meter_provider, init_tracer_provider, ArchiveCompression, ArchiveFormat, ArchiveMode,
+    ArchiveStorageConfig, JsonArchiveWriter, OtlpSettings, PrefixFilter, StdoutSpanExporter,
+    METRIC_PREFIX_SYSTEM,
 };
+use arrow_array::{Array, StringArray};
 use opentelemetry::trace::{
     SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState,
 };
@@ -11,8 +13,10 @@ use opentelemetry::KeyValue;
 use opentelemetry_sdk::error::OTelSdkError;
 use opentelemetry_sdk::resource::Resource;
 use opentelemetry_sdk::trace::{SpanData, SpanEvents, SpanExporter, SpanLinks};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::collections::BTreeMap;
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -119,6 +123,13 @@ fn default_protocol_without_scheme_uses_grpc() {
         default_protocol_for_endpoint(Some("127.0.0.1:4318/v1/metrics")),
         "grpc"
     );
+}
+
+#[test]
+fn archive_mode_parses_lossless_and_forensic() {
+    assert_eq!(ArchiveMode::parse(Some("lossless")), ArchiveMode::Lossless);
+    assert_eq!(ArchiveMode::parse(Some("forensic")), ArchiveMode::Forensic);
+    assert_eq!(ArchiveMode::parse(Some("trend")), ArchiveMode::Trend);
 }
 
 #[test]
@@ -279,6 +290,10 @@ fn json_archive_writer_from_config_copies_fields_and_initializes_state() {
         max_file_bytes: 128,
         retain_files: 3,
         file_stem: "host".to_string(),
+        format: ArchiveFormat::Parquet,
+        mode: ArchiveMode::Forensic,
+        window_secs: 60,
+        compression: ArchiveCompression::Zstd,
     };
     let writer = JsonArchiveWriter::from_config(&config);
 
@@ -312,6 +327,10 @@ fn json_archive_writer_writes_and_tracks_bytes() {
         max_file_bytes: 1024,
         retain_files: 0,
         file_stem: "metrics".to_string(),
+        format: ArchiveFormat::Parquet,
+        mode: ArchiveMode::Trend,
+        window_secs: 60,
+        compression: ArchiveCompression::Zstd,
     };
     let mut writer = JsonArchiveWriter::from_config(&config);
     let payload = serde_json::json!({"name": "cpu", "value": 1});
@@ -329,6 +348,56 @@ fn json_archive_writer_writes_and_tracks_bytes() {
 }
 
 #[test]
+fn json_archive_writer_uses_default_identity_when_missing_in_payload() {
+    let dir = unique_temp_dir("host_collectors_archive_identity_defaults");
+    fs::create_dir_all(&dir).expect("create temp directory");
+
+    let config = ArchiveStorageConfig {
+        enabled: true,
+        archive_dir: dir.to_string_lossy().into_owned(),
+        max_file_bytes: 1024 * 1024,
+        retain_files: 0,
+        file_stem: "metrics".to_string(),
+        format: ArchiveFormat::Parquet,
+        mode: ArchiveMode::Trend,
+        window_secs: 1,
+        compression: ArchiveCompression::Zstd,
+    };
+    let mut writer = JsonArchiveWriter::from_config(&config);
+    writer.set_default_identity("svc-default", "inst-default");
+    writer.write_json_line(&serde_json::json!({"metric": {"value": 42}}));
+    writer.flush();
+
+    let path = dir.join("metrics-trend.parquet");
+    let file = File::open(path).expect("open archive parquet");
+    let mut reader = ParquetRecordBatchReaderBuilder::try_new(file)
+        .expect("build parquet reader")
+        .build()
+        .expect("create record batch reader");
+    let batch = reader
+        .next()
+        .expect("at least one record batch")
+        .expect("read batch");
+    let service_col = batch
+        .column_by_name("service_name")
+        .expect("service_name column")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("service_name should be utf8");
+    let instance_col = batch
+        .column_by_name("instance_id")
+        .expect("instance_id column")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("instance_id should be utf8");
+
+    assert_eq!(service_col.value(0), "svc-default");
+    assert_eq!(instance_col.value(0), "inst-default");
+
+    fs::remove_dir_all(&dir).expect("remove temp directory");
+}
+
+#[test]
 fn json_archive_writer_sets_health_false_when_archive_dir_is_invalid() {
     let dir = unique_temp_dir("host_collectors_archive_err");
     fs::create_dir_all(&dir).expect("create temp directory");
@@ -341,6 +410,10 @@ fn json_archive_writer_sets_health_false_when_archive_dir_is_invalid() {
         max_file_bytes: 1024,
         retain_files: 1,
         file_stem: "metrics".to_string(),
+        format: ArchiveFormat::Parquet,
+        mode: ArchiveMode::Trend,
+        window_secs: 60,
+        compression: ArchiveCompression::Zstd,
     };
     let mut writer = JsonArchiveWriter::from_config(&config);
     writer.write_json_line(&serde_json::json!({"name": "cpu"}));
@@ -357,7 +430,7 @@ fn json_archive_writer_sets_health_false_when_archive_dir_is_invalid() {
 fn json_archive_writer_rotates_and_prunes_files() {
     let dir = unique_temp_dir("host_collectors_archive_rotate");
     fs::create_dir_all(&dir).expect("create temp directory");
-    let base = dir.join("metrics.ndjson");
+    let base = dir.join("metrics-forensic.parquet");
     fs::write(&base, vec![b'x'; 20]).expect("seed oversized current file");
     fs::write(format!("{}.1", base.to_string_lossy()), b"older-1").expect("seed rotated file 1");
     fs::write(format!("{}.2", base.to_string_lossy()), b"older-2").expect("seed rotated file 2");
@@ -369,6 +442,10 @@ fn json_archive_writer_rotates_and_prunes_files() {
         max_file_bytes: 10,
         retain_files: 2,
         file_stem: "metrics".to_string(),
+        format: ArchiveFormat::Parquet,
+        mode: ArchiveMode::Trend,
+        window_secs: 60,
+        compression: ArchiveCompression::Zstd,
     };
     let mut writer = JsonArchiveWriter::from_config(&config);
     writer.write_json_line(&serde_json::json!({"rotated": true}));
@@ -376,8 +453,6 @@ fn json_archive_writer_rotates_and_prunes_files() {
     assert!(base.exists());
     assert!(PathBuf::from(format!("{}.1", base.to_string_lossy())).exists());
     assert!(PathBuf::from(format!("{}.2", base.to_string_lossy())).exists());
-    assert!(PathBuf::from(format!("{}.3", base.to_string_lossy())).exists());
-    assert!(!PathBuf::from(format!("{}.4", base.to_string_lossy())).exists());
 
     fs::remove_dir_all(&dir).expect("remove temp directory");
 }

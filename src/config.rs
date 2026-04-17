@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use host_collectors::ArchiveStorageConfig;
+use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, ArchiveStorageConfig};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::env;
@@ -89,6 +89,10 @@ struct StorageSection {
     archive_max_file_bytes: Option<u64>,
     archive_retain_files: Option<usize>,
     archive_file_stem: Option<String>,
+    archive_format: Option<String>,
+    archive_mode: Option<String>,
+    archive_window_secs: Option<u64>,
+    archive_compression: Option<String>,
 }
 
 impl Config {
@@ -222,6 +226,10 @@ impl Config {
                 file_stem: storage
                     .archive_file_stem
                     .unwrap_or_else(|| "ojo-snapshots".to_string()),
+                format: ArchiveFormat::parse(storage.archive_format.as_deref()),
+                mode: ArchiveMode::parse(storage.archive_mode.as_deref()),
+                window_secs: storage.archive_window_secs.unwrap_or(60),
+                compression: ArchiveCompression::parse(storage.archive_compression.as_deref()),
             },
         }
     }
