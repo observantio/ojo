@@ -28,3 +28,7 @@ storage:
   archive_max_file_bytes: 67108864
   archive_retain_files: 8
   archive_file_stem: gpu-snapshots
+  archive_format: parquet
+  archive_mode: trend
+  archive_window_secs: 60
+  archive_compression: zstd
