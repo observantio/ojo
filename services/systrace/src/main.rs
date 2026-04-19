@@ -409,11 +409,8 @@ impl ArchivePipeline {
             return;
         }
 
-        if let Err(err) = self.write_snapshot_impl(snapshot) {
-            self.healthy = false;
-            self.last_error = Some(err.to_string());
-            warn!(error = %err, "archive pipeline write failed");
-        } else if !self.healthy {
+        self.write_snapshot_impl(snapshot);
+        if !self.healthy {
             let detail = self
                 .last_error
                 .clone()
@@ -422,8 +419,9 @@ impl ArchivePipeline {
         }
     }
 
-    fn write_snapshot_impl(&mut self, snapshot: &SystraceSnapshot) -> Result<()> {
-        let snapshot_json = serde_json::to_value(snapshot).context("snapshot serialize failed")?;
+    fn write_snapshot_impl(&mut self, snapshot: &SystraceSnapshot) {
+        let snapshot_json =
+            serde_json::to_value(snapshot).expect("SystraceSnapshot serialization should not fail");
         self.writer.write_snapshot(&snapshot_json);
         if !snapshot.trace_sample.is_empty() {
             let rows = snapshot
@@ -448,7 +446,6 @@ impl ArchivePipeline {
         self.total_bytes = self.writer.total_bytes;
         self.healthy = self.writer.healthy;
         self.last_error = self.writer.last_error.clone();
-        Ok(())
     }
 
     #[cfg(test)]
