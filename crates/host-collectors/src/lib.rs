@@ -8,6 +8,7 @@ use opentelemetry_sdk::{
     resource::Resource,
     trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider, SpanData, SpanExporter},
 };
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::arrow_writer::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
@@ -407,7 +408,7 @@ impl ParquetArchiveWriter {
         }
 
         let mut ranked = signatures.into_iter().collect::<Vec<_>>();
-        ranked.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+        ranked.sort_by_key(|entry| std::cmp::Reverse(entry.1 .0));
         for ((service_name, instance_id, sig), (count, _sample)) in
             ranked.into_iter().take(DEFAULT_TOP_K_LOG_SIGNATURES)
         {
@@ -436,18 +437,16 @@ impl ParquetArchiveWriter {
     ) {
         match value {
             Value::Number(num) => {
-                if let Some(v) = num.as_f64() {
-                    if v.is_finite() {
-                        self.add_trend_point(
-                            window_start,
-                            TrendKey {
-                                service_name: service_name.to_string(),
-                                instance_id: instance_id.to_string(),
-                                metric_key: path.join("."),
-                            },
-                            v,
-                        );
-                    }
+                if let Some(v) = num.as_f64().filter(|candidate| candidate.is_finite()) {
+                    self.add_trend_point(
+                        window_start,
+                        TrendKey {
+                            service_name: service_name.to_string(),
+                            instance_id: instance_id.to_string(),
+                            metric_key: path.join("."),
+                        },
+                        v,
+                    );
                 }
             }
             Value::Object(map) => {
@@ -470,9 +469,13 @@ impl ParquetArchiveWriter {
 
     fn add_trend_point(&mut self, window_start: i64, key: TrendKey, value: f64) {
         let map = self.trend_windows.entry(window_start).or_default();
-        let entry = map.entry(key).or_insert_with(|| TrendStats::new(value));
-        if entry.count > 0 {
-            entry.update(value);
+        match map.entry(key) {
+            std::collections::hash_map::Entry::Occupied(mut existing) => {
+                existing.get_mut().update(value);
+            }
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(TrendStats::new(value));
+            }
         }
     }
 
@@ -484,9 +487,11 @@ impl ParquetArchiveWriter {
             .filter(|w| *w < current_window)
             .collect::<Vec<_>>();
         for window in closed {
-            if let Some(values) = self.trend_windows.remove(&window) {
-                self.write_trend_window(window, values)?;
-            }
+            let values = self
+                .trend_windows
+                .remove(&window)
+                .expect("closed window key collected from map must exist");
+            self.write_trend_window(window, values)?;
         }
         Ok(())
     }
@@ -494,9 +499,11 @@ impl ParquetArchiveWriter {
     fn flush_all_trend_windows(&mut self) -> anyhow::Result<()> {
         let windows = self.trend_windows.keys().copied().collect::<Vec<_>>();
         for window in windows {
-            if let Some(values) = self.trend_windows.remove(&window) {
-                self.write_trend_window(window, values)?;
-            }
+            let values = self
+                .trend_windows
+                .remove(&window)
+                .expect("window key collected from map must exist");
+            self.write_trend_window(window, values)?;
         }
         Ok(())
     }
@@ -701,6 +708,7 @@ impl ParquetArchiveWriter {
     fn write_batch(&mut self, batch: RecordBatch, suffix: &str) -> anyhow::Result<()> {
         let path = format!("{}/{}-{}.parquet", self.dir, self.file_stem, suffix);
         self.rotate_if_needed(&path)?;
+        let existing_batches = self.read_existing_batches(&path, batch.schema())?;
 
         let mut metadata_builder = WriterProperties::builder();
         metadata_builder = metadata_builder
@@ -710,11 +718,36 @@ impl ParquetArchiveWriter {
         let props = metadata_builder.build();
         let file = File::create(&path)?;
         let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))?;
+        for existing in existing_batches {
+            writer.write(&existing)?;
+        }
         writer.write(&batch)?;
         writer.flush()?;
         writer.finish()?;
         self.prune_rotated_files(&path)?;
         Ok(())
+    }
+
+    fn read_existing_batches(
+        &self,
+        path: &str,
+        expected_schema: Arc<Schema>,
+    ) -> anyhow::Result<Vec<RecordBatch>> {
+        if !Path::new(path).exists() {
+            return Ok(Vec::new());
+        }
+
+        let file = File::open(path)?;
+        let mut reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let mut batches = Vec::new();
+        for maybe_batch in &mut reader {
+            let batch = maybe_batch?;
+            if batch.schema().as_ref() != expected_schema.as_ref() {
+                anyhow::bail!("existing archive schema mismatch for path: {path}");
+            }
+            batches.push(batch);
+        }
+        Ok(batches)
     }
 
     fn rotate_if_needed(&self, path: &str) -> anyhow::Result<()> {

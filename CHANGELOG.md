@@ -23,6 +23,11 @@ storage:
   archive_file_stem: ojo-snapshots
 ```
 
+### Fixed
+
+- Fixed trend aggregation first-sample accounting in `host-collectors` so the first point in a window is no longer double-counted.
+- Fixed parquet archive persistence in `host-collectors` so repeated writes preserve previously written active-file batches instead of truncating earlier archive data.
+
 
 ## [0.0.3] - 2026-04-15
 

@@ -456,6 +456,36 @@ fn archive_pipeline_marks_unhealthy_on_invalid_dir() {
 }
 
 #[test]
+fn archive_pipeline_rotate_if_needed_covers_missing_and_oversized_paths() {
+    let dir = unique_temp_path("syslog-archive-rotate-branches");
+    fs::create_dir_all(&dir).expect("create archive dir");
+    let mut cfg = test_config_with_logs_endpoint("http://127.0.0.1:1/v1/logs".to_string());
+    cfg.archive_dir = dir.to_string_lossy().to_string();
+    cfg.archive_max_file_bytes = 8;
+    cfg.archive_retain_files = 2;
+    let archive = ArchivePipeline::from_config(&cfg);
+
+    let missing_path = dir.join("missing.parquet");
+    archive
+        .rotate_if_needed(missing_path.to_string_lossy().as_ref())
+        .expect("missing file should be a no-op");
+
+    let path = dir.join("syslog-trend.parquet");
+    fs::write(&path, b"this file is oversized").expect("seed oversized archive");
+    fs::write(format!("{}.1", path.to_string_lossy()), b"old1").expect("seed .1");
+    fs::write(format!("{}.2", path.to_string_lossy()), b"old2").expect("seed .2");
+
+    archive
+        .rotate_if_needed(path.to_string_lossy().as_ref())
+        .expect("oversized file should rotate");
+
+    assert!(std::path::Path::new(&format!("{}.1", path.to_string_lossy())).exists());
+    assert!(std::path::Path::new(&format!("{}.2", path.to_string_lossy())).exists());
+
+    fs::remove_dir_all(&dir).expect("cleanup archive dir");
+}
+
+#[test]
 fn export_buffered_logs_handles_success_and_error() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
     let addr = listener.local_addr().expect("local addr");

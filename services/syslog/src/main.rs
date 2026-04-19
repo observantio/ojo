@@ -371,11 +371,8 @@ impl ArchivePipeline {
             return;
         }
 
-        if let Err(err) = self.write_batch_impl(batch) {
-            self.healthy = false;
-            self.last_error = Some(err.to_string());
-            warn!(error = %err, "archive write failed for syslog batch");
-        } else if !self.healthy {
+        self.write_batch_impl(batch);
+        if !self.healthy {
             let detail = self
                 .last_error
                 .clone()
@@ -384,19 +381,19 @@ impl ArchivePipeline {
         }
     }
 
-    fn write_batch_impl(&mut self, batch: &[LogRecord]) -> Result<()> {
+    fn write_batch_impl(&mut self, batch: &[LogRecord]) {
         let values = batch
             .iter()
-            .map(serde_json::to_value)
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .context("failed to serialize log records for archive")?;
+            .map(|record| {
+                serde_json::to_value(record).expect("LogRecord serialization should not fail")
+            })
+            .collect::<Vec<_>>();
         self.writer.write_log_batch(&values);
         self.writer.flush();
         self.total_events = self.writer.total_records;
         self.total_bytes = self.writer.total_bytes;
         self.healthy = self.writer.healthy;
         self.last_error = self.writer.last_error.clone();
-        Ok(())
     }
 
     #[cfg(test)]
