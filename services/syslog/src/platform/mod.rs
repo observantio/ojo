@@ -43,7 +43,7 @@ pub(crate) struct PlatformCollection {
     pub(crate) records: Vec<LogRecord>,
 }
 
-#[cfg(any(test, all(not(coverage), target_os = "linux")))]
+#[cfg(all(not(coverage), target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Default)]
 struct LinuxSourceSnapshot {
     available: bool,
@@ -51,7 +51,7 @@ struct LinuxSourceSnapshot {
     dmesg_available: bool,
 }
 
-#[cfg(any(test, all(not(coverage), target_os = "windows")))]
+#[cfg(all(not(coverage), target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Default)]
 struct WindowsSourceSnapshot {
     available: bool,
