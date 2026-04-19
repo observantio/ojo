@@ -3,8 +3,10 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
 
+#[cfg(target_os = "windows")]
 const CMD_TIMEOUT: Duration = Duration::from_secs(15);
 
+#[cfg(target_os = "windows")]
 pub(super) fn parse_key_value_lines(text: &str) -> BTreeMap<String, f64> {
     let mut out = BTreeMap::new();
     for line in text.lines() {
@@ -24,6 +26,7 @@ pub(super) fn parse_key_value_lines(text: &str) -> BTreeMap<String, f64> {
     out
 }
 
+#[cfg(target_os = "windows")]
 pub(super) fn run_command_with_timeout(
     command: &str,
     args: &[&str],
@@ -33,14 +36,17 @@ pub(super) fn run_command_with_timeout(
     run_with_timeout(cmd, CMD_TIMEOUT)
 }
 
+#[cfg(target_os = "windows")]
 fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
     run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
 }
 
+#[cfg(target_os = "windows")]
 fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
     child.try_wait()
 }
 
+#[cfg(target_os = "windows")]
 fn run_with_timeout_using_waiter<W>(
     mut cmd: Command,
     timeout: Duration,
@@ -83,7 +89,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
     use std::process::Command;
