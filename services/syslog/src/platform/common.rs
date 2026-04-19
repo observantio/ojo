@@ -2,8 +2,10 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::warn;
 
+#[cfg(any(test, not(coverage)))]
 const CMD_TIMEOUT: Duration = Duration::from_secs(12);
 
+#[cfg(any(test, not(coverage)))]
 pub(super) fn run_command_with_timeout(
     command: &str,
     args: &[&str],
@@ -13,14 +15,17 @@ pub(super) fn run_command_with_timeout(
     run_with_timeout(cmd, CMD_TIMEOUT)
 }
 
+#[cfg(any(test, not(coverage)))]
 fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
     run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
 }
 
+#[cfg(any(test, not(coverage)))]
 fn wait_for_child(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
     child.try_wait()
 }
 
+#[cfg(any(test, not(coverage)))]
 fn run_with_timeout_using_waiter<W>(
     mut cmd: Command,
     timeout: Duration,

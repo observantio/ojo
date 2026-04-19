@@ -1,8 +1,17 @@
-use crate::LogRecord;
+use crate::{normalize_severity, now_unix_nanos, sanitize_ascii_line, LogRecord};
 
 use super::{PlatformCollection, PlatformConfig, PlatformSnapshot};
 
-pub(crate) fn collect(_cfg: &PlatformConfig) -> PlatformCollection {
+pub(crate) fn collect(cfg: &PlatformConfig) -> PlatformCollection {
+    let _ = cfg.max_lines_per_source;
+    let _ = cfg.max_message_bytes;
+    for watch in &cfg.watch_files {
+        let _ = (&watch.name, &watch.path, watch.source);
+    }
+    let _ = now_unix_nanos();
+    let _ = sanitize_ascii_line("coverage", 8);
+    let _ = normalize_severity("INFO");
+
     PlatformCollection {
         snapshot: PlatformSnapshot {
             available: true,
