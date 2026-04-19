@@ -5,7 +5,7 @@ use crate::{
     record_snapshot, resolve_default_config_path, sanitize_ascii_line, ArchivePipeline, Config,
     ExportState, FlushEvent, Instruments, LogBuffer, LogRecord, OtlpLogExporter, RuntimeSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, PrefixFilter};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -243,6 +243,10 @@ fn test_config_with_logs_endpoint(logs_endpoint: String) -> Config {
         archive_dir: "".to_string(),
         archive_max_file_bytes: 1024,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         once: true,
     }
 }
@@ -419,7 +423,7 @@ fn archive_pipeline_writes_and_rotates_records() {
     cfg.archive_retain_files = 2;
 
     let mut archive = ArchivePipeline::from_config(&cfg);
-    let path = dir.join("syslog-records.ndjson");
+    let path = dir.join("syslog-trend.parquet");
 
     archive.write_batch(&[sample_record("first")]);
     archive.write_batch(&[sample_record("second")]);
@@ -449,6 +453,36 @@ fn archive_pipeline_marks_unhealthy_on_invalid_dir() {
     assert!(archive.last_error.is_some());
 
     fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn archive_pipeline_rotate_if_needed_covers_missing_and_oversized_paths() {
+    let dir = unique_temp_path("syslog-archive-rotate-branches");
+    fs::create_dir_all(&dir).expect("create archive dir");
+    let mut cfg = test_config_with_logs_endpoint("http://127.0.0.1:1/v1/logs".to_string());
+    cfg.archive_dir = dir.to_string_lossy().to_string();
+    cfg.archive_max_file_bytes = 8;
+    cfg.archive_retain_files = 2;
+    let archive = ArchivePipeline::from_config(&cfg);
+
+    let missing_path = dir.join("missing.parquet");
+    archive
+        .rotate_if_needed(missing_path.to_string_lossy().as_ref())
+        .expect("missing file should be a no-op");
+
+    let path = dir.join("syslog-trend.parquet");
+    fs::write(&path, b"this file is oversized").expect("seed oversized archive");
+    fs::write(format!("{}.1", path.to_string_lossy()), b"old1").expect("seed .1");
+    fs::write(format!("{}.2", path.to_string_lossy()), b"old2").expect("seed .2");
+
+    archive
+        .rotate_if_needed(path.to_string_lossy().as_ref())
+        .expect("oversized file should rotate");
+
+    assert!(std::path::Path::new(&format!("{}.1", path.to_string_lossy())).exists());
+    assert!(std::path::Path::new(&format!("{}.2", path.to_string_lossy())).exists());
+
+    fs::remove_dir_all(&dir).expect("cleanup archive dir");
 }
 
 #[test]

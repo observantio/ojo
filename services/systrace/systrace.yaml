@@ -38,3 +38,7 @@ storage:
   archive_dir: services/systrace/data
   archive_max_file_bytes: 67108864
   archive_retain_files: 8
+  archive_format: parquet
+  archive_mode: trend
+  archive_window_secs: 60
+  archive_compression: zstd

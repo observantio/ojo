@@ -162,6 +162,10 @@ fn apply_otel_env_sets_and_clears_environment_values() {
             max_file_bytes: 64 * 1024 * 1024,
             retain_files: 8,
             file_stem: "ojo-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
     };
     cfg.apply_otel_env();

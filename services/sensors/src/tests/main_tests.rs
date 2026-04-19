@@ -372,6 +372,10 @@ fn record_snapshot_handles_available_without_voltages() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "sensor-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };

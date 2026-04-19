@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use host_collectors::{
-    default_protocol_for_endpoint, init_meter_provider, OtlpSettings, PrefixFilter,
+    default_protocol_for_endpoint, init_meter_provider, ArchiveCompression, ArchiveFormat,
+    ArchiveMode, ArchiveStorageConfig, ArchiveWriter, JsonArchiveWriter, OtlpSettings,
+    PrefixFilter,
 };
 use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry::KeyValue;
@@ -8,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
-use std::fs::{self as stdfs, OpenOptions};
-use std::io::Write;
+#[cfg(test)]
+use std::fs::{self as stdfs};
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -48,6 +50,10 @@ struct Config {
     archive_dir: String,
     archive_max_file_bytes: u64,
     archive_retain_files: usize,
+    archive_format: ArchiveFormat,
+    archive_mode: ArchiveMode,
+    archive_window_secs: u64,
+    archive_compression: ArchiveCompression,
     once: bool,
 }
 
@@ -316,23 +322,45 @@ impl OtlpLogExporter {
     }
 }
 
-#[derive(Clone, Debug)]
 struct ArchivePipeline {
     enabled: bool,
-    dir: String,
+    #[cfg(test)]
     max_file_bytes: u64,
+    #[cfg(test)]
     retain_files: usize,
+    writer: JsonArchiveWriter,
+    total_events: u64,
+    total_bytes: u64,
     healthy: bool,
     last_error: Option<String>,
 }
 
 impl ArchivePipeline {
     fn from_config(cfg: &Config) -> Self {
-        Self {
+        let writer_cfg = ArchiveStorageConfig {
             enabled: cfg.archive_enabled,
-            dir: cfg.archive_dir.clone(),
+            archive_dir: cfg.archive_dir.clone(),
             max_file_bytes: cfg.archive_max_file_bytes,
             retain_files: cfg.archive_retain_files,
+            file_stem: "syslog".to_string(),
+            format: cfg.archive_format.clone(),
+            mode: cfg.archive_mode.clone(),
+            window_secs: cfg.archive_window_secs,
+            compression: cfg.archive_compression.clone(),
+        };
+        Self {
+            enabled: cfg.archive_enabled,
+            #[cfg(test)]
+            max_file_bytes: cfg.archive_max_file_bytes,
+            #[cfg(test)]
+            retain_files: cfg.archive_retain_files,
+            writer: {
+                let mut writer = JsonArchiveWriter::from_config(&writer_cfg);
+                writer.set_default_identity(&cfg.service_name, &cfg.instance_id);
+                writer
+            },
+            total_events: 0,
+            total_bytes: 0,
             healthy: true,
             last_error: None,
         }
@@ -343,41 +371,32 @@ impl ArchivePipeline {
             return;
         }
 
-        if let Err(err) = self.write_batch_impl(batch) {
-            self.healthy = false;
-            self.last_error = Some(err.to_string());
-            warn!(error = %err, "archive write failed for syslog batch");
-        } else {
-            self.healthy = true;
-            self.last_error = None;
+        self.write_batch_impl(batch);
+        if !self.healthy {
+            let detail = self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "unknown archive writer error".to_string());
+            warn!(error = %detail, "archive write failed for syslog batch");
         }
     }
 
-    fn write_batch_impl(&mut self, batch: &[LogRecord]) -> Result<()> {
-        stdfs::create_dir_all(&self.dir)
-            .with_context(|| format!("failed to create archive dir '{}'", self.dir))?;
-
-        let path = format!("{}/syslog-records.ndjson", self.dir);
-        self.rotate_if_needed(&path)?;
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .with_context(|| format!("failed to open archive '{}'", path))?;
-
-        for record in batch {
-            let line = serde_json::json!(record).to_string();
-            file.write_all(line.as_bytes())
-                .context("failed to write archive log line")?;
-            file.write_all(b"\n")
-                .context("failed to write archive newline")?;
-        }
-
-        self.prune_rotated_files(&path)?;
-        Ok(())
+    fn write_batch_impl(&mut self, batch: &[LogRecord]) {
+        let values = batch
+            .iter()
+            .map(|record| {
+                serde_json::to_value(record).expect("LogRecord serialization should not fail")
+            })
+            .collect::<Vec<_>>();
+        self.writer.write_log_batch(&values);
+        self.writer.flush();
+        self.total_events = self.writer.total_records;
+        self.total_bytes = self.writer.total_bytes;
+        self.healthy = self.writer.healthy;
+        self.last_error = self.writer.last_error.clone();
     }
 
+    #[cfg(test)]
     fn rotate_if_needed(&self, path: &str) -> Result<()> {
         let metadata = match stdfs::metadata(path) {
             Ok(md) => md,
@@ -398,6 +417,7 @@ impl ArchivePipeline {
         Ok(())
     }
 
+    #[cfg(test)]
     fn prune_rotated_files(&self, prefix: &str) -> Result<()> {
         if self.retain_files == 0 {
             return Ok(());
@@ -685,6 +705,10 @@ impl Config {
                 .unwrap_or_else(|| "services/syslog/data".to_string()),
             archive_max_file_bytes: storage.archive_max_file_bytes.unwrap_or(64 * 1024 * 1024),
             archive_retain_files: storage.archive_retain_files.unwrap_or(8),
+            archive_format: ArchiveFormat::parse(storage.archive_format.as_deref()),
+            archive_mode: ArchiveMode::parse(storage.archive_mode.as_deref()),
+            archive_window_secs: storage.archive_window_secs.unwrap_or(60),
+            archive_compression: ArchiveCompression::parse(storage.archive_compression.as_deref()),
             once,
         })
     }
@@ -1044,6 +1068,10 @@ struct StorageSection {
     archive_dir: Option<String>,
     archive_max_file_bytes: Option<u64>,
     archive_retain_files: Option<usize>,
+    archive_format: Option<String>,
+    archive_mode: Option<String>,
+    archive_window_secs: Option<u64>,
+    archive_compression: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

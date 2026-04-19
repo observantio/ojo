@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.4] - 2026-04-19
+
+### Changed
+
+#### Efficient Archiving
+
+- Archives are now significantly more compressed and lightweight. Each service can be independently tuned via the YAML config, with full control over format, compression, retention, and archival strategy.
+
+```yaml
+storage:
+  archive_enabled: true
+  archive_dir: data/ojo
+  archive_format: parquet         # columnar storage for efficient reads
+  archive_compression: zstd       # high-ratio compression
+  archive_mode: trend             # archive strategy  (`trend`, `lossless`, `forensic`)
+  archive_window_secs: 60         # rolling window per archive cycle
+  archive_max_file_bytes: 67108864  # 64 MiB per file
+  archive_retain_files: 8         # number of archive files to retain
+  archive_file_stem: ojo-snapshots
+```
+
+### Fixed
+
+- Fixed trend aggregation first-sample accounting in `host-collectors` so the first point in a window is no longer double-counted.
+- Fixed parquet archive persistence in `host-collectors` so repeated writes preserve previously written active-file batches instead of truncating earlier archive data.
+
+
 ## [0.0.3] - 2026-04-15
 
 ### Added

@@ -7,7 +7,7 @@ use crate::{
     resolve_default_config_path, ArchivePipeline, ComponentTraceSummary, Config, ExportState,
     FlushEvent, Instruments, SystraceSnapshot,
 };
-use host_collectors::PrefixFilter;
+use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, PrefixFilter};
 use opentelemetry::trace::{Span, Tracer};
 use std::collections::BTreeMap;
 use std::fs;
@@ -382,6 +382,10 @@ fn archive_pipeline_write_snapshot_updates_counters_and_health() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 80,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Forensic,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 64,
         privileged_expected: true,
         ebpf_enabled: true,
@@ -446,6 +450,10 @@ fn archive_pipeline_write_snapshot_handles_empty_trace_sample() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 1024,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 16,
         privileged_expected: false,
         ebpf_enabled: false,
@@ -473,6 +481,96 @@ fn archive_pipeline_write_snapshot_handles_empty_trace_sample() {
 }
 
 #[test]
+fn archive_pipeline_write_snapshot_marks_unhealthy_for_invalid_archive_dir() {
+    let parent = unique_temp_path("systrace-archive-invalid-dir");
+    fs::create_dir_all(&parent).expect("create parent");
+    let blocker = parent.join("not-a-dir");
+    fs::write(&blocker, b"blocker").expect("create blocker");
+
+    let cfg = Config {
+        service_name: "svc".to_string(),
+        instance_id: "id".to_string(),
+        poll_interval: Duration::from_secs(1),
+        otlp_endpoint: "http://127.0.0.1:4318/v1/metrics".to_string(),
+        otlp_protocol: "http/protobuf".to_string(),
+        otlp_timeout: Some(Duration::from_secs(1)),
+        export_interval: Some(Duration::from_secs(1)),
+        export_timeout: Some(Duration::from_secs(1)),
+        metrics_include: vec!["system.systrace.".to_string()],
+        metrics_exclude: vec![],
+        trace_enabled: false,
+        trace_include: vec![],
+        trace_exclude: vec![],
+        archive_enabled: true,
+        archive_dir: blocker.to_string_lossy().to_string(),
+        archive_max_file_bytes: 1024,
+        archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
+        trace_stream_max_lines: 16,
+        privileged_expected: false,
+        ebpf_enabled: false,
+        uprobes_enabled: false,
+        usdt_enabled: false,
+        runtime_probe_profiles: vec![],
+        once: true,
+    };
+
+    let mut archive = ArchivePipeline::from_config(&cfg);
+    archive.write_snapshot(&SystraceSnapshot::default());
+    assert!(!archive.healthy);
+    assert!(archive.last_error.is_some());
+
+    fs::remove_dir_all(&parent).expect("cleanup parent");
+}
+
+#[test]
+fn archive_pipeline_rotate_if_needed_covers_missing_file_path() {
+    let dir = unique_temp_path("systrace-archive-rotate-missing");
+    fs::create_dir_all(&dir).expect("create dir");
+    let cfg = Config {
+        service_name: "svc".to_string(),
+        instance_id: "id".to_string(),
+        poll_interval: Duration::from_secs(1),
+        otlp_endpoint: "http://127.0.0.1:4318/v1/metrics".to_string(),
+        otlp_protocol: "http/protobuf".to_string(),
+        otlp_timeout: Some(Duration::from_secs(1)),
+        export_interval: Some(Duration::from_secs(1)),
+        export_timeout: Some(Duration::from_secs(1)),
+        metrics_include: vec!["system.systrace.".to_string()],
+        metrics_exclude: vec![],
+        trace_enabled: false,
+        trace_include: vec![],
+        trace_exclude: vec![],
+        archive_enabled: true,
+        archive_dir: dir.to_string_lossy().to_string(),
+        archive_max_file_bytes: 16,
+        archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
+        trace_stream_max_lines: 8,
+        privileged_expected: false,
+        ebpf_enabled: false,
+        uprobes_enabled: false,
+        usdt_enabled: false,
+        runtime_probe_profiles: vec![],
+        once: true,
+    };
+
+    let archive = ArchivePipeline::from_config(&cfg);
+    let missing_path = dir.join("missing.parquet");
+    archive
+        .rotate_if_needed(missing_path.to_string_lossy().as_ref())
+        .expect("missing file should be a no-op");
+
+    fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
 fn archive_pipeline_rotation_and_prune_edges_cover_all_paths() {
     let dir = unique_temp_path("systrace-archive-edges");
     fs::create_dir_all(&dir).expect("create dir");
@@ -494,6 +592,10 @@ fn archive_pipeline_rotation_and_prune_edges_cover_all_paths() {
         archive_dir: dir.to_string_lossy().to_string(),
         archive_max_file_bytes: 16,
         archive_retain_files: 2,
+        archive_format: ArchiveFormat::Parquet,
+        archive_mode: ArchiveMode::Trend,
+        archive_window_secs: 60,
+        archive_compression: ArchiveCompression::Zstd,
         trace_stream_max_lines: 8,
         privileged_expected: false,
         ebpf_enabled: false,

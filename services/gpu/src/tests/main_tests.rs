@@ -169,6 +169,10 @@ fn config_load_and_record_snapshot_cover_main_paths() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "gpu-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };
@@ -379,6 +383,10 @@ fn record_snapshot_handles_available_empty_samples() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "gpu-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };
@@ -415,6 +423,10 @@ fn record_snapshot_returns_early_when_device_labels_disabled() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "gpu-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };
@@ -460,6 +472,10 @@ fn record_snapshot_labeled_throttled_false_branch() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "gpu-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };

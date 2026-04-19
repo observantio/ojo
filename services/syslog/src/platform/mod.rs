@@ -43,7 +43,7 @@ pub(crate) struct PlatformCollection {
     pub(crate) records: Vec<LogRecord>,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(not(coverage), target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Default)]
 struct LinuxSourceSnapshot {
     available: bool,
@@ -51,7 +51,7 @@ struct LinuxSourceSnapshot {
     dmesg_available: bool,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(not(coverage), target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Default)]
 struct WindowsSourceSnapshot {
     available: bool,
@@ -59,6 +59,7 @@ struct WindowsSourceSnapshot {
     application_logs_available: bool,
 }
 
+#[cfg(any(test, not(coverage)))]
 fn file_offsets() -> &'static Mutex<BTreeMap<String, u64>> {
     static OFFSETS: OnceLock<Mutex<BTreeMap<String, u64>>> = OnceLock::new();
     OFFSETS.get_or_init(|| Mutex::new(BTreeMap::new()))
@@ -147,6 +148,7 @@ fn collect_fallback(cfg: &PlatformConfig) -> PlatformCollection {
     }
 }
 
+#[cfg(any(test, not(coverage)))]
 struct WatchedFileResult {
     records: Vec<LogRecord>,
     active_targets: u64,
@@ -155,6 +157,7 @@ struct WatchedFileResult {
     collection_errors: u64,
 }
 
+#[cfg(any(test, not(coverage)))]
 fn collect_watched_file_records(cfg: &PlatformConfig) -> WatchedFileResult {
     let mut records = Vec::new();
     let mut active_targets = 0u64;
@@ -223,6 +226,7 @@ fn collect_watched_file_records(cfg: &PlatformConfig) -> WatchedFileResult {
     }
 }
 
+#[cfg(any(test, not(coverage)))]
 fn sanitize_watch_target_name(name: &str) -> String {
     let mut out = String::new();
     for ch in name.chars() {

@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use host_collectors::{
-    default_protocol_for_endpoint, init_meter_provider, ArchiveStorageConfig, JsonArchiveWriter,
-    OtlpSettings, PrefixFilter, METRIC_PREFIX_SYSTEM,
+    default_protocol_for_endpoint, init_meter_provider, ArchiveCompression, ArchiveFormat,
+    ArchiveMode, ArchiveStorageConfig, JsonArchiveWriter, OtlpSettings, PrefixFilter,
+    METRIC_PREFIX_SYSTEM,
 };
 use opentelemetry::metrics::{Gauge, Meter};
 use opentelemetry::KeyValue;
@@ -101,6 +102,10 @@ struct StorageSection {
     archive_max_file_bytes: Option<u64>,
     archive_retain_files: Option<usize>,
     archive_file_stem: Option<String>,
+    archive_format: Option<String>,
+    archive_mode: Option<String>,
+    archive_window_secs: Option<u64>,
+    archive_compression: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -308,6 +313,7 @@ fn run() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     install_signal_handler(&running);
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
+    archive.set_default_identity(&cfg.service_name, &cfg.instance_id);
 
     let mut export_state = ExportState::Pending;
     let mut continue_running = true;
@@ -661,6 +667,10 @@ impl Config {
                 file_stem: storage
                     .archive_file_stem
                     .unwrap_or_else(|| "docker-snapshots".to_string()),
+                format: ArchiveFormat::parse(storage.archive_format.as_deref()),
+                mode: ArchiveMode::parse(storage.archive_mode.as_deref()),
+                window_secs: storage.archive_window_secs.unwrap_or(60),
+                compression: ArchiveCompression::parse(storage.archive_compression.as_deref()),
             },
             once,
         })

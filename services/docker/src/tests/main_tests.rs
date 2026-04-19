@@ -393,6 +393,10 @@ fn record_snapshot_covers_available_unavailable_and_labeled_paths() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "docker-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };
@@ -459,6 +463,10 @@ fn record_snapshot_returns_early_when_labels_disabled() {
             max_file_bytes: 0,
             retain_files: 0,
             file_stem: "docker-snapshots".to_string(),
+            format: host_collectors::ArchiveFormat::Parquet,
+            mode: host_collectors::ArchiveMode::Trend,
+            window_secs: 60,
+            compression: host_collectors::ArchiveCompression::Zstd,
         },
         once: true,
     };

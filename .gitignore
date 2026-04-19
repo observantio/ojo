@@ -6,3 +6,4 @@ logs/
 # Service runtime archives
 services/*/data/
 data/ojo/
+.codex
