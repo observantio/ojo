@@ -617,7 +617,7 @@ fn replay_remote_write(client: &Client, cfg: &Config, points: &[ReplayPoint]) ->
 
 fn replay_shell_logs(cfg: &Config, points: &[ReplayPoint]) -> Result<()> {
     let mut ordered = points.to_vec();
-    ordered.sort_by(|a, b| a.timestamp_ms.cmp(&b.timestamp_ms));
+    ordered.sort_by_key(|a| a.timestamp_ms);
 
     println!(
         "archive replay shell logs: points={} service={}",
