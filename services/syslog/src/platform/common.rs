@@ -1,4 +1,6 @@
-use std::process::{Child, Command, Stdio};
+use std::io::Read;
+use std::process::{Child, Command, Output, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -6,17 +8,14 @@ use tracing::warn;
 const CMD_TIMEOUT: Duration = Duration::from_secs(12);
 
 #[cfg(any(test, not(coverage)))]
-pub(super) fn run_command_with_timeout(
-    command: &str,
-    args: &[&str],
-) -> Option<std::process::Output> {
+pub(super) fn run_command_with_timeout(command: &str, args: &[&str]) -> Option<Output> {
     let mut cmd = Command::new(command);
     cmd.args(args);
     run_with_timeout(cmd, CMD_TIMEOUT)
 }
 
 #[cfg(any(test, not(coverage)))]
-fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<std::process::Output> {
+fn run_with_timeout(cmd: Command, timeout: Duration) -> Option<Output> {
     run_with_timeout_using_waiter(cmd, timeout, wait_for_child)
 }
 
@@ -30,7 +29,7 @@ fn run_with_timeout_using_waiter<W>(
     mut cmd: Command,
     timeout: Duration,
     mut waiter: W,
-) -> Option<std::process::Output>
+) -> Option<Output>
 where
     W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
 {
@@ -45,14 +44,27 @@ where
         }
     };
 
+    let stdout = child.stdout.take().map(spawn_output_reader);
+    let stderr = child.stderr.take().map(spawn_output_reader);
+
     let start = Instant::now();
     loop {
         match waiter(&mut child) {
-            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(Some(status)) => {
+                let stdout = join_output_reader(stdout);
+                let stderr = join_output_reader(stderr);
+                return Some(Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
             Ok(None) => {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    let _ = join_output_reader(stdout);
+                    let _ = join_output_reader(stderr);
                     warn!("command timed out after {:?}", timeout);
                     return None;
                 }
@@ -61,10 +73,29 @@ where
             Err(e) => {
                 warn!(error = %e, "error waiting for command");
                 let _ = child.kill();
+                let _ = child.wait();
+                let _ = join_output_reader(stdout);
+                let _ = join_output_reader(stderr);
                 return None;
             }
         }
     }
+}
+
+#[cfg(any(test, not(coverage)))]
+fn spawn_output_reader(mut reader: impl Read + Send + 'static) -> thread::JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut buffer = Vec::new();
+        let _ = reader.read_to_end(&mut buffer);
+        buffer
+    })
+}
+
+#[cfg(any(test, not(coverage)))]
+fn join_output_reader(handle: Option<thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
+    handle
+        .map(|handle| handle.join().unwrap_or_default())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -83,6 +114,13 @@ mod tests {
         let out = run_command_with_timeout("sh", &["-c", "printf ok"]).expect("output");
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout), "ok");
+    }
+
+    #[test]
+    fn run_command_with_timeout_handles_large_output_without_deadlocking() {
+        let out = run_command_with_timeout("sh", &["-c", "yes x | head -c 80000"]).expect("output");
+        assert!(out.status.success());
+        assert!(out.stdout.len() >= 80000);
     }
 
     #[test]
