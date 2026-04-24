@@ -1,4 +1,5 @@
 use crate::{normalize_severity, now_unix_nanos, sanitize_ascii_line, LogRecord};
+use serde_json::Value;
 
 use super::LinuxSourceSnapshot;
 
@@ -9,13 +10,15 @@ pub(super) fn collect_linux(
     let mut snapshot = LinuxSourceSnapshot::default();
     let mut records = Vec::new();
 
+    let max_lines = max_lines_per_source.to_string();
     if let Some(output) = super::common::run_command_with_timeout(
         "journalctl",
         &[
             "-n",
-            &max_lines_per_source.to_string(),
+            max_lines.as_str(),
             "--no-pager",
-            "--output=short-iso",
+            "--output=json",
+            "--output-fields=MESSAGE",
         ],
     ) {
         if output.status.success() {
@@ -45,8 +48,9 @@ pub(super) fn collect_linux(
 
 fn collect_journal_records(text: &str, max_message_bytes: usize) -> Vec<LogRecord> {
     let mut records = Vec::new();
+
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let body = sanitize_ascii_line(line, max_message_bytes);
+        let body = journal_record_body(line, max_message_bytes);
         if body.is_empty() {
             continue;
         }
@@ -59,7 +63,18 @@ fn collect_journal_records(text: &str, max_message_bytes: usize) -> Vec<LogRecor
             watch_target: "journald".to_string(),
         });
     }
+
     records
+}
+
+fn journal_record_body(line: &str, max_message_bytes: usize) -> String {
+    if let Ok(entry) = serde_json::from_str::<Value>(line) {
+        if let Some(message) = entry.get("MESSAGE").and_then(|value| value.as_str()) {
+            return sanitize_ascii_line(message, max_message_bytes);
+        }
+    }
+
+    sanitize_ascii_line(line, max_message_bytes)
 }
 
 fn collect_dmesg_records(
@@ -114,6 +129,23 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].source, "journald");
         assert!(records[1].body.contains('?'));
+    }
+
+    #[test]
+    fn collect_journal_records_keeps_multiline_journal_messages_together() {
+        let text = concat!(
+            r#"{"MESSAGE":"Value: 40.000000\nTimestamp: 2026-04-24 04:03:22.813 +0000 UTC\nStartTimestamp: 1970-01-01 00:00:00 +0000 UTC","PRIORITY":6}"#,
+            "\n",
+            r#"{"MESSAGE":"single line","PRIORITY":6}"#,
+            "\n"
+        );
+
+        let records = collect_journal_records(text, 512);
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].body.lines().count(), 3);
+        assert!(records[0].body.contains("Value: 40.000000"));
+        assert_eq!(records[1].body, "single line");
     }
 
     #[test]
