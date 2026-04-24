@@ -350,7 +350,10 @@ fn normalize_component_and_reserved_checks_cover_paths() {
         normalize_component_stem_with_namespace("kworker/0:1", "kernel"),
         Some("kernel.kworker.0.1".to_string())
     );
-    assert_eq!(normalize_component_stem_with_namespace("..///", "kernel"), None);
+    assert_eq!(
+        normalize_component_stem_with_namespace("..///", "kernel"),
+        None
+    );
     assert_eq!(
         normalize_component_stem_with_namespace("component.", "kernel"),
         Some("kernel.component".to_string())

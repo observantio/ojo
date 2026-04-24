@@ -16,8 +16,14 @@ fn windows_collect_snapshot_is_callable_and_stable() {
         assert_eq!(snapshot.system_calls_coverage_ratio, 1.0);
         assert!(snapshot.dpcs_per_sec >= 0.0);
         assert!(!snapshot.trace_sample.is_empty());
-        assert_eq!(snapshot.trace_sample_lines_total, snapshot.trace_sample.len() as u64);
-        assert_eq!(snapshot.trace_stream_lines_captured_total, snapshot.trace_sample_lines_total);
+        assert_eq!(
+            snapshot.trace_sample_lines_total,
+            snapshot.trace_sample.len() as u64
+        );
+        assert_eq!(
+            snapshot.trace_stream_lines_captured_total,
+            snapshot.trace_sample_lines_total
+        );
         assert!(snapshot.kernel_stack_samples_total >= 1);
         assert!(snapshot.trace_stream_continuity);
     } else {
@@ -53,7 +59,9 @@ fn build_collection_script_uses_one_counter_query_and_preserves_trace_rows() {
     let script = super::build_collection_script(3);
     assert_eq!(script.matches("Get-Counter").count(), 1);
     assert!(script.contains("switch -Wildcard ($sample.Path)"));
-    assert!(script.contains("Write-Output 'context_switches-1 [000] .... 1.000000: context_switches';"));
+    assert!(
+        script.contains("Write-Output 'context_switches-1 [000] .... 1.000000: context_switches';")
+    );
     assert!(script.contains("Write-Output 'interrupts-1 [000] .... 2.000000: interrupts';"));
     assert!(script.contains("Write-Output 'dpcs-1 [000] .... 3.000000: dpcs';"));
     assert!(!script.contains("Write-Output '=> userstack';"));
