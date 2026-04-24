@@ -10,10 +10,30 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
   ],
   "editable": true,
   "id": null,
@@ -22,29 +42,67 @@
   "schemaVersion": 39,
   "version": 3,
   "refresh": "10s",
-  "tags": ["ojo", "gpu"],
-  "time": { "from": "now-15m", "to": "now" },
+  "tags": [
+    "ojo",
+    "gpu"
+  ],
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_gpu_source_available, service_name)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_gpu_source_available, job)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_gpu_source_available{job=~\"$service\"}, instance)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "gpuName",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_gpu_utilization_ratio{service_name=~\"$service\",gpu_name!=\"\"}, gpu_name)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_gpu_utilization_ratio{job=~\"$service\",instance=~\"$instance\",gpu_name!=\"\"}, gpu_name)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -53,109 +111,231 @@
       "id": 1,
       "type": "stat",
       "title": "Source Available",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_gpu_source_available{service_name=~\"$service\"})" }],
-      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_gpu_source_available{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "GPU Devices",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_gpu_devices{service_name=~\"$service\"})" }],
-      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_gpu_devices{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Throttled",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_gpu_throttled{service_name=~\"$service\"})" }],
-      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_gpu_throttled{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 10,
+        "y": 0
+      }
     },
     {
       "id": 9,
       "type": "stat",
       "title": "Avg Power Draw",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "avg(system_gpu_power_watts{service_name=~\"$service\"})" }],
-      "fieldConfig": { "defaults": { "unit": "watt" }, "overrides": [] },
-      "gridPos": { "h": 5, "w": 5, "x": 15, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(system_gpu_power_watts{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "GPU Utilization by Device",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * avg by (gpu_name) (system_gpu_utilization_ratio{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
+          "expr": "100 * avg by (gpu_name) (system_gpu_utilization_ratio{job=~\"$service\",instance=~\"$instance\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "Temperature by Device",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_temperature_celsius{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_temperature_celsius{job=~\"$service\",instance=~\"$instance\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "Memory Used by Device",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_memory_used_bytes{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_memory_used_bytes{job=~\"$service\",instance=~\"$instance\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      }
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "Memory Total by Device",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (gpu_name) (system_gpu_memory_total_bytes{service_name=~\"$service\",gpu_name=~\"$gpuName\"})",
+          "expr": "avg by (gpu_name) (system_gpu_memory_total_bytes{job=~\"$service\",instance=~\"$instance\",gpu_name=~\"$gpuName\"})",
           "legendFormat": "{{gpu_name}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      }
     },
     {
       "id": 10,
       "type": "timeseries",
       "title": "Power Draw",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg(system_gpu_power_watts{service_name=~\"$service\"})",
+          "expr": "avg(system_gpu_power_watts{job=~\"$service\",instance=~\"$instance\"})",
           "legendFormat": "Avg Power"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "watt" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 19 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      }
     }
   ]
 }

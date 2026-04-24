@@ -59,7 +59,25 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(system_syslog_source_available, service_name)",
+        "query": "label_values(system_syslog_source_available, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_syslog_source_available{job=~\"$service\"}, instance)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -79,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_syslog_up{service_name=~\"$service\"})"
+          "expr": "max(system_syslog_up{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -100,7 +118,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_syslog_exporter_available{service_name=~\"$service\"})"
+          "expr": "max(system_syslog_exporter_available{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -121,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_syslog_buffer_queued_records{service_name=~\"$service\"})"
+          "expr": "max(system_syslog_buffer_queued_records{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -142,7 +160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_syslog_file_watch_targets_active{service_name=~\"$service\"})"
+          "expr": "max(system_syslog_file_watch_targets_active{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -163,19 +181,19 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_syslog_source_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_source_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_syslog_journald_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_journald_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_syslog_etw_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_etw_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_syslog_kernel_dmesg_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_kernel_dmesg_available{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -196,15 +214,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(system_syslog_logs_collected_total{service_name=~\"$service\"}[5m])"
+          "expr": "rate(system_syslog_logs_collected_total{job=~\"$service\",instance=~\"$instance\"}[5m])"
         },
         {
           "refId": "B",
-          "expr": "rate(system_syslog_logs_exported_total{service_name=~\"$service\"}[5m])"
+          "expr": "rate(system_syslog_logs_exported_total{job=~\"$service\",instance=~\"$instance\"}[5m])"
         },
         {
           "refId": "C",
-          "expr": "rate(system_syslog_buffer_dropped_total{service_name=~\"$service\"}[5m])"
+          "expr": "rate(system_syslog_buffer_dropped_total{job=~\"$service\",instance=~\"$instance\"}[5m])"
         }
       ],
       "gridPos": {
@@ -225,15 +243,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(system_syslog_logs_retry_total{service_name=~\"$service\"}[5m])"
+          "expr": "rate(system_syslog_logs_retry_total{job=~\"$service\",instance=~\"$instance\"}[5m])"
         },
         {
           "refId": "B",
-          "expr": "rate(system_syslog_logs_export_errors_total{service_name=~\"$service\"}[5m])"
+          "expr": "rate(system_syslog_logs_export_errors_total{job=~\"$service\",instance=~\"$instance\"}[5m])"
         },
         {
           "refId": "C",
-          "expr": "system_syslog_exporter_reconnecting{service_name=~\"$service\"}"
+          "expr": "system_syslog_exporter_reconnecting{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -254,11 +272,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_syslog_logs_batch_size{service_name=~\"$service\"}"
+          "expr": "system_syslog_logs_batch_size{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_syslog_logs_payload_bytes{service_name=~\"$service\"}"
+          "expr": "system_syslog_logs_payload_bytes{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -279,15 +297,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_syslog_file_watch_targets_configured{service_name=~\"$service\"}"
+          "expr": "system_syslog_file_watch_targets_configured{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_syslog_buffer_capacity_records{service_name=~\"$service\"}"
+          "expr": "system_syslog_buffer_capacity_records{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_syslog_buffer_queued_records{service_name=~\"$service\"}"
+          "expr": "system_syslog_buffer_queued_records{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -308,15 +326,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_syslog_process_logs_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_process_logs_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_syslog_application_logs_available{service_name=~\"$service\"}"
+          "expr": "system_syslog_application_logs_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_syslog_collection_errors{service_name=~\"$service\"}"
+          "expr": "system_syslog_collection_errors{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {

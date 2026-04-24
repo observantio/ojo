@@ -59,7 +59,25 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(system_systemd_source_available, service_name)",
+        "query": "label_values(system_systemd_source_available, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_systemd_source_available{job=~\"$service\"}, instance)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -79,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systemd_up{service_name=~\"$service\"})"
+          "expr": "max(system_systemd_up{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -100,7 +118,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systemd_source_available{service_name=~\"$service\"})"
+          "expr": "max(system_systemd_source_available{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -121,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systemd_units_total{service_name=~\"$service\"})"
+          "expr": "max(system_systemd_units_total{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -142,7 +160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systemd_failed_units_reported{service_name=~\"$service\"})"
+          "expr": "max(system_systemd_failed_units_reported{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -163,35 +181,35 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systemd_units_active{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_active{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systemd_units_inactive{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_inactive{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systemd_units_failed{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_failed{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_systemd_units_activating{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_activating{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "E",
-          "expr": "system_systemd_units_deactivating{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_deactivating{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "F",
-          "expr": "system_systemd_units_reloading{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_reloading{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "G",
-          "expr": "system_systemd_units_maintenance{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_maintenance{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "H",
-          "expr": "system_systemd_units_not_found{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_not_found{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -212,11 +230,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systemd_jobs_queued{service_name=~\"$service\"}"
+          "expr": "system_systemd_jobs_queued{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systemd_jobs_running{service_name=~\"$service\"}"
+          "expr": "system_systemd_jobs_running{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -237,11 +255,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systemd_units_active_ratio{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_active_ratio{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systemd_units_failed_ratio{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_failed_ratio{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "fieldConfig": {
@@ -269,11 +287,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systemd_units_failed{service_name=~\"$service\"}"
+          "expr": "system_systemd_units_failed{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systemd_failed_units_reported{service_name=~\"$service\"}"
+          "expr": "system_systemd_failed_units_reported{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {

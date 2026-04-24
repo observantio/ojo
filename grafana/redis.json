@@ -59,7 +59,25 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(system_redis_source_available, service_name)",
+        "query": "label_values(system_redis_source_available, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_redis_source_available{job=~\"$service\"}, instance)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -79,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_up{service_name=~\"$service\"})"
+          "expr": "max(system_redis_up{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -100,7 +118,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_source_available{service_name=~\"$service\"})"
+          "expr": "max(system_redis_source_available{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -121,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_clients_connected{service_name=~\"$service\"})"
+          "expr": "max(system_redis_clients_connected{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -142,7 +160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_clients_blocked{service_name=~\"$service\"})"
+          "expr": "max(system_redis_clients_blocked{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -163,7 +181,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_commands_processed_rate_per_second{service_name=~\"$service\"} or rate(system_redis_commands_processed_total{service_name=~\"$service\"}[1m]))"
+          "expr": "max(system_redis_commands_processed_rate_per_second{job=~\"$service\",instance=~\"$instance\"} or rate(system_redis_commands_processed_total{job=~\"$service\",instance=~\"$instance\"}[1m]))"
         }
       ],
       "fieldConfig": {
@@ -189,7 +207,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_redis_keyspace_hit_ratio{service_name=~\"$service\"})"
+          "expr": "max(system_redis_keyspace_hit_ratio{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "fieldConfig": {
@@ -217,11 +235,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_redis_memory_used_bytes{service_name=~\"$service\"}"
+          "expr": "system_redis_memory_used_bytes{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_redis_memory_max_bytes{service_name=~\"$service\"}"
+          "expr": "system_redis_memory_max_bytes{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "fieldConfig": {
@@ -247,11 +265,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_redis_commands_processed_rate_per_second{service_name=~\"$service\"} or rate(system_redis_commands_processed_total{service_name=~\"$service\"}[1m])"
+          "expr": "system_redis_commands_processed_rate_per_second{job=~\"$service\",instance=~\"$instance\"} or rate(system_redis_commands_processed_total{job=~\"$service\",instance=~\"$instance\"}[1m])"
         },
         {
           "refId": "B",
-          "expr": "system_redis_connections_received_rate_per_second{service_name=~\"$service\"}"
+          "expr": "system_redis_connections_received_rate_per_second{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -272,15 +290,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_redis_commands_processed_total{service_name=~\"$service\"}"
+          "expr": "system_redis_commands_processed_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_redis_connections_received_total{service_name=~\"$service\"}"
+          "expr": "system_redis_connections_received_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_redis_uptime_seconds{service_name=~\"$service\"}"
+          "expr": "system_redis_uptime_seconds{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -301,19 +319,19 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_redis_keyspace_hits_total{service_name=~\"$service\"}"
+          "expr": "system_redis_keyspace_hits_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_redis_keyspace_misses_total{service_name=~\"$service\"}"
+          "expr": "system_redis_keyspace_misses_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_redis_keys_expired_total{service_name=~\"$service\"}"
+          "expr": "system_redis_keys_expired_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_redis_keys_evicted_total{service_name=~\"$service\"}"
+          "expr": "system_redis_keys_evicted_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
