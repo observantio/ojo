@@ -136,6 +136,38 @@ fn resolve_default_config_path_prefers_existing_local() {
     assert_eq!(selected, "fallback.yaml");
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn resolve_default_config_path_prefers_windows_syslog_default() {
+    let selected = resolve_default_config_path(
+        "syslog.windows.yaml",
+        "services/syslog/syslog.windows.yaml",
+    );
+    assert_eq!(selected, "syslog.windows.yaml");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn load_windows_companion_config_parses() {
+    let config_path = concat!(env!("CARGO_MANIFEST_DIR"), "/syslog.windows.yaml");
+    let file_cfg = load_yaml_config_file(config_path).expect("windows config");
+
+    let service = file_cfg.service.expect("service section");
+    assert_eq!(service.name.as_deref(), Some("ojo-syslog"));
+    assert_eq!(service.instance_id.as_deref(), Some("syslog-windows"));
+
+    let collection = file_cfg.collection.expect("collection section");
+    assert_eq!(collection.poll_interval_secs, Some(5));
+    assert_eq!(collection.max_lines_per_source, Some(200));
+    assert_eq!(collection.max_message_bytes, Some(4096));
+
+    let watch = file_cfg.watch.expect("watch section");
+    assert!(watch.files.unwrap_or_default().is_empty());
+
+    let export = file_cfg.export.expect("export section");
+    assert_eq!(export.otlp.expect("otlp section").endpoint.as_deref(), Some("http://192.168.0.214:4355/v1/metrics"));
+}
+
 #[test]
 fn load_yaml_config_file_handles_missing_empty_invalid() {
     let missing = unique_temp_path("syslog-missing.yaml");

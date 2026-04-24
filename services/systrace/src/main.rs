@@ -1008,12 +1008,17 @@ fn emit_trace_snapshot<T: Tracer>(
         .take(20)
         .map(String::as_str)
         .collect();
+    let trace_namespace = infer_trace_namespace(snapshot);
     let line_delta_us = derive_trace_line_delta_us(&sampled_lines);
 
     let mut component_summaries: BTreeMap<String, ComponentTraceSummary> = BTreeMap::new();
     for (index, line) in sampled_lines.iter().enumerate() {
-        let component =
-            infer_trace_line_component(line).unwrap_or_else(|| platform_component.clone());
+        let component = if trace_namespace == "kernel" {
+            infer_trace_line_component(line)
+        } else {
+            infer_trace_line_component_with_namespace(line, trace_namespace)
+        }
+        .unwrap_or_else(|| platform_component.clone());
         let summary = component_summaries.entry(component).or_default();
         summary.lines_total = summary.lines_total.saturating_add(1);
         summary.delta_us_total = summary
@@ -1137,8 +1142,8 @@ fn emit_component_summary_span<T: Tracer>(
     synthetic: bool,
 ) -> opentelemetry::Context {
     let mut child = tracer
-        .span_builder("systrace.trace.component")
-        .with_kind(SpanKind::Client)
+        .span_builder(component.to_string())
+        .with_kind(SpanKind::Internal)
         .start_with_context(tracer, parent_cx);
     child.set_attribute(KeyValue::new("peer.service", component.to_string()));
     child.set_attribute(KeyValue::new("systrace.component", component.to_string()));
@@ -1305,13 +1310,31 @@ fn infer_platform_component(snapshot: &SystraceSnapshot) -> String {
     if snapshot.tracefs_available {
         "kernel.linux".to_string()
     } else if snapshot.etw_available {
-        "kernel.windows".to_string()
+        "windows.etw".to_string()
+    } else if cfg!(target_os = "windows") {
+        "windows.unknown".to_string()
     } else {
         "kernel.unknown".to_string()
     }
 }
 
 fn infer_trace_line_component(line: &str) -> Option<String> {
+    infer_trace_line_component_with_namespace(line, "kernel")
+}
+
+fn infer_trace_namespace(snapshot: &SystraceSnapshot) -> &'static str {
+    if snapshot.tracefs_available {
+        "kernel"
+    } else if snapshot.etw_available {
+        "windows"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else {
+        "kernel"
+    }
+}
+
+fn infer_trace_line_component_with_namespace(line: &str, namespace: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
@@ -1326,7 +1349,7 @@ fn infer_trace_line_component(line: &str) -> Option<String> {
         } else {
             symbol
         };
-        return normalize_component_stem(stack_component);
+        return normalize_component_stem_with_namespace(stack_component, namespace);
     }
 
     let token = trimmed.split_whitespace().next()?;
@@ -1341,10 +1364,10 @@ fn infer_trace_line_component(line: &str) -> Option<String> {
         prefix
     };
 
-    normalize_component_stem(stem)
+    normalize_component_stem_with_namespace(stem, namespace)
 }
 
-fn normalize_component_stem(stem: &str) -> Option<String> {
+fn normalize_component_stem_with_namespace(stem: &str, namespace: &str) -> Option<String> {
     let mut normalized = String::new();
     let mut prev_dot = false;
     for ch in stem.chars() {
@@ -1372,7 +1395,7 @@ fn normalize_component_stem(stem: &str) -> Option<String> {
     if normalized.is_empty() {
         return None;
     }
-    Some(format!("kernel.{normalized}"))
+    Some(format!("{namespace}.{normalized}"))
 }
 
 fn parse_bool_env(name: &str) -> Option<bool> {
