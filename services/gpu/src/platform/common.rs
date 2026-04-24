@@ -78,6 +78,7 @@ fn run_with_timeout_using_waiter<W>(
 where
     W: FnMut(&mut Child) -> std::io::Result<Option<std::process::ExitStatus>>,
 {
+    let program = cmd.get_program().to_string_lossy().into_owned();
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -85,7 +86,7 @@ where
     let mut child = match child_result {
         Ok(c) => c,
         Err(e) => {
-            warn!(error = %e, "failed to spawn command");
+            warn!(command = %program, error = %e, "{}", spawn_failure_message(&program, &e));
             return None;
         }
     };
@@ -108,6 +109,14 @@ where
                 return None;
             }
         }
+    }
+}
+
+fn spawn_failure_message(program: &str, error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        format!("{program} not found; GPU metrics are unavailable on this host")
+    } else {
+        format!("failed to spawn {program}")
     }
 }
 

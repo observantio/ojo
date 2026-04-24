@@ -1,4 +1,6 @@
-use super::{collect_snapshot, run_with_timeout, run_with_timeout_using_waiter};
+use super::{
+    collect_snapshot, run_with_timeout, run_with_timeout_using_waiter, spawn_failure_message,
+};
 use std::fs;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -66,6 +68,15 @@ fn collect_snapshot_returns_default_when_nvidia_smi_missing() {
 
     std::env::set_var("PATH", old_path);
     fs::remove_dir_all(&dir).expect("cleanup dir");
+}
+
+#[test]
+fn spawn_failure_message_is_clear_for_missing_nvidia_smi() {
+    let err = std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory");
+    assert_eq!(
+        spawn_failure_message("nvidia-smi", &err),
+        "nvidia-smi not found; GPU metrics are unavailable on this host"
+    );
 }
 
 #[test]
