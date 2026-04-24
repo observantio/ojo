@@ -10,10 +10,30 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
   ],
   "editable": true,
   "id": null,
@@ -22,29 +42,67 @@
   "schemaVersion": 39,
   "version": 3,
   "refresh": "10s",
-  "tags": ["ojo", "sensors"],
-  "time": { "from": "now-15m", "to": "now" },
+  "tags": [
+    "ojo",
+    "sensors"
+  ],
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_sensor_source_available, service_name)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_sensor_source_available, job)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_sensor_source_available{job=~\"$service\"}, instance)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "sensorLabel",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "query": "label_values(system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label!=\"\"}, sensor_label)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_sensor_temperature_celsius{job=~\"$service\",instance=~\"$instance\",sensor_label!=\"\"}, sensor_label)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -53,80 +111,181 @@
       "id": 1,
       "type": "stat",
       "title": "Source Available",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_sensor_source_available{service_name=~\"$service\"})" }],
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_sensor_source_available{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Sensors Count",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_sensor_count{service_name=~\"$service\"})" }],
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_sensor_count{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      }
     },
     {
       "id": 7,
       "type": "stat",
       "title": "Avg Temperature",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "avg(system_sensor_temperature_celsius{service_name=~\"$service\"})" }],
-      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(system_sensor_temperature_celsius{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      }
     },
     {
       "id": 8,
       "type": "stat",
       "title": "Max Temperature",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "refId": "A", "expr": "max(system_sensor_temperature_max_celsius{service_name=~\"$service\"})" }],
-      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(system_sensor_temperature_max_celsius{job=~\"$service\",instance=~\"$instance\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      }
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Temperature by Sensor",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg by (sensor_label) (system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label!=\"\",sensor_label=~\"$sensorLabel\"}) or label_replace(avg(system_sensor_temperature_celsius{service_name=~\"$service\",sensor_label=\"\"}), \"sensor_label\", \"aggregate\", \"__name__\", \".*\")",
+          "expr": "avg by (sensor_label) (system_sensor_temperature_celsius{job=~\"$service\",instance=~\"$instance\",sensor_label!=\"\",sensor_label=~\"$sensorLabel\"}) or label_replace(avg(system_sensor_temperature_celsius{job=~\"$service\",instance=~\"$instance\",sensor_label=\"\"}), \"sensor_label\", \"aggregate\", \"__name__\", \".*\")",
           "legendFormat": "{{sensor_label}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 5 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Fan RPM",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg(system_sensor_fan_rpm{service_name=~\"$service\"})",
+          "expr": "avg(system_sensor_fan_rpm{job=~\"$service\",instance=~\"$instance\"})",
           "legendFormat": "Avg Fan RPM"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "rotrpm" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rotrpm"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "Voltage",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "avg(system_sensor_voltage_volts{service_name=~\"$service\"})",
+          "expr": "avg(system_sensor_voltage_volts{job=~\"$service\",instance=~\"$instance\"})",
           "legendFormat": "Avg Voltage"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "volt" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      }
     }
   ]
 }

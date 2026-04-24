@@ -59,7 +59,25 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(system_nginx_source_available, service_name)",
+        "query": "label_values(system_nginx_source_available, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_nginx_source_available{job=~\"$service\"}, instance)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -79,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_nginx_up{service_name=~\"$service\"})"
+          "expr": "max(system_nginx_up{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -100,7 +118,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_nginx_source_available{service_name=~\"$service\"})"
+          "expr": "max(system_nginx_source_available{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -121,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_nginx_connections_active{service_name=~\"$service\"})"
+          "expr": "max(system_nginx_connections_active{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -142,7 +160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_nginx_requests_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_requests_total{service_name=~\"$service\"}[1m]))"
+          "expr": "max(system_nginx_requests_rate_per_second{job=~\"$service\",instance=~\"$instance\"} or rate(system_nginx_requests_total{job=~\"$service\",instance=~\"$instance\"}[1m]))"
         }
       ],
       "fieldConfig": {
@@ -168,19 +186,19 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_nginx_connections_active{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_active{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_nginx_connections_reading{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_reading{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_nginx_connections_writing{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_writing{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_nginx_connections_waiting{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_waiting{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -201,11 +219,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_nginx_requests_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_requests_total{service_name=~\"$service\"}[1m])"
+          "expr": "system_nginx_requests_rate_per_second{job=~\"$service\",instance=~\"$instance\"} or rate(system_nginx_requests_total{job=~\"$service\",instance=~\"$instance\"}[1m])"
         },
         {
           "refId": "B",
-          "expr": "system_nginx_connections_accepted_rate_per_second{service_name=~\"$service\"} or rate(system_nginx_connections_accepted_total{service_name=~\"$service\"}[1m])"
+          "expr": "system_nginx_connections_accepted_rate_per_second{job=~\"$service\",instance=~\"$instance\"} or rate(system_nginx_connections_accepted_total{job=~\"$service\",instance=~\"$instance\"}[1m])"
         }
       ],
       "gridPos": {
@@ -226,15 +244,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_nginx_connections_accepted_total{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_accepted_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_nginx_connections_handled_total{service_name=~\"$service\"}"
+          "expr": "system_nginx_connections_handled_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_nginx_requests_total{service_name=~\"$service\"}"
+          "expr": "system_nginx_requests_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {

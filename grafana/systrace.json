@@ -59,7 +59,25 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(system_systrace_source_available, service_name)",
+        "query": "label_values(system_systrace_source_available, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(system_systrace_source_available{job=~\"$service\"}, instance)",
         "includeAll": true,
         "multi": true,
         "refresh": 1,
@@ -79,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systrace_up{service_name=~\"$service\"})"
+          "expr": "max(system_systrace_up{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -100,7 +118,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systrace_tracing_on{service_name=~\"$service\"})"
+          "expr": "max(system_systrace_tracing_on{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -121,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systrace_processes_total{service_name=~\"$service\"})"
+          "expr": "max(system_systrace_processes_total{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -142,7 +160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(system_systrace_threads_total{service_name=~\"$service\"})"
+          "expr": "max(system_systrace_threads_total{job=~\"$service\",instance=~\"$instance\"})"
         }
       ],
       "gridPos": {
@@ -163,15 +181,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_run_queue_depth{service_name=~\"$service\"}"
+          "expr": "system_systrace_run_queue_depth{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_context_switches_per_sec{service_name=~\"$service\"}"
+          "expr": "system_systrace_context_switches_per_sec{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_process_forks_per_sec{service_name=~\"$service\"}"
+          "expr": "system_systrace_process_forks_per_sec{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -192,15 +210,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_interrupts_per_sec{service_name=~\"$service\"}"
+          "expr": "system_systrace_interrupts_per_sec{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_system_calls_per_sec{service_name=~\"$service\"}"
+          "expr": "system_systrace_system_calls_per_sec{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_dpcs_per_sec{service_name=~\"$service\"}"
+          "expr": "system_systrace_dpcs_per_sec{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -221,31 +239,31 @@
       "targets": [
         {
           "refId": "S",
-          "expr": "system_systrace_source_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_source_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "A",
-          "expr": "system_systrace_tracefs_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_tracefs_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_etw_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_etw_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_tracers_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_tracers_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_systrace_etw_sessions_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_etw_sessions_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "E",
-          "expr": "system_systrace_etw_sessions_running{service_name=~\"$service\"}"
+          "expr": "system_systrace_etw_sessions_running{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "F",
-          "expr": "system_systrace_etw_providers_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_etw_providers_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -266,19 +284,19 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_events_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_events_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_events_enabled{service_name=~\"$service\"}"
+          "expr": "system_systrace_events_enabled{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "100 * system_systrace_events_enabled{service_name=~\"$service\"} / clamp_min(system_systrace_events_total{service_name=~\"$service\"}, 1)"
+          "expr": "100 * system_systrace_events_enabled{job=~\"$service\",instance=~\"$instance\"} / clamp_min(system_systrace_events_total{job=~\"$service\",instance=~\"$instance\"}, 1)"
         },
         {
           "refId": "D",
-          "expr": "system_systrace_event_categories_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_event_categories_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -299,19 +317,19 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_collection_errors{service_name=~\"$service\"}"
+          "expr": "system_systrace_collection_errors{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_exporter_errors_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_exporter_errors_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_exporter_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_exporter_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_systrace_exporter_reconnecting{service_name=~\"$service\"}"
+          "expr": "system_systrace_exporter_reconnecting{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -332,11 +350,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_system_calls_source{service_name=~\"$service\"}"
+          "expr": "system_systrace_system_calls_source{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "100 * system_systrace_system_calls_coverage_ratio{service_name=~\"$service\"}"
+          "expr": "100 * system_systrace_system_calls_coverage_ratio{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -357,15 +375,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_trace_kernel_stack_samples_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_kernel_stack_samples_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_trace_user_stack_samples_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_user_stack_samples_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_trace_sample_lines_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_sample_lines_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -386,7 +404,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_buffer_total_kb{service_name=~\"$service\"}"
+          "expr": "system_systrace_buffer_total_kb{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -407,15 +425,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_events_enabled_inventory_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_events_enabled_inventory_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_syscalls_enter_enabled{service_name=~\"$service\"}"
+          "expr": "system_systrace_syscalls_enter_enabled{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_syscalls_exit_enabled{service_name=~\"$service\"}"
+          "expr": "system_systrace_syscalls_exit_enabled{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -436,15 +454,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_coverage_high_value_categories_targeted{service_name=~\"$service\"}"
+          "expr": "system_systrace_coverage_high_value_categories_targeted{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_coverage_high_value_categories_enabled{service_name=~\"$service\"}"
+          "expr": "system_systrace_coverage_high_value_categories_enabled{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "100 * system_systrace_coverage_high_value_categories_enabled{service_name=~\"$service\"} / clamp_min(system_systrace_coverage_high_value_categories_targeted{service_name=~\"$service\"}, 1)"
+          "expr": "100 * system_systrace_coverage_high_value_categories_enabled{job=~\"$service\",instance=~\"$instance\"} / clamp_min(system_systrace_coverage_high_value_categories_targeted{job=~\"$service\",instance=~\"$instance\"}, 1)"
         }
       ],
       "gridPos": {
@@ -465,11 +483,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_trace_stream_lines_captured_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_stream_lines_captured_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_trace_stream_continuity{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_stream_continuity{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -490,11 +508,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_trace_dropped_events_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_dropped_events_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_trace_overrun_events_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_trace_overrun_events_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -515,23 +533,23 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_privileged_mode{service_name=~\"$service\"}"
+          "expr": "system_systrace_privileged_mode{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_ebpf_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_ebpf_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_uprobes_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_uprobes_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "D",
-          "expr": "system_systrace_usdt_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_usdt_available{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "E",
-          "expr": "system_systrace_symbolizer_available{service_name=~\"$service\"}"
+          "expr": "system_systrace_symbolizer_available{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -552,15 +570,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_archive_writer_healthy{service_name=~\"$service\"}"
+          "expr": "system_systrace_archive_writer_healthy{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "B",
-          "expr": "system_systrace_archive_events_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_archive_events_total{job=~\"$service\",instance=~\"$instance\"}"
         },
         {
           "refId": "C",
-          "expr": "system_systrace_archive_bytes_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_archive_bytes_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
@@ -581,7 +599,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "system_systrace_runtime_probes_configured_total{service_name=~\"$service\"}"
+          "expr": "system_systrace_runtime_probes_configured_total{job=~\"$service\",instance=~\"$instance\"}"
         }
       ],
       "gridPos": {
