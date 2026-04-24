@@ -158,6 +158,35 @@ struct WatchedFileResult {
 }
 
 #[cfg(any(test, not(coverage)))]
+fn join_snapshot_bodies<I>(bodies: I, max_message_bytes: usize) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut body = String::new();
+
+    for part in bodies {
+        if part.is_empty() {
+            continue;
+        }
+
+        if body.is_empty() {
+            body.push_str(&part);
+            continue;
+        }
+
+        let next_len = body.len() + 1 + part.len();
+        if next_len > max_message_bytes {
+            break;
+        }
+
+        body.push('\n');
+        body.push_str(&part);
+    }
+
+    body
+}
+
+#[cfg(any(test, not(coverage)))]
 fn collect_watched_file_records(cfg: &PlatformConfig) -> WatchedFileResult {
     let mut records = Vec::new();
     let mut active_targets = 0u64;
@@ -185,51 +214,37 @@ fn collect_watched_file_records(cfg: &PlatformConfig) -> WatchedFileResult {
         let lines = content.lines().collect::<Vec<_>>();
         let consumed = offsets.get(&watch.path).copied().unwrap_or(0) as usize;
         let start = consumed.min(lines.len());
-        let mut grouped_bodies = Vec::new();
-        let mut current_body = String::new();
-
-        for line in lines.iter().skip(start).take(cfg.max_lines_per_source) {
-            let line_body = sanitize_ascii_line(line, cfg.max_message_bytes);
-            if line_body.is_empty() {
-                continue;
-            }
-
-            if current_body.is_empty() {
-                current_body.push_str(&line_body);
-                continue;
-            }
-
-            let next_len = current_body.len() + 1 + line_body.len();
-            if next_len > cfg.max_message_bytes {
-                grouped_bodies.push(std::mem::take(&mut current_body));
-                current_body.push_str(&line_body);
-            } else {
-                current_body.push('\n');
-                current_body.push_str(&line_body);
-            }
-        }
-
-        if !current_body.is_empty() {
-            grouped_bodies.push(current_body);
-        }
+        let body = join_snapshot_bodies(
+            lines
+                .iter()
+                .skip(start)
+                .take(cfg.max_lines_per_source)
+                .filter_map(|line| {
+                    let body = sanitize_ascii_line(line, cfg.max_message_bytes);
+                    if body.is_empty() {
+                        None
+                    } else {
+                        Some(body)
+                    }
+                }),
+            cfg.max_message_bytes,
+        );
 
         offsets.insert(watch.path.clone(), lines.len() as u64);
-        if !grouped_bodies.is_empty() {
+        if !body.is_empty() {
             let source = match watch.source {
                 WatchSource::Application => "application",
                 WatchSource::Process => "process",
             };
             let watch_target = sanitize_watch_target_name(&watch.name);
-            for body in grouped_bodies {
-                records.push(LogRecord {
-                    observed_time_unix_nano: now_unix_nanos(),
-                    severity_text: "INFO".to_string(),
-                    body,
-                    source: source.to_string(),
-                    stream: "file".to_string(),
-                    watch_target: watch_target.clone(),
-                });
-            }
+            records.push(LogRecord {
+                observed_time_unix_nano: now_unix_nanos(),
+                severity_text: "INFO".to_string(),
+                body,
+                source: source.to_string(),
+                stream: "file".to_string(),
+                watch_target,
+            });
             active_targets = active_targets.saturating_add(1);
             match watch.source {
                 WatchSource::Application => application_logs_available = true,

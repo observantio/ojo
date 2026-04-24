@@ -1,9 +1,9 @@
 use crate::{WatchSource, WatchedFileConfig};
 
-use crate::platform::{
-    file_offsets, sanitize_watch_target_name, PlatformCollection, PlatformConfig,
-};
+use crate::platform::{file_offsets, sanitize_watch_target_name, PlatformConfig};
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,29 +14,6 @@ fn offsets_test_lock() -> &'static Mutex<()> {
 
 fn reset_offsets() {
     file_offsets().lock().expect("offset lock").clear();
-}
-
-fn collect_for_test(cfg: &PlatformConfig) -> PlatformCollection {
-    #[cfg(coverage)]
-    {
-        let watched = crate::platform::collect_watched_file_records(cfg);
-        return PlatformCollection {
-            snapshot: crate::platform::PlatformSnapshot {
-                available: watched.active_targets > 0,
-                process_logs_available: watched.process_logs_available,
-                application_logs_available: watched.application_logs_available,
-                file_watch_targets_active: watched.active_targets,
-                collection_errors: watched.collection_errors,
-                ..crate::platform::PlatformSnapshot::default()
-            },
-            records: watched.records,
-        };
-    }
-
-    #[cfg(not(coverage))]
-    {
-        crate::platform::collect(cfg)
-    }
 }
 
 fn unique_temp_path(name: &str) -> std::path::PathBuf {
@@ -65,11 +42,16 @@ fn collect_groups_incremental_lines_from_watched_files() {
     let _guard = offsets_test_lock().lock().expect("offset test lock");
     reset_offsets();
     let watched = unique_temp_path("watch.log");
-    fs::write(&watched, "line1\nline2\n").expect("seed file");
+    let initial = (1..=20)
+        .map(|index| format!("line-{index:02}-abcdefghij"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    fs::write(&watched, &initial).expect("seed file");
 
     let cfg = PlatformConfig {
         max_lines_per_source: 10,
-        max_message_bytes: 256,
+        max_message_bytes: 64,
         watch_files: vec![WatchedFileConfig {
             name: "app-log".to_string(),
             path: watched.to_string_lossy().to_string(),
@@ -77,25 +59,35 @@ fn collect_groups_incremental_lines_from_watched_files() {
         }],
     };
 
-    let first = collect_for_test(&cfg);
+    let first = crate::platform::collect_watched_file_records(&cfg);
     let first_watch_records = first
         .records
         .iter()
-        .filter(|record| record.watch_target == "app-log")
+        .filter(|record| record.source == "application" && record.stream == "file")
         .collect::<Vec<_>>();
-    assert_eq!(first_watch_records.len(), 1);
-    assert_eq!(first_watch_records[0].body, "line1\nline2");
-    assert_eq!(first.snapshot.file_watch_targets_active, 1);
+    assert_eq!(first_watch_records.len(), 1, "records: {:?}", first.records);
+    assert!(first_watch_records[0].body.contains("line-01-abcdefghij"));
+    assert_eq!(first.active_targets, 1);
 
-    fs::write(&watched, "line1\nline2\nline3\n").expect("append file");
-    let second = collect_for_test(&cfg);
+    let mut append = OpenOptions::new()
+        .append(true)
+        .open(&watched)
+        .expect("open append file");
+    writeln!(append, "line-21-abcdefghij").expect("append line 21");
+    writeln!(append, "line-22-abcdefghij").expect("append line 22");
+    let second = crate::platform::collect_watched_file_records(&cfg);
     let second_watch_records = second
         .records
         .iter()
-        .filter(|record| record.watch_target == "app-log")
+        .filter(|record| record.source == "application" && record.stream == "file")
         .collect::<Vec<_>>();
-    assert_eq!(second_watch_records.len(), 1);
-    assert_eq!(second_watch_records[0].body, "line3");
+    assert_eq!(
+        second_watch_records.len(),
+        1,
+        "records: {:?}",
+        second.records
+    );
+    assert!(second_watch_records[0].body.contains("line-21-abcdefghij"));
 
     fs::remove_file(&watched).expect("cleanup");
 }
@@ -114,8 +106,8 @@ fn collect_handles_missing_watch_files() {
         }],
     };
 
-    let result = collect_for_test(&cfg);
-    assert_eq!(result.snapshot.file_watch_targets_active, 0);
+    let result = crate::platform::collect_watched_file_records(&cfg);
+    assert_eq!(result.active_targets, 0);
 }
 
 #[test]
@@ -136,8 +128,8 @@ fn collect_counts_error_when_watch_target_is_unreadable_directory() {
         }],
     };
 
-    let result = collect_for_test(&cfg);
-    assert!(result.snapshot.collection_errors >= 1);
+    let result = crate::platform::collect_watched_file_records(&cfg);
+    assert!(result.collection_errors >= 1);
 
     fs::remove_dir_all(&dir).expect("cleanup");
 }
@@ -160,11 +152,12 @@ fn collect_skips_watch_lines_that_sanitize_to_empty() {
         }],
     };
 
-    let result = collect_for_test(&cfg);
-    assert!(!result.records.iter().any(|record| {
-        record.source == "application" && record.watch_target == "empty-line-watch"
-    }));
-    assert_eq!(result.snapshot.file_watch_targets_active, 0);
+    let result = crate::platform::collect_watched_file_records(&cfg);
+    assert!(!result
+        .records
+        .iter()
+        .any(|record| { record.source == "application" && record.stream == "file" }));
+    assert_eq!(result.active_targets, 0);
 
     fs::remove_file(&watched).expect("cleanup");
 }
@@ -186,13 +179,13 @@ fn collect_respects_process_source_and_line_limit() {
         }],
     };
 
-    let first = collect_for_test(&cfg);
+    let first = crate::platform::collect_watched_file_records(&cfg);
     assert!(first.records.iter().any(|r| r.source == "process"));
-    assert_eq!(first.snapshot.file_watch_targets_active, 1);
+    assert_eq!(first.active_targets, 1);
 
-    let second = collect_for_test(&cfg);
+    let second = crate::platform::collect_watched_file_records(&cfg);
     assert!(!second.records.iter().any(|r| r.source == "process"));
-    assert_eq!(second.snapshot.file_watch_targets_active, 0);
+    assert_eq!(second.active_targets, 0);
 
     fs::remove_file(&watched).expect("cleanup");
 }
