@@ -1,0 +1,43 @@
+service:
+  name: ojo-syslog
+  instance_id: syslog-windows
+
+collection:
+  poll_interval_secs: 5
+  max_lines_per_source: 200
+  max_message_bytes: 4096
+
+watch:
+  # Windows uses ETW System/Application logs by default.
+  files: []
+
+pipeline:
+  buffer_capacity_records: 10000
+  export_batch_size: 250
+  retry_backoff_secs: 3
+
+storage:
+  archive_enabled: false
+  archive_dir: services/syslog/data
+  archive_max_file_bytes: 67108864
+  archive_retain_files: 8
+  archive_format: parquet
+  archive_mode: trend
+  archive_window_secs: 60
+  archive_compression: zstd
+
+export:
+  otlp:
+    endpoint: http://localhost:4355/v1/metrics
+    protocol: http/protobuf
+    timeout_secs: 10
+  logs:
+    endpoint: http://localhost:4355/v1/logs
+    timeout_secs: 10
+  batch:
+    interval_secs: 5
+    timeout_secs: 10
+
+metrics:
+  include: [system.syslog.]
+  exclude: []

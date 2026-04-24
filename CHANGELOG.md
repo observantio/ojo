@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Added a Windows-specific default config for `ojo-syslog` (`services/syslog/syslog.windows.yaml`) so Windows uses ETW-oriented defaults while Linux continues to use `services/syslog/syslog.yaml`.
+- Updated `ojo-systrace` to namespace Windows-derived trace components as `windows.*` instead of reusing Linux `kernel.*` names, keeping the Windows trace shape compatible without sharing Linux naming.
+
 #### Efficient Archiving
 
 - Archives are now significantly more compressed and lightweight. Each service can be independently tuned via the YAML config, with full control over format, compression, retention, and archival strategy.

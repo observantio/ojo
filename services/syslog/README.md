@@ -10,7 +10,9 @@ Syslog captures operating-system, process, and application log streams and expor
 - Rotating parquet archive modes (trend + lossless)
 
 ## Configuration
-Primary config file: `services/syslog/syslog.yaml`
+Primary config file:
+- Linux: `services/syslog/syslog.yaml`
+- Windows: `services/syslog/syslog.windows.yaml`
 
 Key sections:
 - `collection.poll_interval_secs`
@@ -61,6 +63,8 @@ cargo run --bin archive-replay -- \
 ```bash
 cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
 ```
+
+On Windows, the default config path resolves to `services/syslog/syslog.windows.yaml`, which keeps the ETW-based collector enabled without Linux-only `/var/log` file watches.
 
 Shell log output (no endpoint required):
 ```bash

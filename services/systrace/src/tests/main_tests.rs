@@ -1,11 +1,11 @@
 use crate::{
     advance_export_state, bool_as_u64, default_traces_endpoint, derive_trace_line_delta_us,
     find_component_key, handle_flush_event, infer_platform_component, infer_trace_line_component,
-    is_reserved_component, load_yaml_config_file, log_flush_result, make_stop_handler,
-    normalize_component_stem, parse_bool_env, parse_trace_line_seconds,
-    parse_trace_line_seconds_token, record_exporter_state, record_snapshot,
-    resolve_default_config_path, ArchivePipeline, ComponentTraceSummary, Config, ExportState,
-    FlushEvent, Instruments, SystraceSnapshot,
+    infer_trace_line_component_with_namespace, is_reserved_component, load_yaml_config_file,
+    log_flush_result, make_stop_handler, normalize_component_stem_with_namespace, parse_bool_env,
+    parse_trace_line_seconds, parse_trace_line_seconds_token, record_exporter_state,
+    record_snapshot, resolve_default_config_path, ArchivePipeline, ComponentTraceSummary, Config,
+    ExportState, FlushEvent, Instruments, SystraceSnapshot,
 };
 use host_collectors::{ArchiveCompression, ArchiveFormat, ArchiveMode, PrefixFilter};
 use opentelemetry::trace::{Span, Tracer};
@@ -217,10 +217,14 @@ fn infer_platform_component_covers_linux_windows_unknown() {
         etw_available: true,
         ..SystraceSnapshot::default()
     };
-    assert_eq!(infer_platform_component(&windows), "kernel.windows");
+    assert_eq!(infer_platform_component(&windows), "windows.etw");
 
     let unknown = SystraceSnapshot::default();
-    assert_eq!(infer_platform_component(&unknown), "kernel.unknown");
+    if cfg!(target_os = "windows") {
+        assert_eq!(infer_platform_component(&unknown), "windows.unknown");
+    } else {
+        assert_eq!(infer_platform_component(&unknown), "kernel.unknown");
+    }
 }
 
 #[test]
@@ -251,6 +255,28 @@ fn infer_trace_line_component_normalizes_kernel_task_names() {
         Some("kernel.worker-abc".to_string())
     );
     assert_eq!(infer_trace_line_component(""), None);
+}
+
+#[test]
+fn infer_trace_line_component_handles_windows_synthetic_rows() {
+    assert_eq!(
+        infer_trace_line_component_with_namespace(
+            "context_switches-1 [000] .... 1.000000: context_switches",
+            "windows"
+        ),
+        Some("windows.context_switches".to_string())
+    );
+    assert_eq!(
+        infer_trace_line_component_with_namespace("=> userstack", "windows"),
+        Some("windows.userstack".to_string())
+    );
+    assert_eq!(
+        infer_trace_line_component_with_namespace(
+            "threads-1 [000] .... 7.000000: threads",
+            "windows"
+        ),
+        Some("windows.threads".to_string())
+    );
 }
 
 #[test]
@@ -321,12 +347,12 @@ fn parse_trace_line_helpers_cover_edge_cases() {
 #[test]
 fn normalize_component_and_reserved_checks_cover_paths() {
     assert_eq!(
-        normalize_component_stem("kworker/0:1"),
+        normalize_component_stem_with_namespace("kworker/0:1", "kernel"),
         Some("kernel.kworker.0.1".to_string())
     );
-    assert_eq!(normalize_component_stem("..///"), None);
+    assert_eq!(normalize_component_stem_with_namespace("..///", "kernel"), None);
     assert_eq!(
-        normalize_component_stem("component."),
+        normalize_component_stem_with_namespace("component.", "kernel"),
         Some("kernel.component".to_string())
     );
     assert!(is_reserved_component("kernel.entry_syscall.fast"));

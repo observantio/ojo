@@ -645,9 +645,7 @@ impl Config {
             .find(|p| p[0] == "--config")
             .map(|p| p[1].clone())
             .or_else(|| env::var("OJO_SYSLOG_CONFIG").ok())
-            .unwrap_or_else(|| {
-                resolve_default_config_path("syslog.yaml", "services/syslog/syslog.yaml")
-            });
+            .unwrap_or_else(default_config_path);
 
         let file_cfg = load_yaml_config_file(&config_path)?;
         let service = file_cfg.service.unwrap_or_default();
@@ -711,6 +709,18 @@ impl Config {
             archive_compression: ArchiveCompression::parse(storage.archive_compression.as_deref()),
             once,
         })
+    }
+}
+
+fn default_config_path() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        resolve_default_config_path("syslog.windows.yaml", "services/syslog/syslog.windows.yaml")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        resolve_default_config_path("syslog.yaml", "services/syslog/syslog.yaml")
     }
 }
 

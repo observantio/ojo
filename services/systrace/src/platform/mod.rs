@@ -10,9 +10,6 @@ mod coverage;
 mod linux;
 #[cfg(all(not(coverage), target_os = "windows"))]
 mod windows;
-
-#[cfg(all(not(coverage), target_os = "windows"))]
-pub(crate) use common::*;
 #[cfg(coverage)]
 pub(crate) use coverage::collect_snapshot;
 #[cfg(all(not(coverage), target_os = "linux"))]

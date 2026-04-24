@@ -12,7 +12,6 @@ instrumentation:
   ebpf_enabled: true
   uprobes_enabled: true
   usdt_enabled: true
-  runtime_probe_profiles: [tokio, libc, openssl]
 
 export:
   otlp:
