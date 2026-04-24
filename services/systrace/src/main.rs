@@ -1325,9 +1325,7 @@ fn infer_trace_line_component(line: &str) -> Option<String> {
 fn infer_trace_namespace(snapshot: &SystraceSnapshot) -> &'static str {
     if snapshot.tracefs_available {
         "kernel"
-    } else if snapshot.etw_available {
-        "windows"
-    } else if cfg!(target_os = "windows") {
+    } else if snapshot.etw_available || cfg!(target_os = "windows") {
         "windows"
     } else {
         "kernel"

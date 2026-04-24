@@ -41,7 +41,13 @@ pub(crate) fn collect_snapshot() -> SystraceSnapshot {
     let script = build_collection_script(trace_limit);
     let output = super::common::run_command_with_timeout(
         "powershell",
-        &["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &script],
+        &[
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &script,
+        ],
     );
 
     let Some(output) = output else {
@@ -151,7 +157,9 @@ fn build_collection_script(trace_limit: usize) -> String {
     script.push_str("$counterSet = Get-Counter -Counter @(");
     script.push_str(WINDOWS_COUNTER_QUERY);
     script.push_str(");\n");
-    script.push_str("$ctx = 0;\n$intr = 0;\n$dpc = 0;\n$sysc = 0;\n$procs = 0;\n$threads = 0;\n$queue = 0;\n");
+    script.push_str(
+        "$ctx = 0;\n$intr = 0;\n$dpc = 0;\n$sysc = 0;\n$procs = 0;\n$threads = 0;\n$queue = 0;\n",
+    );
     script.push_str("foreach ($sample in $counterSet.CounterSamples) {\n");
     script.push_str("    switch -Wildcard ($sample.Path) {\n");
     for (counter_path, variable_name) in WINDOWS_COUNTER_BINDINGS {
@@ -201,7 +209,10 @@ fn build_collection_script(trace_limit: usize) -> String {
 fn parse_collection_output(text: &str) -> (BTreeMap<String, f64>, TraceSample) {
     let text = text.trim_start_matches('\u{feff}');
     let Some((counter_block, trace_block)) = text.split_once(TRACE_SAMPLE_BEGIN_MARKER) else {
-        return (super::common::parse_key_value_lines(text), TraceSample::default());
+        return (
+            super::common::parse_key_value_lines(text),
+            TraceSample::default(),
+        );
     };
 
     (
@@ -222,7 +233,8 @@ fn parse_trace_sample_block(text: &str) -> TraceSample {
             break;
         }
         let (kernel, user) = count_trace_sample_markers(line);
-        sample.kernel_stack_samples_total = sample.kernel_stack_samples_total.saturating_add(kernel);
+        sample.kernel_stack_samples_total =
+            sample.kernel_stack_samples_total.saturating_add(kernel);
         sample.user_stack_samples_total = sample.user_stack_samples_total.saturating_add(user);
         sample.lines.push(line.to_string());
     }

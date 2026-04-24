@@ -178,6 +178,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Scheduler Pressure",
+      "description": "Collector-derived per-second gauges; PromQL rate() is not needed here.",
       "targets": [
         {
           "refId": "A",
@@ -207,6 +208,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Kernel Event Rates",
+      "description": "Collector-derived per-second gauges; PromQL rate() is not needed here.",
       "targets": [
         {
           "refId": "A",
