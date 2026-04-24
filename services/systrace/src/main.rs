@@ -101,8 +101,12 @@ fn log_flush_result(started_at: Instant, flush_succeeded: bool) {
 fn handle_flush_event(event: FlushEvent, flush_error: Option<&dyn std::fmt::Display>) {
     if let Some(err) = flush_error {
         match event {
-            FlushEvent::Reconnecting => warn!(error = %err, "Exporter flush failed; reconnecting"),
-            FlushEvent::StillUnavailable => warn!(error = %err, "Exporter still unavailable"),
+            FlushEvent::Reconnecting => {
+                warn!(error = %err, "Systrace exporter disconnected, reconnecting")
+            }
+            FlushEvent::StillUnavailable => {
+                warn!(error = %err, "Systrace exporter disconnected; still unavailable")
+            }
             FlushEvent::None | FlushEvent::Connected | FlushEvent::Reconnected => {}
         }
     } else {
