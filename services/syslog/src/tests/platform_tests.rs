@@ -61,7 +61,7 @@ fn sanitize_watch_target_name_normalizes_symbols() {
 }
 
 #[test]
-fn collect_reads_incremental_lines_from_watched_files() {
+fn collect_groups_incremental_lines_from_watched_files() {
     let _guard = offsets_test_lock().lock().expect("offset test lock");
     reset_offsets();
     let watched = unique_temp_path("watch.log");
@@ -78,12 +78,24 @@ fn collect_reads_incremental_lines_from_watched_files() {
     };
 
     let first = collect_for_test(&cfg);
-    assert!(first.records.iter().any(|r| r.body.contains("line1")));
+    let first_watch_records = first
+        .records
+        .iter()
+        .filter(|record| record.watch_target == "app-log")
+        .collect::<Vec<_>>();
+    assert_eq!(first_watch_records.len(), 1);
+    assert_eq!(first_watch_records[0].body, "line1\nline2");
     assert_eq!(first.snapshot.file_watch_targets_active, 1);
 
     fs::write(&watched, "line1\nline2\nline3\n").expect("append file");
     let second = collect_for_test(&cfg);
-    assert!(second.records.iter().any(|r| r.body.contains("line3")));
+    let second_watch_records = second
+        .records
+        .iter()
+        .filter(|record| record.watch_target == "app-log")
+        .collect::<Vec<_>>();
+    assert_eq!(second_watch_records.len(), 1);
+    assert_eq!(second_watch_records[0].body, "line3");
 
     fs::remove_file(&watched).expect("cleanup");
 }
@@ -150,7 +162,7 @@ fn collect_skips_watch_lines_that_sanitize_to_empty() {
 
     let result = collect_for_test(&cfg);
     assert!(!result.records.iter().any(|record| {
-        record.source == "application" && record.watch_target == "empty_line_watch"
+        record.source == "application" && record.watch_target == "empty-line-watch"
     }));
     assert_eq!(result.snapshot.file_watch_targets_active, 0);
 
