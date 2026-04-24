@@ -139,10 +139,8 @@ fn resolve_default_config_path_prefers_existing_local() {
 #[cfg(target_os = "windows")]
 #[test]
 fn resolve_default_config_path_prefers_windows_syslog_default() {
-    let selected = resolve_default_config_path(
-        "syslog.windows.yaml",
-        "services/syslog/syslog.windows.yaml",
-    );
+    let selected =
+        resolve_default_config_path("syslog.windows.yaml", "services/syslog/syslog.windows.yaml");
     assert_eq!(selected, "syslog.windows.yaml");
 }
 
@@ -165,7 +163,10 @@ fn load_windows_companion_config_parses() {
     assert!(watch.files.unwrap_or_default().is_empty());
 
     let export = file_cfg.export.expect("export section");
-    assert_eq!(export.otlp.expect("otlp section").endpoint.as_deref(), Some("http://192.168.0.214:4355/v1/metrics"));
+    assert_eq!(
+        export.otlp.expect("otlp section").endpoint.as_deref(),
+        Some("http://192.168.0.214:4355/v1/metrics")
+    );
 }
 
 #[test]
