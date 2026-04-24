@@ -5,7 +5,6 @@ Systrace provides deep host tracing coverage across kernel, process, and runtime
 ## Highlights
 - Linux tracefs and Windows ETW parity signals
 - Coverage-oriented counters for syscall, scheduler, and stream continuity
-- Runtime probe profile configuration
 - Rotating snapshot archive support
 
 ## Configuration
