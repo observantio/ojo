@@ -101,8 +101,13 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        if: matrix.target != 'i686-pc-windows-gnu'
         with:
           key: core-${{ matrix.target }}
+
+      - name: Clean i686 target dir
+        if: matrix.target == 'i686-pc-windows-gnu'
+        run: rm -rf target/i686-pc-windows-gnu
 
       - name: Build
         env:
