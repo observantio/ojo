@@ -180,7 +180,7 @@ curl http://localhost:4320/ready
 ### Download and run - Linux
 
 ```bash
-curl -L https://github.com/observantio/ojo/releases/download/v0.0.2/ojo-v0.0.2-linux-aarch64 -o ojo
+curl -L https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-v0.0.4-linux-aarch64 -o ojo
 chmod +x ojo
 ./ojo --config linux.yaml
 ```
@@ -188,14 +188,14 @@ chmod +x ojo
 ### Download and run - Windows (PowerShell)
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0.2/ojo-v0.0.2-windows-x86_64.exe -OutFile ojo.exe
+Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-v0.0.4-windows-x86_64.exe -OutFile ojo.exe
 .\ojo.exe --config windows.yaml
 ```
 
 ### Download and run a sidecar - Linux (Docker service)
 
 ```bash
-curl -L https://github.com/observantio/ojo/releases/download/v0.0.2/ojo-docker-unix-v0.0.2 -o ojo-docker
+curl -L https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-docker-unix-v0.0.4 -o ojo-docker
 chmod +x ojo-docker
 ./ojo-docker --config services/docker/docker.yaml
 ```
