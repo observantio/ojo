@@ -94,26 +94,21 @@ jobs:
 
       - name: Install MinGW toolchains
         if: matrix.platform == 'windows'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 lld
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
-        if: matrix.target != 'i686-pc-windows-gnu'
         with:
           key: core-${{ matrix.target }}
-
-      - name: Clean i686 target dir
-        if: matrix.target == 'i686-pc-windows-gnu'
-        run: rm -rf target/i686-pc-windows-gnu
 
       - name: Build
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER: i686-w64-mingw32-gcc
-          CARGO_TARGET_I686_PC_WINDOWS_GNU_RUSTFLAGS: -C link-arg=-lws2_32
+          CARGO_TARGET_I686_PC_WINDOWS_GNU_RUSTFLAGS: -C link-arg=-lws2_32 -C linker=i686-w64-mingw32-gcc -C link-arg=-fuse-ld=lld
         run: cargo build --release --target "${{ matrix.target }}" -p ojo
 
       - name: Package
