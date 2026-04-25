@@ -107,6 +107,8 @@ jobs:
       - name: Build
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER: i686-w64-mingw32-gcc
+          CARGO_TARGET_I686_PC_WINDOWS_GNU_RUSTFLAGS: -C link-arg=-lws2_32
         run: cargo build --release --target "${{ matrix.target }}" -p ojo
 
       - name: Package
