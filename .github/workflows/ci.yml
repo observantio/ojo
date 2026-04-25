@@ -82,7 +82,7 @@ jobs:
 
           - name: Windows i686 Legacy
             id: windows-i686-legacy
-            target: i686-pc-windows-gnu
+            target: i686-pc-windows-gnullvm
             platform: windows
 
     steps:
@@ -94,7 +94,14 @@ jobs:
 
       - name: Install MinGW toolchains
         if: matrix.platform == 'windows'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 lld
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 xz-utils
+
+      - name: Install llvm-mingw
+        if: matrix.target == 'i686-pc-windows-gnullvm'
+        run: |
+          curl -L https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-ubuntu-20.04-x86_64.tar.xz \
+            | tar -xJ -C /opt
+          echo "/opt/llvm-mingw-20240619-ucrt-ubuntu-20.04-x86_64/bin" >> $GITHUB_PATH
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -107,8 +114,7 @@ jobs:
       - name: Build
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER: i686-w64-mingw32-gcc
-          CARGO_TARGET_I686_PC_WINDOWS_GNU_RUSTFLAGS: -C link-arg=-lws2_32 -C linker=i686-w64-mingw32-gcc -C link-arg=-fuse-ld=lld
+          CARGO_TARGET_I686_PC_WINDOWS_GNULLVM_LINKER: i686-w64-mingw32-clang
         run: cargo build --release --target "${{ matrix.target }}" -p ojo
 
       - name: Package
