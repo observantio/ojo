@@ -7,13 +7,7 @@ use crate::{
 };
 use host_collectors::{ArchiveStorageConfig, PrefixFilter};
 use std::fs;
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
 
 fn unique_temp_path(name: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
@@ -25,7 +19,7 @@ fn unique_temp_path(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn parse_bool_env_covers_variants() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     std::env::set_var("OJO_NGINX_BOOL", "yes");
     assert_eq!(parse_bool_env("OJO_NGINX_BOOL"), Some(true));
     std::env::set_var("OJO_NGINX_BOOL", "off");
@@ -218,7 +212,7 @@ fn load_yaml_config_file_covers_directory_read_error() {
 
 #[test]
 fn config_load_from_args_reads_env_config() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let path = unique_temp_path("nginx-config.yaml");
     fs::write(
         &path,
@@ -239,7 +233,7 @@ fn config_load_from_args_reads_env_config() {
 
 #[test]
 fn config_load_from_args_uses_repo_default_when_env_not_set() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     std::env::remove_var("OJO_NGINX_CONFIG");
     std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
     std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
@@ -251,7 +245,7 @@ fn config_load_from_args_uses_repo_default_when_env_not_set() {
 
 #[test]
 fn config_load_from_args_supports_config_flag_and_defaults_service_name() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let path = unique_temp_path("nginx-config-flag.yaml");
     fs::write(
         &path,
@@ -326,7 +320,7 @@ fn record_f64_covers_allow_and_block_paths() {
 
 #[test]
 fn run_once_with_temp_config() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let path = unique_temp_path("nginx-run.yaml");
     fs::write(
         &path,
@@ -356,7 +350,7 @@ fn run_once_with_temp_config() {
 
 #[test]
 fn run_supports_test_iteration_cap_when_once_is_false() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let path = unique_temp_path("nginx-loop.yaml");
     fs::write(
         &path,
@@ -386,7 +380,7 @@ fn run_supports_test_iteration_cap_when_once_is_false() {
 
 #[test]
 fn run_returns_error_for_missing_or_invalid_config() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
 
     std::env::set_var("OJO_NGINX_CONFIG", "/definitely/missing/nginx.yaml");
     let missing = run();

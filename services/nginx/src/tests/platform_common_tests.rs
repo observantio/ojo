@@ -2,7 +2,6 @@ use super::{collect_snapshot_impl, run_with_timeout, run_with_timeout_using_wait
 use crate::NginxConfig;
 use std::fs;
 use std::process::Command;
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {
@@ -16,14 +15,9 @@ fn unique_temp_dir(name: &str) -> std::path::PathBuf {
     ))
 }
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: Mutex<()> = Mutex::new(());
-    &LOCK
-}
-
 #[test]
 fn collect_snapshot_impl_returns_default_when_command_cannot_spawn() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
     std::env::remove_var("OJO_NGINX_STUB_STATUS");
 
@@ -42,7 +36,7 @@ fn collect_snapshot_impl_returns_default_when_command_cannot_spawn() {
 
 #[test]
 fn collect_snapshot_impl_parses_stub_status_from_fake_script() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
     std::env::remove_var("OJO_NGINX_STUB_STATUS");
 
@@ -86,7 +80,7 @@ fn collect_snapshot_impl_parses_stub_status_from_fake_script() {
 
 #[test]
 fn collect_snapshot_impl_returns_default_for_invalid_status_text() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = crate::test_support::env_guard();
     let previous = std::env::var("OJO_NGINX_STUB_STATUS").ok();
     std::env::remove_var("OJO_NGINX_STUB_STATUS");
 
