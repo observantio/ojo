@@ -7,7 +7,10 @@ use crate::delta::DerivedMetrics;
 use crate::model::{ProcessSnapshot, Snapshot};
 use opentelemetry::metrics::{Counter, Gauge, Meter};
 use opentelemetry::KeyValue;
-use std::sync::Arc;
+use std::collections::{HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
+use tracing::warn;
 
 pub const ATTR_CPU_MODE: &str = "cpu.mode";
 pub const ATTR_SYSTEM_DEVICE: &str = "system.device";
@@ -23,6 +26,91 @@ pub struct ProcessLabelConfig {
     pub include_pid: bool,
     pub include_command: bool,
     pub include_state: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StreamCardinalityConfig {
+    pub process_max_series: usize,
+    pub cgroup_max_series: usize,
+}
+
+#[derive(Debug, Default)]
+struct SeriesBudget {
+    process: SeriesTracker,
+    cgroup: SeriesTracker,
+}
+
+impl SeriesBudget {
+    fn new(config: StreamCardinalityConfig) -> Self {
+        Self {
+            process: SeriesTracker::new(config.process_max_series),
+            cgroup: SeriesTracker::new(config.cgroup_max_series),
+        }
+    }
+
+    fn allow(&mut self, metric_name: &str, attrs: &[KeyValue]) -> bool {
+        if metric_name.starts_with("process.") {
+            return self.process.allow(series_fingerprint(metric_name, attrs), "process");
+        }
+        if metric_name == "system.linux.cgroup" {
+            return self.cgroup.allow(series_fingerprint(metric_name, attrs), "system.linux.cgroup");
+        }
+        true
+    }
+}
+
+#[derive(Debug, Default)]
+struct SeriesTracker {
+    limit: usize,
+    seen: HashSet<u64>,
+    order: VecDeque<u64>,
+    dropped: u64,
+}
+
+impl SeriesTracker {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            seen: HashSet::new(),
+            order: VecDeque::new(),
+            dropped: 0,
+        }
+    }
+
+    fn allow(&mut self, fingerprint: u64, family: &str) -> bool {
+        if self.limit == 0 {
+            return true;
+        }
+        if self.seen.contains(&fingerprint) {
+            return true;
+        }
+        if self.seen.len() < self.limit {
+            self.seen.insert(fingerprint);
+            self.order.push_back(fingerprint);
+            return true;
+        }
+
+        self.dropped = self.dropped.saturating_add(1);
+        if self.dropped == 1 || self.dropped.is_multiple_of(1000) {
+            warn!(
+                family,
+                dropped_new_series = self.dropped,
+                max_series = self.limit,
+                "stream cardinality limit reached; dropping new series"
+            );
+        }
+        false
+    }
+}
+
+fn series_fingerprint(metric_name: &str, attrs: &[KeyValue]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    metric_name.hash(&mut hasher);
+    for kv in attrs {
+        kv.key.as_str().hash(&mut hasher);
+        kv.value.to_string().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 impl Default for ProcessLabelConfig {
@@ -116,6 +204,7 @@ fn is_linux_like(snap: &Snapshot) -> bool {
 pub struct ProcMetrics {
     filter: MetricFilter,
     process_labels: ProcessLabelConfig,
+    series_budget: Mutex<SeriesBudget>,
     pub otel_system_cpu_time: Counter<f64>,
     pub otel_system_interrupts: Counter<u64>,
     pub otel_system_softirqs: Counter<u64>,
@@ -312,4 +401,3 @@ pub struct ProcMetrics {
     pub process_private_bytes: Gauge<u64>,
     pub process_commit_charge_bytes: Gauge<u64>,
 }
-

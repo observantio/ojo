@@ -1,6 +1,7 @@
 use super::{
     default_protocol_for_endpoint, has_non_root_path, hostname_fallback, load_yaml_config_file,
-    parse_bool_env, validate_required_yaml_fields, Config, FileConfig,
+    parse_bool_env, validate_required_yaml_fields, Config, FileConfig, HostType,
+    MetricCardinalityConfig, TieredReplayConfig,
 };
 use host_collectors::ArchiveStorageConfig;
 use std::collections::BTreeMap;
@@ -141,6 +142,7 @@ fn apply_otel_env_sets_and_clears_environment_values() {
     let cfg = Config {
         service_name: "svc".to_string(),
         instance_id: "inst".to_string(),
+        host_type: HostType::Auto,
         poll_interval: Duration::from_secs(5),
         include_process_metrics: true,
         process_include_pid_label: true,
@@ -156,6 +158,10 @@ fn apply_otel_env_sets_and_clears_environment_values() {
         export_timeout: Some(Duration::from_millis(4500)),
         metrics_include: vec![],
         metrics_exclude: vec![],
+        metric_cardinality: MetricCardinalityConfig {
+            process_max_series: 200,
+            cgroup_max_series: 100,
+        },
         archive: ArchiveStorageConfig {
             enabled: true,
             archive_dir: "data/ojo".to_string(),
@@ -166,6 +172,14 @@ fn apply_otel_env_sets_and_clears_environment_values() {
             mode: host_collectors::ArchiveMode::Trend,
             window_secs: 60,
             compression: host_collectors::ArchiveCompression::Zstd,
+        },
+        tiered_replay: TieredReplayConfig {
+            enabled: false,
+            memory_cap_items: 32,
+            wal_dir: "data/ojo/tiered-replay".to_string(),
+            wal_segment_max_bytes: 1024 * 1024,
+            wal_segment_max_age_secs: 60,
+            max_replay_per_tick: 32,
         },
     };
     cfg.apply_otel_env();
@@ -231,6 +245,7 @@ fn config_load_reads_yaml_and_token_header_fields() {
     let cfg = Config::load().expect("load config");
     assert_eq!(cfg.service_name, "core-svc");
     assert_eq!(cfg.instance_id, "core-01");
+    assert_eq!(cfg.host_type, HostType::Auto);
     assert_eq!(cfg.poll_interval, Duration::from_secs(2));
     assert!(cfg.include_process_metrics);
     assert!(cfg.process_include_pid_label);
@@ -250,6 +265,49 @@ fn config_load_reads_yaml_and_token_header_fields() {
     assert_eq!(cfg.metrics_include, vec!["system.".to_string()]);
     assert_eq!(cfg.metrics_exclude, vec!["process.".to_string()]);
 
+    std::env::remove_var("PROC_OTEL_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_parses_host_type_and_tiered_replay_storage() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("config-load-host-type-tiered.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: host-svc\n  instance_id: host-01\ncollection:\n  host_type: windows\n  poll_interval_secs: 2\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\nstorage:\n  tiered_replay_enabled: true\n  tiered_replay_memory_cap_items: 7\n  tiered_replay_wal_dir: data/ojo/replay-test\n  tiered_replay_wal_segment_max_bytes: 2048\n  tiered_replay_wal_segment_max_age_secs: 9\n  tiered_replay_max_replay_per_tick: 6\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("PROC_OTEL_CONFIG", &path);
+
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.host_type, HostType::Windows);
+    assert!(cfg.tiered_replay.enabled);
+    assert_eq!(cfg.tiered_replay.memory_cap_items, 7);
+    assert_eq!(cfg.tiered_replay.wal_dir, "data/ojo/replay-test");
+    assert_eq!(cfg.tiered_replay.wal_segment_max_bytes, 2048);
+    assert_eq!(cfg.tiered_replay.wal_segment_max_age_secs, 9);
+    assert_eq!(cfg.tiered_replay.max_replay_per_tick, 6);
+
+    std::env::remove_var("PROC_OTEL_CONFIG");
+    fs::remove_file(&path).expect("cleanup config");
+}
+
+#[test]
+fn config_load_parses_metric_cardinality_limits() {
+    let _guard = env_lock().lock().expect("env lock");
+    let path = unique_temp_path("config-load-cardinality.yaml");
+    fs::write(
+        &path,
+        "service:\n  name: card-svc\n  instance_id: card-01\ncollection:\n  poll_interval_secs: 2\nexport:\n  otlp:\n    endpoint: http://127.0.0.1:4318/v1/metrics\n    protocol: http/protobuf\ncardinality:\n  process_max_series: 123\n  cgroup_max_series: 77\n",
+    )
+    .expect("write config");
+
+    std::env::set_var("PROC_OTEL_CONFIG", &path);
+    let cfg = Config::load().expect("load config");
+    assert_eq!(cfg.metric_cardinality.process_max_series, 123);
+    assert_eq!(cfg.metric_cardinality.cgroup_max_series, 77);
     std::env::remove_var("PROC_OTEL_CONFIG");
     fs::remove_file(&path).expect("cleanup config");
 }

@@ -6,10 +6,52 @@ use std::env;
 use std::path::Path;
 use std::time::Duration;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostType {
+    Auto,
+    Linux,
+    Windows,
+}
+
+impl HostType {
+    fn parse(value: Option<&str>) -> Self {
+        match value.map(|v| v.trim().to_ascii_lowercase()) {
+            Some(v) if v == "linux" => Self::Linux,
+            Some(v) if v == "windows" => Self::Windows,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Linux => "linux",
+            Self::Windows => "windows",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TieredReplayConfig {
+    pub enabled: bool,
+    pub memory_cap_items: usize,
+    pub wal_dir: String,
+    pub wal_segment_max_bytes: u64,
+    pub wal_segment_max_age_secs: u64,
+    pub max_replay_per_tick: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetricCardinalityConfig {
+    pub process_max_series: usize,
+    pub cgroup_max_series: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub service_name: String,
     pub instance_id: String,
+    pub host_type: HostType,
     pub poll_interval: Duration,
     pub include_process_metrics: bool,
     pub process_include_pid_label: bool,
@@ -25,7 +67,9 @@ pub struct Config {
     pub export_timeout: Option<Duration>,
     pub metrics_include: Vec<String>,
     pub metrics_exclude: Vec<String>,
+    pub metric_cardinality: MetricCardinalityConfig,
     pub archive: ArchiveStorageConfig,
+    pub tiered_replay: TieredReplayConfig,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -34,6 +78,7 @@ struct FileConfig {
     collection: Option<CollectionSection>,
     export: Option<ExportSection>,
     metrics: Option<MetricSection>,
+    cardinality: Option<CardinalitySection>,
     storage: Option<StorageSection>,
 }
 
@@ -45,6 +90,7 @@ struct ServiceSection {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct CollectionSection {
+    host_type: Option<String>,
     poll_interval_secs: Option<u64>,
     include_process_metrics: Option<bool>,
     process_include_pid_label: Option<bool>,
@@ -83,6 +129,12 @@ struct MetricSection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+struct CardinalitySection {
+    process_max_series: Option<usize>,
+    cgroup_max_series: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 struct StorageSection {
     archive_enabled: Option<bool>,
     archive_dir: Option<String>,
@@ -93,6 +145,12 @@ struct StorageSection {
     archive_mode: Option<String>,
     archive_window_secs: Option<u64>,
     archive_compression: Option<String>,
+    tiered_replay_enabled: Option<bool>,
+    tiered_replay_memory_cap_items: Option<usize>,
+    tiered_replay_wal_dir: Option<String>,
+    tiered_replay_wal_segment_max_bytes: Option<u64>,
+    tiered_replay_wal_segment_max_age_secs: Option<u64>,
+    tiered_replay_max_replay_per_tick: Option<usize>,
 }
 
 impl Config {
@@ -122,6 +180,7 @@ impl Config {
         let otlp = export.otlp.unwrap_or_default();
         let batch = export.batch.unwrap_or_default();
         let metrics = file_cfg.metrics.unwrap_or_default();
+        let cardinality = file_cfg.cardinality.unwrap_or_default();
         let storage = file_cfg.storage.unwrap_or_default();
 
         let mut otlp_headers = otlp.headers.unwrap_or_default();
@@ -142,6 +201,9 @@ impl Config {
             .or_else(|| env::var("OTEL_EXPORTER_OTLP_PROTOCOL").ok())
             .unwrap_or_else(|| default_protocol_for_endpoint(Some(&otlp_endpoint)));
 
+        let host_type_cfg = collection.host_type.clone();
+        let host_type_env = env::var("PROC_HOST_TYPE").ok();
+
         Self {
             service_name: service
                 .name
@@ -151,6 +213,7 @@ impl Config {
                 .instance_id
                 .or_else(|| env::var("OTEL_SERVICE_INSTANCE_ID").ok())
                 .unwrap_or_else(hostname_fallback),
+            host_type: HostType::parse(host_type_cfg.as_deref().or(host_type_env.as_deref())),
             poll_interval: Duration::from_secs(
                 collection
                     .poll_interval_secs
@@ -216,6 +279,24 @@ impl Config {
             }),
             metrics_include: metrics.include.unwrap_or_default(),
             metrics_exclude: metrics.exclude.unwrap_or_default(),
+            metric_cardinality: MetricCardinalityConfig {
+                process_max_series: cardinality
+                    .process_max_series
+                    .or_else(|| {
+                        env::var("OJO_METRIC_PROCESS_MAX_SERIES")
+                            .ok()
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+                    .unwrap_or(20000),
+                cgroup_max_series: cardinality
+                    .cgroup_max_series
+                    .or_else(|| {
+                        env::var("OJO_METRIC_CGROUP_MAX_SERIES")
+                            .ok()
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+                    .unwrap_or(10000),
+            },
             archive: ArchiveStorageConfig {
                 enabled: storage.archive_enabled.unwrap_or(true),
                 archive_dir: storage
@@ -230,6 +311,52 @@ impl Config {
                 mode: ArchiveMode::parse(storage.archive_mode.as_deref()),
                 window_secs: storage.archive_window_secs.unwrap_or(60),
                 compression: ArchiveCompression::parse(storage.archive_compression.as_deref()),
+            },
+            tiered_replay: TieredReplayConfig {
+                enabled: storage
+                    .tiered_replay_enabled
+                    .or_else(|| parse_bool_env("OJO_TIERED_REPLAY_ENABLED"))
+                    .unwrap_or(false),
+                memory_cap_items: storage
+                    .tiered_replay_memory_cap_items
+                    .or_else(|| {
+                        env::var("OJO_TIERED_REPLAY_MEMORY_CAP_ITEMS")
+                            .ok()
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+                    .unwrap_or(256)
+                    .max(1),
+                wal_dir: storage
+                    .tiered_replay_wal_dir
+                    .or_else(|| env::var("OJO_TIERED_REPLAY_WAL_DIR").ok())
+                    .unwrap_or_else(|| "data/ojo/tiered-replay".to_string()),
+                wal_segment_max_bytes: storage
+                    .tiered_replay_wal_segment_max_bytes
+                    .or_else(|| {
+                        env::var("OJO_TIERED_REPLAY_WAL_SEGMENT_MAX_BYTES")
+                            .ok()
+                            .and_then(|v| v.parse::<u64>().ok())
+                    })
+                    .unwrap_or(16 * 1024 * 1024)
+                    .max(1024),
+                wal_segment_max_age_secs: storage
+                    .tiered_replay_wal_segment_max_age_secs
+                    .or_else(|| {
+                        env::var("OJO_TIERED_REPLAY_WAL_SEGMENT_MAX_AGE_SECS")
+                            .ok()
+                            .and_then(|v| v.parse::<u64>().ok())
+                    })
+                    .unwrap_or(300)
+                    .max(1),
+                max_replay_per_tick: storage
+                    .tiered_replay_max_replay_per_tick
+                    .or_else(|| {
+                        env::var("OJO_TIERED_REPLAY_MAX_REPLAY_PER_TICK")
+                            .ok()
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+                    .unwrap_or(128)
+                    .max(1),
             },
         }
     }

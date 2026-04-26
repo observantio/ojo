@@ -1,8 +1,14 @@
 impl ProcMetrics {
-    pub fn new(meter: Meter, filter: MetricFilter, process_labels: ProcessLabelConfig) -> Self {
+    pub fn new_with_cardinality(
+        meter: Meter,
+        filter: MetricFilter,
+        process_labels: ProcessLabelConfig,
+        cardinality: StreamCardinalityConfig,
+    ) -> Self {
         Self {
             filter,
             process_labels,
+            series_budget: std::sync::Mutex::new(SeriesBudget::new(cardinality)),
             otel_system_cpu_time: meter
                 .f64_counter("system.cpu.time")
                 .with_unit("s")
@@ -544,37 +550,50 @@ impl ProcMetrics {
 
     #[inline]
     fn record_f64(&self, name: &str, gauge: &Gauge<f64>, value: f64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) && value.is_finite() {
+        if self.filter.enabled(name) && value.is_finite() && self.allow_series(name, attrs) {
             gauge.record(value, attrs);
         }
     }
 
     #[inline]
     fn record_u64(&self, name: &str, gauge: &Gauge<u64>, value: u64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) {
+        if self.filter.enabled(name) && self.allow_series(name, attrs) {
             gauge.record(value, attrs);
         }
     }
 
     #[inline]
     fn record_i64(&self, name: &str, gauge: &Gauge<i64>, value: i64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) {
+        if self.filter.enabled(name) && self.allow_series(name, attrs) {
             gauge.record(value, attrs);
         }
     }
 
     #[inline]
     fn add_f64(&self, name: &str, counter: &Counter<f64>, value: f64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) && value.is_finite() && value > 0.0 {
+        if self.filter.enabled(name)
+            && value.is_finite()
+            && value > 0.0
+            && self.allow_series(name, attrs)
+        {
             counter.add(value, attrs);
         }
     }
 
     #[inline]
     fn add_u64(&self, name: &str, counter: &Counter<u64>, value: u64, attrs: &[KeyValue]) {
-        if self.filter.enabled(name) && value > 0 {
+        if self.filter.enabled(name) && value > 0 && self.allow_series(name, attrs) {
             counter.add(value, attrs);
         }
+    }
+
+    #[inline]
+    fn allow_series(&self, name: &str, attrs: &[KeyValue]) -> bool {
+        let mut guard = self
+            .series_budget
+            .lock()
+            .expect("series budget lock should not be poisoned");
+        guard.allow(name, attrs)
     }
 
 }

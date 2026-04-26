@@ -1,7 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Snapshot {
     pub system: SystemSnapshot,
     pub memory: MemorySnapshot,
@@ -61,7 +62,8 @@ pub struct Snapshot {
     pub windows: Option<WindowsSnapshot>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsSnapshot {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub vmstat: BTreeMap<String, i64>,
@@ -79,12 +81,14 @@ pub struct WindowsSnapshot {
     pub disk_volume_correlation: Vec<DiskVolumeCorrelation>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsLoadSnapshot {
     pub synthetic: WindowsSyntheticLoadSnapshot,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsSyntheticLoadSnapshot {
     pub one: f64,
     pub five: f64,
@@ -94,7 +98,8 @@ pub struct WindowsSyntheticLoadSnapshot {
     pub source: String,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsPagefileSnapshot {
     pub name: String,
     pub total_bytes: u64,
@@ -102,7 +107,8 @@ pub struct WindowsPagefileSnapshot {
     pub free_bytes: u64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsMemoryPressureSnapshot {
     pub commit_utilization_pct: f64,
     pub available_memory_pct: f64,
@@ -117,14 +123,16 @@ pub struct WindowsMemoryPressureSnapshot {
     pub sampled_interval_secs: Option<f64>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsMemorySnapshot {
     pub commit: WindowsCommitSnapshot,
     pub pools: WindowsMemoryPoolsSnapshot,
     pub pressure: WindowsMemoryPressureSnapshot,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsCommitSnapshot {
     pub charge_bytes: u64,
     pub limit_bytes: u64,
@@ -133,14 +141,16 @@ pub struct WindowsCommitSnapshot {
     pub utilization_pct: f64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsMemoryPoolsSnapshot {
     pub paged_pool_bytes: u64,
     pub nonpaged_pool_bytes: u64,
     pub system_cache_bytes: u64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DiskVolumeCorrelation {
     pub mountpoint: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -151,7 +161,8 @@ pub struct DiskVolumeCorrelation {
     pub physical_drive: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SoftnetCpuSnapshot {
     pub cpu: usize,
     pub processed: u64,
@@ -165,7 +176,8 @@ pub struct SoftnetCpuSnapshot {
     pub flow_limit_count: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SystemSnapshot {
     pub is_windows: bool,
     pub os_type: String,
@@ -189,7 +201,8 @@ pub struct SystemSnapshot {
     pub per_cpu_seconds: Vec<CpuTimesSeconds>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CpuTimesSeconds {
     pub user: f64,
     pub nice: f64,
@@ -203,7 +216,8 @@ pub struct CpuTimesSeconds {
     pub guest_nice: f64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CpuTimes {
     pub user: u64,
     pub nice: u64,
@@ -236,7 +250,8 @@ impl CpuTimes {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MemorySnapshot {
     pub mem_total_bytes: u64,
     pub mem_free_bytes: u64,
@@ -266,7 +281,8 @@ pub struct MemorySnapshot {
     pub anon_hugepages_bytes: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LoadSnapshot {
     pub one: f64,
     pub five: f64,
@@ -276,7 +292,8 @@ pub struct LoadSnapshot {
     pub latest_pid: u32,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SwapDeviceSnapshot {
     pub device: String,
     pub swap_type: String,
@@ -285,7 +302,8 @@ pub struct SwapDeviceSnapshot {
     pub priority: i64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MountSnapshot {
     pub device: String,
     pub mountpoint: String,
@@ -293,7 +311,8 @@ pub struct MountSnapshot {
     pub read_only: bool,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CpuInfoSnapshot {
     pub cpu: usize,
     pub vendor_id: Option<String>,
@@ -302,7 +321,8 @@ pub struct CpuInfoSnapshot {
     pub cache_size_bytes: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DiskSnapshot {
     pub name: String,
     pub has_counters: bool,
@@ -320,7 +340,8 @@ pub struct DiskSnapshot {
     pub rotational: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NetDevSnapshot {
     pub name: String,
     pub stable_id: Option<String>,
@@ -352,7 +373,8 @@ pub struct NetDevSnapshot {
     pub tx_compressed: u64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProcessSnapshot {
     pub pid: i32,
     pub ppid: i32,

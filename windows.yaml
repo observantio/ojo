@@ -3,12 +3,14 @@ service:
   instance_id: windows-0001
 
 collection:
+  # Host collector type selection: auto | linux | windows
+  host_type: windows
   # Poll interval for snapshot collection.
   poll_interval_secs: 5
   # Collect per-process metrics in addition to host metrics.
   include_process_metrics: true
   # Process label controls (higher cardinality when enabled).
-  process_include_pid_label: true
+  process_include_pid_label: false
   process_include_command_label: true
   process_include_state_label: true
   # Number of failed export intervals to remember before dropping oldest.
@@ -31,6 +33,13 @@ storage:
   archive_max_file_bytes: 67108864
   archive_retain_files: 8
   archive_file_stem: ojo-snapshots
+  # Tiered replay queue (bounded memory + durable WAL spill/replay).
+  tiered_replay_enabled: true
+  tiered_replay_memory_cap_items: 256
+  tiered_replay_wal_dir: data/ojo/tiered-replay
+  tiered_replay_wal_segment_max_bytes: 16777216
+  tiered_replay_wal_segment_max_age_secs: 300
+  tiered_replay_max_replay_per_tick: 128
 
 
 # Rules:
@@ -41,3 +50,7 @@ storage:
 metrics:
   include: [system., process.]
   exclude: []
+
+cardinality:
+  process_max_series: 20000
+  cgroup_max_series: 10000

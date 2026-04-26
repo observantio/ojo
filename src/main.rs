@@ -10,6 +10,7 @@ mod model;
 mod otel;
 #[cfg(target_os = "solaris")]
 mod solaris;
+mod tiered_queue;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -18,7 +19,7 @@ use buffers::IntervalBuffer;
 use config::Config;
 use delta::PrevState;
 use host_collectors::JsonArchiveWriter;
-use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig};
+use metrics::{MetricFilter, ProcMetrics, ProcessLabelConfig, StreamCardinalityConfig};
 use opentelemetry::global;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -27,6 +28,7 @@ use std::sync::{
 #[cfg(not(coverage))]
 use std::thread;
 use std::time::Instant;
+use tiered_queue::{BufferedInterval, TieredReplayQueue};
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -164,6 +166,11 @@ fn has_flag(args: &[String], flag: &str) -> bool {
 fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load()?;
+    info!(
+        host_type = cfg.host_type.as_str(),
+        tiered_replay_enabled = cfg.tiered_replay.enabled,
+        "configuration loaded"
+    );
     cfg.apply_otel_env();
     let dump_snapshot = has_flag(&args, "--dump-snapshot");
     let run_once = dump_snapshot
@@ -173,7 +180,7 @@ fn main() -> Result<()> {
             .unwrap_or(false);
 
     if dump_snapshot {
-        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        let snap = collector::collect_snapshot(cfg.include_process_metrics, cfg.host_type.clone())?;
         let snapshot_json =
             serde_json::to_string_pretty(&snap).expect("snapshot serialization should not fail");
         println!("{snapshot_json}");
@@ -189,13 +196,17 @@ fn main() -> Result<()> {
 
     let provider = otel::init_meter_provider(&cfg)?;
     let meter = global::meter("procfs");
-    let instruments = ProcMetrics::new(
+    let instruments = ProcMetrics::new_with_cardinality(
         meter,
         MetricFilter::new(cfg.metrics_include.clone(), cfg.metrics_exclude.clone()),
         ProcessLabelConfig {
             include_pid: cfg.process_include_pid_label,
             include_command: cfg.process_include_command_label,
             include_state: cfg.process_include_state_label,
+        },
+        StreamCardinalityConfig {
+            process_max_series: cfg.metric_cardinality.process_max_series,
+            cgroup_max_series: cfg.metric_cardinality.cgroup_max_series,
         },
     );
 
@@ -205,8 +216,10 @@ fn main() -> Result<()> {
     }
 
     let mut prev = PrevState::default();
+    let mut replay_prev = PrevState::default();
     let mut archive = JsonArchiveWriter::from_config(&cfg.archive);
     archive.set_default_identity(&cfg.service_name, &cfg.instance_id);
+    let mut tiered_replay = TieredReplayQueue::from_config(&cfg.tiered_replay)?;
     let mut export_state = ExportState::Pending;
     let mut offline_buffer = IntervalBuffer::new(cfg.offline_buffer_intervals);
 
@@ -214,7 +227,7 @@ fn main() -> Result<()> {
         let started_at = Instant::now();
         debug!("poll tick start");
 
-        let snap = collector::collect_snapshot(cfg.include_process_metrics)?;
+        let snap = collector::collect_snapshot(cfg.include_process_metrics, cfg.host_type.clone())?;
         let raw = serde_json::json!(snap);
         archive.write_json_line(&raw);
         #[cfg(not(coverage))]
@@ -245,7 +258,42 @@ fn main() -> Result<()> {
         #[cfg(coverage)]
         let _ = started_at.elapsed().as_millis();
 
-        let flush_result = provider.force_flush();
+        let mut flush_result = provider.force_flush();
+
+        if flush_result.is_ok() && tiered_replay.has_pending() {
+            match tiered_replay.drain_batch(cfg.tiered_replay.max_replay_per_tick) {
+                Ok(batch) if !batch.is_empty() => {
+                    for interval in &batch {
+                        let replay_derived =
+                            replay_prev.derive(&interval.snapshot, cfg.poll_interval);
+                        instruments.record(
+                            &interval.snapshot,
+                            &replay_derived,
+                            cfg.include_process_metrics,
+                        );
+                    }
+
+                    let replay_flush = provider.force_flush();
+                    if replay_flush.is_err() {
+                        if let Err(err) = tiered_replay.requeue_front(batch) {
+                            warn!(error = %err, "tiered replay requeue failed");
+                        }
+                        flush_result = replay_flush;
+                    }
+                }
+                Ok(_) => {}
+                Err(err) => warn!(error = %err, "tiered replay drain failed"),
+            }
+        }
+
+        if flush_result.is_err() && tiered_replay.is_enabled() {
+            if let Err(err) = tiered_replay.push(BufferedInterval {
+                snapshot: snap.clone(),
+            }) {
+                warn!(error = %err, "tiered replay enqueue failed");
+            }
+        }
+
         log_flush_result(started_at, flush_result.is_ok());
 
         update_offline_buffer(&mut offline_buffer, flush_result.is_ok());

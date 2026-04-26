@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::metrics::{MetricFilter, ProcessLabelConfig};
+    use crate::metrics::{MetricFilter, ProcessLabelConfig, StreamCardinalityConfig};
     use crate::delta::DerivedMetrics;
     use crate::model::{
         CpuInfoSnapshot, DiskSnapshot, LoadSnapshot, MemorySnapshot, MountSnapshot,
@@ -52,20 +52,67 @@ mod tests {
         assert!(cfg.include_state);
     }
 
+    #[test]
+    fn stream_cardinality_allows_existing_series_after_cap() {
+        let mut budget = super::SeriesBudget::new(StreamCardinalityConfig {
+            process_max_series: 1,
+            cgroup_max_series: 1,
+        });
+
+        let attrs_a = [opentelemetry::KeyValue::new("process.pid", "101")];
+        assert!(budget.allow("process.cpu.time", &attrs_a));
+        assert!(budget.allow("process.cpu.time", &attrs_a));
+
+        let attrs_b = [opentelemetry::KeyValue::new("process.pid", "202")];
+        assert!(!budget.allow("process.cpu.time", &attrs_b));
+    }
+
+    #[test]
+    fn stream_cardinality_applies_separate_caps_per_family() {
+        let mut budget = super::SeriesBudget::new(StreamCardinalityConfig {
+            process_max_series: 1,
+            cgroup_max_series: 1,
+        });
+
+        let proc_attrs = [opentelemetry::KeyValue::new("process.pid", "11")];
+        let cgroup_attrs = [
+            opentelemetry::KeyValue::new("scope", "v2"),
+            opentelemetry::KeyValue::new("group", "root"),
+            opentelemetry::KeyValue::new("key", "memory.current"),
+            opentelemetry::KeyValue::new("label", "value"),
+        ];
+
+        assert!(budget.allow("process.memory.usage", &proc_attrs));
+        assert!(budget.allow("system.linux.cgroup", &cgroup_attrs));
+
+        let proc_attrs_2 = [opentelemetry::KeyValue::new("process.pid", "12")];
+        let cgroup_attrs_2 = [
+            opentelemetry::KeyValue::new("scope", "v2"),
+            opentelemetry::KeyValue::new("group", "other"),
+            opentelemetry::KeyValue::new("key", "memory.current"),
+            opentelemetry::KeyValue::new("label", "value"),
+        ];
+
+        assert!(!budget.allow("process.memory.usage", &proc_attrs_2));
+        assert!(!budget.allow("system.linux.cgroup", &cgroup_attrs_2));
+    }
+
     #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
     fn proc_metrics_record_smoke_linux_like() {
-        let snap = crate::collector::collect_snapshot(true).expect("collect snapshot");
+        let snap = crate::collector::collect_snapshot(true, crate::config::HostType::Auto)
+            .expect("collect snapshot");
 
         let mut prev = crate::delta::PrevState::default();
         let _first = prev.derive(&snap, std::time::Duration::from_secs(1));
         let derived = prev.derive(&snap, std::time::Duration::from_secs(1));
 
         let meter = opentelemetry::global::meter("metrics-test");
-        let metrics = crate::metrics::ProcMetrics::new(
+        let metrics = crate::metrics::ProcMetrics::new_with_cardinality(
             meter,
             MetricFilter::new(vec![], vec![]),
             ProcessLabelConfig::default(),
+            StreamCardinalityConfig::default(),
         );
         metrics.record(&snap, &derived, true);
     }
@@ -108,7 +155,7 @@ mod tests {
     #[test]
     fn proc_metrics_record_exercises_linux_and_windows_branches() {
         let meter = opentelemetry::global::meter("metrics-branch-coverage");
-        let metrics = crate::metrics::ProcMetrics::new(
+        let metrics = crate::metrics::ProcMetrics::new_with_cardinality(
             meter,
             MetricFilter::new(vec![], vec![]),
             ProcessLabelConfig {
@@ -116,6 +163,7 @@ mod tests {
                 include_command: true,
                 include_state: true,
             },
+            StreamCardinalityConfig::default(),
         );
 
         let mut linux_snap = Snapshot::default();
@@ -577,7 +625,7 @@ mod tests {
     #[test]
     fn proc_metrics_record_covers_optional_none_and_filter_block_paths() {
         let meter = opentelemetry::global::meter("metrics-none-coverage");
-        let metrics = crate::metrics::ProcMetrics::new(
+        let metrics = crate::metrics::ProcMetrics::new_with_cardinality(
             meter,
             MetricFilter::new(vec!["system.".to_string(), "process.".to_string()], vec![]),
             ProcessLabelConfig {
@@ -585,6 +633,7 @@ mod tests {
                 include_command: false,
                 include_state: false,
             },
+            StreamCardinalityConfig::default(),
         );
 
         let mut linux_snap = Snapshot::default();
@@ -662,10 +711,11 @@ mod tests {
         metrics.record(&linux_snap, &derived, true);
         metrics.record(&windows_snap, &derived, true);
 
-        let blocked = crate::metrics::ProcMetrics::new(
+        let blocked = crate::metrics::ProcMetrics::new_with_cardinality(
             opentelemetry::global::meter("metrics-none-blocked"),
             MetricFilter::new(vec!["custom.".to_string()], vec![]),
             ProcessLabelConfig::default(),
+            StreamCardinalityConfig::default(),
         );
         blocked.record(&linux_snap, &derived, true);
     }
