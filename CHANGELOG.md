@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 2026-04-26
+
+### Added
+
+- Added configurable host collector routing via `collection.host_type` (`auto`, `linux`, `windows`) with environment override `PROC_HOST_TYPE`.
+- Added a tiered replay queue for exporter resilience and near-fixed retry-buffer RSS:
+  - strict in-memory cap (`storage.tiered_replay_memory_cap_items`)
+  - durable WAL spill (`storage.tiered_replay_wal_dir`)
+  - WAL rotation by size/time (`storage.tiered_replay_wal_segment_max_bytes`, `storage.tiered_replay_wal_segment_max_age_secs`)
+  - on-demand rehydration and bounded replay throughput (`storage.tiered_replay_max_replay_per_tick`)
+- Added queue unit tests covering spill/rehydrate, replay ordering, and disabled-mode behavior.
+- Added collector dispatch test covering unsupported configured host type on Linux-like builds.
+
+### Changed
+
+- Main runtime loop now replays buffered snapshots after connectivity recovers, with backpressure-safe requeue on replay flush failure.
+- `linux.yaml` and `windows.yaml` now include `collection.host_type` and tiered replay configuration examples.
+- Sample Linux/Windows configs now default `process_include_pid_label` to `false` to avoid unnecessary process-series cardinality growth.
+- Snapshot model now supports robust deserialization defaults for compact persisted payloads with omitted optional fields.
+
+### Documentation
+
+- Updated `README.md` with host type configuration, fixed-RSS tiered replay architecture, and new environment variable controls for replay/WAL behavior.
+- Updated `README.md` quick-start examples with corrected sidecar run blocks and explicit Windows sub-service execution examples.
+- Updated `DEPLOYMENT.md` release artifact matrix to match CI outputs (including legacy Windows core target, all sidecars, and docs bundle) plus Windows sidecar download/run examples.
+
 ## [0.0.4] - 2026-04-25
 
 ### Changed

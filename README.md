@@ -38,6 +38,9 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 - Windows
 - Solaris _(in progress, platform-constrained, built, but not tested)_
 
+Host selection is configurable in YAML via `collection.host_type` (`auto`, `linux`, `windows`).
+`auto` uses the current build target; forcing an unsupported host type on a given build fails fast with a clear config error.
+
 ## What Ojo Does
 
 - Polls host metrics on a fixed interval
@@ -190,59 +193,29 @@ docker.dev/                  QA Dockerfiles and Compose services
 
 Use one of the included examples: `linux.yaml` or `windows.yaml`.
 
-**2. Run**
+**2. Run the core agent**
 
 ```bash
 cargo run -- --config linux.yaml
 ```
 
-```bash
+```powershell
 cargo run -- --config windows.yaml
 ```
 
-**Optional extension services**
+**3. Optional extension services (from source)**
 
 ```bash
 cargo run -p ojo-docker -- --config services/docker/docker.yaml
-```
-
-```bash
 cargo run -p ojo-gpu -- --config services/gpu/gpu.yaml
-```
-
-```bash
 cargo run -p ojo-sensors -- --config services/sensors/sensors.yaml
-```
-
-```bash
 cargo run -p ojo-mysql -- --config services/mysql/mysql.yaml
-```
-
-```bash
 cargo run -p ojo-postgres -- --config services/postgres/postgres.yaml
-```
-
-```bash
 cargo run -p ojo-nfs-client -- --config services/nfs-client/nfs-client.yaml
-```
-
-```bash
 cargo run -p ojo-nginx -- --config services/nginx/nginx.yaml
-```
-
-```bash
 cargo run -p ojo-redis -- --config services/redis/redis.yaml
-```
-
-```bash
 cargo run -p ojo-systemd -- --config services/systemd/systemd.yaml
-```
-
-```bash
 cargo run -p ojo-systrace -- --config services/systrace/systrace.yaml
-```
-
-```bash
 cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
 ```
 
@@ -258,6 +231,37 @@ cd services/mysql && cargo run -- --config mysql.yaml
 cd services/postgres && cargo run -- --config postgres.yaml
 cd services/nfs-client && cargo run -- --config nfs-client.yaml
 cd services/nginx && cargo run -- --config nginx.yaml
+cd services/redis && cargo run -- --config redis.yaml
+cd services/systemd && cargo run -- --config systemd.yaml
+cd services/systrace && cargo run -- --config systrace.yaml
+cd services/syslog && cargo run -- --config syslog.yaml
+```
+
+**Windows sub-service examples (PowerShell)**
+
+Run directly with Cargo:
+
+```powershell
+cargo run -p ojo-nginx -- --config services/nginx/nginx.yaml
+cargo run -p ojo-redis -- --config services/redis/redis.yaml
+cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
+```
+
+Or build and run Windows binaries from release artifacts:
+
+```powershell
+$ver = "<VERSION_TAG>"
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/$ver/ojo-nginx-win-$ver.exe" -OutFile "ojo-nginx.exe"
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/$ver/ojo-redis-win-$ver.exe" -OutFile "ojo-redis.exe"
+.\ojo-nginx.exe --config services/nginx/nginx.yaml
+.\ojo-redis.exe --config services/redis/redis.yaml
+```
+
+**4. Dump a snapshot for debugging**
+
+```bash
+cargo run -- --config linux.yaml --dump-snapshot
+```
 
 ## Archive Storage Modes
 
@@ -295,17 +299,6 @@ cargo run --bin archive-replay -- \
   --endpoint http://localhost:4320/mimir/api/v1/push \
   --protocol remote-write
 ```
-cd services/redis && cargo run -- --config redis.yaml
-cd services/systemd && cargo run -- --config systemd.yaml
-cd services/systrace && cargo run -- --config systrace.yaml
-cd services/syslog && cargo run -- --config syslog.yaml
-```
-
-**3. Dump a snapshot for debugging**
-
-```bash
-cargo run -- --config linux.yaml --dump-snapshot
-```
 
 ## Configuration
 
@@ -315,6 +308,8 @@ service:
   instance_id: linux-0001
 
 collection:
+  # Host collector selection: auto | linux | windows
+  host_type: auto
   poll_interval_secs: 5
   include_process_metrics: true
   # Low-cardinality defaults for process labels.
@@ -331,7 +326,29 @@ export:
   batch:
     interval_secs: 5
     timeout_secs: 10
+
+storage:
+  archive_enabled: true
+  archive_dir: data/ojo
+  # Tiered replay queue: strict in-memory hotset + durable WAL spill.
+  tiered_replay_enabled: true
+  tiered_replay_memory_cap_items: 256
+  tiered_replay_wal_dir: data/ojo/tiered-replay
+  tiered_replay_wal_segment_max_bytes: 16777216
+  tiered_replay_wal_segment_max_age_secs: 300
+  tiered_replay_max_replay_per_tick: 128
 ```
+
+### Fixed-RSS Tiered Replay
+
+When `storage.tiered_replay_enabled` is on, Ojo uses a bounded in-memory queue and spills overflow intervals to disk WAL segments.
+
+- In-memory cap: `tiered_replay_memory_cap_items`
+- Durable spill: `tiered_replay_wal_dir`
+- Rotation: `tiered_replay_wal_segment_max_bytes` and `tiered_replay_wal_segment_max_age_secs`
+- Rehydrate + replay: `tiered_replay_max_replay_per_tick` per poll cycle
+
+This keeps RSS near-fixed for retry buffers while preserving functional replay behavior, with expected disk/latency tradeoffs.
 
 ## Metric Selection
 
@@ -341,12 +358,22 @@ If `metrics` is omitted, all metrics are exported.
 metrics:
   include: [system., process.]
   exclude: [process.linux.]
+
+cardinality:
+  # 0 means unlimited; non-zero bounds unique stream keys retained by this process.
+  process_max_series: 20000
+  cgroup_max_series: 10000
 ```
 
 Rules:
 - `include` and `exclude` are prefix-based
 - `exclude` wins over `include`
 - an empty `include` means include all metrics
+
+Cardinality controls:
+- `cardinality.process_max_series` caps unique `process.*` time-series keys.
+- `cardinality.cgroup_max_series` caps unique `system.linux.cgroup` time-series keys.
+- At cap, existing series continue to emit and newly-seen series are dropped to prevent unbounded stream growth.
 
 Extension naming guidance:
 - Docker metrics use `system.docker.*`
@@ -367,11 +394,20 @@ Extension naming guidance:
 | Variable | Description |
 |---|---|
 | `PROC_OTEL_CONFIG` | Config file path override |
+| `PROC_HOST_TYPE` | Host collector type override (`auto`, `linux`, `windows`) |
 | `PROC_POLL_INTERVAL_SECS` | Poll interval override |
 | `PROC_INCLUDE_PROCESS_METRICS` | Enable process metrics |
 | `PROC_PROCESS_INCLUDE_PID_LABEL` | Include `process.pid` attribute on per-process metrics |
 | `PROC_PROCESS_INCLUDE_COMMAND_LABEL` | Include `process.command` attribute on per-process metrics |
 | `PROC_PROCESS_INCLUDE_STATE_LABEL` | Include `process.state` attribute on per-process metrics |
+| `OJO_METRIC_PROCESS_MAX_SERIES` | Max unique `process.*` series retained (0 = unlimited) |
+| `OJO_METRIC_CGROUP_MAX_SERIES` | Max unique `system.linux.cgroup` series retained (0 = unlimited) |
+| `OJO_TIERED_REPLAY_ENABLED` | Enable tiered replay queue |
+| `OJO_TIERED_REPLAY_MEMORY_CAP_ITEMS` | Max queued intervals kept in memory |
+| `OJO_TIERED_REPLAY_WAL_DIR` | WAL spill directory |
+| `OJO_TIERED_REPLAY_WAL_SEGMENT_MAX_BYTES` | Rotate WAL segment by max bytes |
+| `OJO_TIERED_REPLAY_WAL_SEGMENT_MAX_AGE_SECS` | Rotate WAL segment by age |
+| `OJO_TIERED_REPLAY_MAX_REPLAY_PER_TICK` | Max replayed intervals per poll |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol |
 | `OTEL_EXPORTER_OTLP_HEADERS` | OTLP headers |

@@ -160,27 +160,25 @@ curl http://localhost:4320/ready
 | `ojo-{version}-linux-x86_64` | `x86_64-unknown-linux-gnu` |
 | `ojo-{version}-linux-aarch64` | `aarch64-unknown-linux-gnu` |
 | `ojo-{version}-windows-x86_64.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-docker-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-docker-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-gpu-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-gpu-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-sensors-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-sensors-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-mysql-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-mysql-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-postgres-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-postgres-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-nfs-client-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-nfs-client-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-systrace-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-systrace-win-{version}.exe` | `x86_64-pc-windows-gnu` |
-| `ojo-syslog-unix-{version}` | `x86_64-unknown-linux-gnu` |
-| `ojo-syslog-win-{version}.exe` | `x86_64-pc-windows-gnu` |
+| `ojo-{version}-windows-i686-legacy.exe` | `i686-pc-windows-gnullvm` |
+| `ojo-docker-unix-{version}` / `ojo-docker-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-gpu-unix-{version}` / `ojo-gpu-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-sensors-unix-{version}` / `ojo-sensors-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-mysql-unix-{version}` / `ojo-mysql-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-postgres-unix-{version}` / `ojo-postgres-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-nfs-client-unix-{version}` / `ojo-nfs-client-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-nginx-unix-{version}` / `ojo-nginx-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-redis-unix-{version}` / `ojo-redis-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-systemd-unix-{version}` / `ojo-systemd-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-systrace-unix-{version}` / `ojo-systrace-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-syslog-unix-{version}` / `ojo-syslog-win-{version}.exe` | `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-gnu` |
+| `ojo-docs-{version}.tar.gz` | Versioned docs bundle (`README`, `DEPLOYMENT`, `CHANGELOG`) |
 
 ### Download and run - Linux
 
 ```bash
-curl -L https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-v0.0.4-linux-aarch64 -o ojo
+VERSION="<VERSION_TAG>"
+curl -L "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-${VERSION}-linux-aarch64" -o ojo
 chmod +x ojo
 ./ojo --config linux.yaml
 ```
@@ -188,16 +186,31 @@ chmod +x ojo
 ### Download and run - Windows (PowerShell)
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-v0.0.4-windows-x86_64.exe -OutFile ojo.exe
+${VERSION} = "<VERSION_TAG>"
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-${VERSION}-windows-x86_64.exe" -OutFile ojo.exe
 .\ojo.exe --config windows.yaml
 ```
 
 ### Download and run a sidecar - Linux (Docker service)
 
 ```bash
-curl -L https://github.com/observantio/ojo/releases/download/v0.0.4/ojo-docker-unix-v0.0.4 -o ojo-docker
+VERSION="<VERSION_TAG>"
+curl -L "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-docker-unix-${VERSION}" -o ojo-docker
 chmod +x ojo-docker
 ./ojo-docker --config services/docker/docker.yaml
+```
+
+### Download and run sidecars - Windows (PowerShell examples)
+
+```powershell
+${VERSION} = "<VERSION_TAG>"
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-nginx-win-${VERSION}.exe" -OutFile ojo-nginx.exe
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-redis-win-${VERSION}.exe" -OutFile ojo-redis.exe
+Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-syslog-win-${VERSION}.exe" -OutFile ojo-syslog.exe
+
+.\ojo-nginx.exe --config services/nginx/nginx.yaml
+.\ojo-redis.exe --config services/redis/redis.yaml
+.\ojo-syslog.exe --config services/syslog/syslog.yaml
 ```
 
 ## Configuration Guide: linux.yaml and docker.yaml
