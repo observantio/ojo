@@ -32,6 +32,34 @@ Ojo is a lightweight host metrics agent written in Rust that collects system and
 
 ![Demo](assets/collector.gif)
 
+
+## Screenshots
+
+Here are a few screenshots of the new release
+
+<table>
+  <tr>
+    <td><img src="assets/slides/docker.png" width="400"/></td>
+    <td><img src="assets/slides/gpu.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/slides/linux00.png" width="400"/></td>
+    <td><img src="assets/slides/linux01.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/slides/linx02.png" width="400"/></td>
+    <td><img src="assets/slides/logs.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/slides/sensors.png" width="400"/></td>
+    <td><img src="assets/slides/traces.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/slides/windows00.png" width="400"/></td>
+    <td><img src="assets/slides/windows01.png" width="400"/></td>
+  </tr>
+</table>
+
 ## Supported Platforms
 
 - Linux
