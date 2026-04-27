@@ -202,6 +202,8 @@ chmod +x ojo-docker
 
 ### Download and run sidecars - Windows (PowerShell examples)
 
+> Note: some optional Windows sidecar services, especially `ojo-gpu`, `ojo-sensors`, and other Windows-only extension crates, may require Visual C++ build tools when built from source. The main `ojo` Windows host collector should work without those extra tools when using the official release executable.
+
 ```powershell
 ${VERSION} = "<VERSION_TAG>"
 Invoke-WebRequest -Uri "https://github.com/observantio/ojo/releases/download/${VERSION}/ojo-nginx-win-${VERSION}.exe" -OutFile ojo-nginx.exe

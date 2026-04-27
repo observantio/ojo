@@ -249,6 +249,8 @@ cargo run -p ojo-syslog -- --config services/syslog/syslog.yaml
 
 Each extension can run independently and send OTLP metrics to the same collector endpoint as `ojo`.
 
+> Note: on Windows, some optional extension services such as `ojo-gpu`, `ojo-sensors`, and certain other Windows-only sidecars may require Visual C++ build tools when building from source. The main `ojo` Windows host collector (`cargo run -- --config windows.yaml` or the release `ojo.exe`) should work without those extra Visual C++ tools.
+
 You can also run from each service folder:
 
 ```bash
@@ -266,6 +268,8 @@ cd services/syslog && cargo run -- --config syslog.yaml
 ```
 
 **Windows sub-service examples (PowerShell)**
+
+> Note: building or running Windows sidecars from source can require Visual C++ build tools for some services. The core `ojo` host collector itself should work without those additional tools when using the official Windows release executable.
 
 Run directly with Cargo:
 
